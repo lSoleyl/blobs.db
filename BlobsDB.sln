@@ -3,7 +3,31 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.8.34330.188
 MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Server", "Server\Server.vcxproj", "{6E6B094F-5D2C-45FF-A847-5B738281968D}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Network", "Network\Network.vcxproj", "{32433F71-5ABE-418E-8492-C775F5BB70AB}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ClientLib", "ClientLib\ClientLib.vcxproj", "{91C125BC-416D-46CF-974C-E7DDD245A6ED}"
+EndProject
 Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6E6B094F-5D2C-45FF-A847-5B738281968D}.Debug|x64.ActiveCfg = Debug|x64
+		{6E6B094F-5D2C-45FF-A847-5B738281968D}.Debug|x64.Build.0 = Debug|x64
+		{6E6B094F-5D2C-45FF-A847-5B738281968D}.Release|x64.ActiveCfg = Release|x64
+		{6E6B094F-5D2C-45FF-A847-5B738281968D}.Release|x64.Build.0 = Release|x64
+		{32433F71-5ABE-418E-8492-C775F5BB70AB}.Debug|x64.ActiveCfg = Debug|x64
+		{32433F71-5ABE-418E-8492-C775F5BB70AB}.Debug|x64.Build.0 = Debug|x64
+		{32433F71-5ABE-418E-8492-C775F5BB70AB}.Release|x64.ActiveCfg = Release|x64
+		{32433F71-5ABE-418E-8492-C775F5BB70AB}.Release|x64.Build.0 = Release|x64
+		{91C125BC-416D-46CF-974C-E7DDD245A6ED}.Debug|x64.ActiveCfg = Debug|x64
+		{91C125BC-416D-46CF-974C-E7DDD245A6ED}.Debug|x64.Build.0 = Debug|x64
+		{91C125BC-416D-46CF-974C-E7DDD245A6ED}.Release|x64.ActiveCfg = Release|x64
+		{91C125BC-416D-46CF-974C-E7DDD245A6ED}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
