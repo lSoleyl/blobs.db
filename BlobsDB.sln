@@ -9,6 +9,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Network", "Network\Network.
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ClientLib", "ClientLib\ClientLib.vcxproj", "{91C125BC-416D-46CF-974C-E7DDD245A6ED}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestClient", "TestClient\TestClient.vcxproj", "{72244BDC-3B20-4056-8393-67CA45E201EB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -27,6 +29,10 @@ Global
 		{91C125BC-416D-46CF-974C-E7DDD245A6ED}.Debug|x64.Build.0 = Debug|x64
 		{91C125BC-416D-46CF-974C-E7DDD245A6ED}.Release|x64.ActiveCfg = Release|x64
 		{91C125BC-416D-46CF-974C-E7DDD245A6ED}.Release|x64.Build.0 = Release|x64
+		{72244BDC-3B20-4056-8393-67CA45E201EB}.Debug|x64.ActiveCfg = Debug|x64
+		{72244BDC-3B20-4056-8393-67CA45E201EB}.Debug|x64.Build.0 = Debug|x64
+		{72244BDC-3B20-4056-8393-67CA45E201EB}.Release|x64.ActiveCfg = Release|x64
+		{72244BDC-3B20-4056-8393-67CA45E201EB}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
