@@ -89,16 +89,18 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Network.cpp" />
+    <ClCompile Include="Resource.cpp" />
     <ClCompile Include="Server.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\network\Channel.hpp" />
+    <ClInclude Include="include\network\Resource.hpp" />
     <ClInclude Include="include\network\Client.hpp" />
     <ClInclude Include="include\network\Network.hpp" />
     <ClInclude Include="include\network\Server.hpp" />
+    <ClInclude Include="include\network\Socket.hpp" />
     <ClInclude Include="include\win_include.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

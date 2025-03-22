@@ -24,12 +24,15 @@
     <ClCompile Include="Server.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="Resource.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\network\Channel.hpp">
+    <ClInclude Include="include\network\Resource.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
     <ClInclude Include="include\network\Network.hpp">
@@ -42,6 +45,9 @@
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
     <ClInclude Include="include\network\Client.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\Socket.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Resource.hpp"
 #include "..\win_include.hpp"
 
 #include <thread>
@@ -20,10 +21,11 @@ class Server {
 
   private:
     void ListenThreadMain();
+    Resource<addrinfo*> GetListenAddress() const;
 
     std::thread listenThread;
     const int listenPort;
-    SOCKET listenSocket;
+    Resource<SOCKET> listenSocket;
 };
 
 
