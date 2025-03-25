@@ -8,5 +8,7 @@
 #include <windows.h>
 #include <winsock2.h>
 #include <Ws2tcpip.h>
+#include <MSWSock.h>
+#include <processthreadsapi.h>
 
 #pragma comment(lib, "Ws2_32.lib")

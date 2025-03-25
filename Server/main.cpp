@@ -10,5 +10,7 @@ int main() {
 
   blobs::network::Server server(8888);
 
+  //TODO: wait for server messages to arrive and process them
+
   std::cout << "Server exiting\n";
 }

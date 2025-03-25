@@ -5,9 +5,18 @@
 namespace blobs {
 namespace network {
 
+template<typename HandleType>
+struct ResourceDefinition {
+  static HandleType NullHandle();
+  static void ReleaseHandle(HandleType handle);
+};
+
+
+
+
 /** A generic network resource management class correctly releasing its managed resource once it falls out of scope
  */
-template<typename T>
+template<typename T, typename Definition = ResourceDefinition<T>>
 class Resource {
 public:
   /** Initialize to an invalid resource
@@ -69,11 +78,11 @@ public:
 private:
   /** Default value of the handle type representing no handle/invalid handle
    */
-  static T NullHandle();
+  static T NullHandle() { return Definition::NullHandle(); }
 
   /** Release the handle (i.e. call the appropriate destruction function if this is not the NullHandle.
    */
-  static void ReleaseHandle(T handle);
+  static void ReleaseHandle(T handle) { Definition::ReleaseHandle(handle); }
 
   T handle;
 };

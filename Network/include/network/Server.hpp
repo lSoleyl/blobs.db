@@ -4,6 +4,8 @@
 #include "..\win_include.hpp"
 
 #include <thread>
+#include <atomic>
+#include <list>
 
 
 namespace blobs {
@@ -23,9 +25,49 @@ class Server {
     void ListenThreadMain();
     Resource<addrinfo*> GetListenAddress() const;
 
+    /** This method simply creates an IPv6 socket in dual stack mode, performs error handling and returns the socket.
+     */
+    Resource<SOCKET> CreateDualStackSocket() const;
+
+    /** Returns true if the connection has completed immediately
+     */
+    bool AcceptNewConnection();
+
+    /** This will create a Client object from the accepted socket and start listening for data
+     */
+    void ProcessAcceptedConnection();
+
+    struct Client {
+      Client(Resource<SOCKET>&& socket);
+
+      Resource<SOCKET> socket;
+      WSAOVERLAPPED receiveOverlapped;
+      WSABUF receiveBufferInfo;
+      char receiveBuffer[1024];
+      DWORD recvFlags;
+
+      void ReceiveData();
+
+      /** Returns false if the connection has been closed
+       */
+      bool ProcessReceivedData();
+    };
+
+    struct AcceptData {
+      Resource<SOCKET> socket;
+      WSAOVERLAPPED overlapped;
+      char buffer[128];
+    };
+
+
     std::thread listenThread;
     const int listenPort;
     Resource<SOCKET> listenSocket;
+    Resource<HANDLE> ioCompletionPort;
+    std::list<Client> clients; // all connected clients
+    std::atomic<bool> running;
+
+    AcceptData accept; // structure containing the necessary fields for the current async accept call
 };
 
 

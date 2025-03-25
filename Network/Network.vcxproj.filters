@@ -29,7 +29,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="README.md" />
+    <None Include="Network.md" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\network\Resource.hpp">
@@ -45,9 +45,6 @@
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
     <ClInclude Include="include\network\Client.hpp">
-      <Filter>Headerdateien\network</Filter>
-    </ClInclude>
-    <ClInclude Include="include\network\Socket.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
   </ItemGroup>
