@@ -91,17 +91,8 @@ void network::Server::ListenThreadMain() {
 
 
 
-      //TODO: We can probably avoid this limit by listening on IO completion packages somehow instead... I need to research how...
-      // Reading:
-      // 
-      // - IO completion ports: https://learn.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
-      // - IOCP-Server example code: https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/netds/winsock/iocp/server/IocpServer.Cpp
-      // - Advanced Winsock examples: https://learn.microsoft.com/en-us/windows/win32/winsock/getting-started-with-winsock
-      // 
       // We can also use PostQueuedCompletionStatus() for efficient inter-thread communication. (https://learn.microsoft.com/en-us/windows/win32/fileio/postqueuedcompletionstatus)
       // -> especially useful to notify the thread about a shut down or something like this.
-      // The IO thread will be waiting on GetQueuedCompletionStatus() most of the time (https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-getqueuedcompletionstatus)
-      // Since we will only have one IO thread, we should probably set the concurrency to only 1 thread in CreateIoCompletionPort (https://learn.microsoft.com/en-us/windows/win32/fileio/createiocompletionport)
       //
       // TODO: How will the thread be notified about new messages to send from the message queue? Probably simply be also posting a message to the IOCompletionPort. That port will
       //       therefore be the single synchronization point for that thread... But how to ensure that nobody writes into the message queue while the thread pops a message out?
@@ -141,8 +132,16 @@ network::Resource<SOCKET> network::Server::CreateDualStackSocket() const {
 
   // Set the socket into dual stack mode
   DWORD ipv6OnlyValue = FALSE;
-  if (auto error = setsockopt(*newSocket, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&ipv6OnlyValue), sizeof(ipv6OnlyValue))) {
-    throw network::exception("setsockopt() failed with: ");
+  if (setsockopt(*newSocket, IPPROTO_IPV6, IPV6_V6ONLY, reinterpret_cast<char*>(&ipv6OnlyValue), sizeof(ipv6OnlyValue)) == SOCKET_ERROR) {
+    throw network::exception("setsockopt(IPV6_ONLY=FALSE) failed with: ");
+  }
+
+  // Disable the send buffer to be able to immediately messages from our buffers without the 
+  // system buffering. This is supposed to reduce CPU usage and speed up transmission of our messages
+  // see: https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/netds/winsock/iocp/server/IocpServer.Cpp
+  int nZero = 0;
+  if (setsockopt(*newSocket, SOL_SOCKET, SO_SNDBUF, (char*)&nZero, sizeof(nZero)) == SOCKET_ERROR) {
+    throw network::exception("setsockopt(SO_SNDBUF=0) failed with: ");
   }
 
   return newSocket;
