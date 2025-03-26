@@ -36,6 +36,14 @@ To prevent the log from blowing up, we must in regular intervals propagate chang
 It would be optimal, if this propagation could be processed by a separate thread. How exactly, is not yet known.
 One important property of log propagation must be that after each write the database stays in a consistent state.
 
+#### Transient transaction log
+We can keep a transient copy of the transaction log and have a separate thread simply keep processing it as soon as something is added to it. 
+This would make log propagation a bit more efficient and the server would only need to keep track of which pages are being written right now to not attempt
+to read them from disk while they are being overwritten. But this will not happen by design as we keep all read pages in memory anyway (at least all recently read pages).
+So the page being written by the recent transaction is already loaded into the server's memory, so no file access is necesary for this. 
+
+As long as growing the database file does not somehow erase it temporarily, we can still safely read any other not yet touched page without any risks.
+
 ### Consistent database update process
 One rather primitive way to achieve consistency is to simply update all written data in-place. Once the update is completed the global commit id is incremented accordingly.
 That way the database can in recovery mode understand, which part of the transaction log has already been processed and which wasn't.
@@ -66,6 +74,9 @@ the necessary metadata in the databse file itself. (freeList/heap/...)
 Since we cannot assume fixed sized blobs (even with memory pages due to the dynamic sized metadata), we must make sure to not cause any unnecessary fragmentation in the database.
 We will assume constant time access to any part of the file (SSD drives) so we won't put too much effort in putting things together, which belong together.
 
+### Fixed allocation sizes
+We could store our free lists in less memory if we separate them into fixed sized chunks. This could also ensure that reallocation will not create any weird gaps... But then again...
+Maybe we should just allocate as much as is needed and ignore the wasted memory and implement some cleanup routine, which can be run from time to time.
 
 ## Datastructures
 In the following notation Pointers must be translated to 64-bit file offsets.
@@ -93,6 +104,7 @@ A cluster holds the following data
 	- id: `uint32` (simply a running number)
 	- commitId: `uint64_t` (commit id when this structure was last updated)
 	- blobs: `List<Blob*>`
+	- maxBlobId: `uint32_t` (needed?)
 
 ### Blob
 A blob holds the following data

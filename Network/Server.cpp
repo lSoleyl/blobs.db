@@ -66,24 +66,27 @@ void network::Server::ListenThreadMain() {
     while (running) {
       // Main loop:
 
-      DWORD bytesReceived;
+      DWORD bytesTransferred;
       void* completionKey;
       OVERLAPPED* overlapped;
-      GetQueuedCompletionStatus(*ioCompletionPort, &bytesReceived, reinterpret_cast<ULONG_PTR*>(&completionKey), &overlapped, INFINITE);
+      GetQueuedCompletionStatus(*ioCompletionPort, &bytesTransferred, reinterpret_cast<ULONG_PTR*>(&completionKey), &overlapped, INFINITE);
 
 
       //TODO: Notify the (logical) server about new connections and about closed connections, because he needs to react to them
 
       if (completionKey == this) {
         // A new connection arrived at our listen socket
-        ProcessAcceptedConnection();
+        auto& client = ProcessAcceptedConnection();
+        std::cout << "Client " << client.id << " connected from: " << client.remoteIp << '\n';
       } else {
         // completion key must be a Client* and we received some data
-        //TODO: We could also pass the number of bytes read into the process function. Then the client doen't need to call WSAGetOverlappedResult()
         Client* client = static_cast<Client*>(completionKey);
-        if (!client->ProcessReceivedData()) {
-          // connection has been closed by the remote host
-          // remove the client from the connection list
+        if (bytesTransferred) {
+          client->ProcessReceivedData(bytesTransferred, overlapped);
+        } else {
+          // Completion with no bytes received means the connection has been closed
+          // Remove the client from the connection list
+          std::cout << "Client " << client->id << " disconnected\n";
           clients.erase(std::find_if(clients.begin(), clients.end(), [client](Client& c) { return &c == client; }));
         }
       }
@@ -98,25 +101,7 @@ void network::Server::ListenThreadMain() {
       //       therefore be the single synchronization point for that thread... But how to ensure that nobody writes into the message queue while the thread pops a message out?
       //       Either we use a lock (probably too expensive) or some lock free alternative, since this kind of congestion should happen rarely
 
-      
-
-      //TODO: Set send buffer for new connections to 0... This was shown somewhere
-
-
-      // Accept new connections
-
-      // Pump messages in both directions
-
-      // Repeat
     }
-
-
-
-    // Continue at: https://learn.microsoft.com/en-us/windows/win32/winsock/listening-on-a-socket
-
-    // Start accepting connections
-    // TODO Pump messages from any socket into the message queue for the server and from the reply-queue into the corresponding socket
-    // TODO How to handle disconnects?
 
   } catch (std::exception& ex) {
     std::cerr << "FATAL: " << ex.what() << "\n";
@@ -202,10 +187,39 @@ bool network::Server::AcceptNewConnection() {
   return true; // Accept completed synchronously
 }
 
+LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrsFn = nullptr;
 
-void network::Server::ProcessAcceptedConnection() {
+network::Server::Client& network::Server::ProcessAcceptedConnection() {
   clients.emplace_back(std::move(accept.socket));
   auto& client = clients.back();
+
+  // Load the GetAcceptExSockaddrs function on first call
+  if (!GetAcceptExSockaddrsFn) {
+    GUID GuidGetAcceptExSockaddrs = WSAID_GETACCEPTEXSOCKADDRS;
+    DWORD dwBytes;
+
+    auto result = WSAIoctl(*listenSocket, SIO_GET_EXTENSION_FUNCTION_POINTER, &GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs), 
+                           &GetAcceptExSockaddrsFn, sizeof(GetAcceptExSockaddrsFn), &dwBytes, NULL, NULL);
+    if (result == SOCKET_ERROR) {
+      throw network::exception("Loading GetAcceptExSockaddrs function pointer through WSAIoctl failed with: ");
+    }
+  }
+
+  // Retrieve the remote IP from the buffer we passed into AcceptEx()
+  sockaddr* localAddr;
+  sockaddr* remoteAddr;
+  int localAddrLen;
+  int remoteAddrLen;
+  GetAcceptExSockaddrsFn(accept.buffer, 0, sizeof(sockaddr_in6) + 16, sizeof(sockaddr_in6) + 16, &localAddr, &localAddrLen, &remoteAddr, &remoteAddrLen);
+
+  // And translate the IP address using WSAAddressToString
+  char ipBuffer[128];
+  DWORD ipBufferSize = sizeof(ipBuffer);
+  if (WSAAddressToStringA(remoteAddr, remoteAddrLen, NULL, ipBuffer, &ipBufferSize) == SOCKET_ERROR) {
+    throw network::exception("WSAAddressToStringA() failed with: ");
+  }
+  client.remoteIp = ipBuffer; // This will contain the IP addres AND the port
+
 
   // Associate the client socket with our io completion port
   if (!CreateIoCompletionPort(reinterpret_cast<HANDLE>(*client.socket), *ioCompletionPort, reinterpret_cast<ULONG_PTR>(&client), 0)) {
@@ -217,10 +231,13 @@ void network::Server::ProcessAcceptedConnection() {
 
   // Accept another connection
   AcceptNewConnection();
+
+  return client;
 }
 
+uint32_t lastClientId = 0;
 
-network::Server::Client::Client(Resource<SOCKET>&& socket) : socket(std::move(socket)) {
+network::Server::Client::Client(Resource<SOCKET>&& socket) : socket(std::move(socket)), id(++lastClientId) {
   receiveBufferInfo.buf = receiveBuffer;
   receiveBufferInfo.len = sizeof(receiveBuffer);
 }
@@ -243,31 +260,14 @@ void network::Server::Client::ReceiveData() {
   }
 }
 
-bool network::Server::Client::ProcessReceivedData() {
-  DWORD bytesTransferred = 0;
-  if (WSAGetOverlappedResult(*socket, &receiveOverlapped, &bytesTransferred, FALSE, &recvFlags)) {
-    // Receive operation completed -> for now simply print the received message
-    std::cout << "RECV: [" << std::string(receiveBuffer, bytesTransferred) << "]\n";
+void network::Server::Client::ProcessReceivedData(DWORD bytesTransferred, OVERLAPPED* overlapped) {
+  // Receive operation completed -> for now simply print the received message
+  std::cout << "RECV: [" << std::string(receiveBuffer, bytesTransferred) << "]\n";
 
-    //TODO: Parse message header, wait for a complete mesage then put it into the server's message queue and notify the server about the new message
+  //TODO: Parse message header, wait for a complete mesage then put it into the server's message queue and notify the server about the new message
 
-    // And listen for more data
-    ReceiveData();
-  } else {
-    auto errorCode = WSAGetLastError();
-    if (errorCode == WSA_IO_PENDING) {
-      throw network::exception("Client::ProcessReceivedData() called even though the operation is still pending!", errorCode);
-    }
-
-    if (errorCode == WSAECONNRESET) {
-      // Connection has been closed by the remote client
-      return false; // the caller will remove this client from its list
-    }
-
-    throw network::exception("Client::ProcessReceivedData() : WSAGetOverlappedResult() failed with: ", errorCode);
-  }
-
-  return true;
+  // And listen for more data
+  ReceiveData();
 }
 
 

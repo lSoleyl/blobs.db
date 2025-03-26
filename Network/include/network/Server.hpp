@@ -33,10 +33,6 @@ class Server {
      */
     bool AcceptNewConnection();
 
-    /** This will create a Client object from the accepted socket and start listening for data
-     */
-    void ProcessAcceptedConnection();
-
     struct Client {
       Client(Resource<SOCKET>&& socket);
 
@@ -45,13 +41,22 @@ class Server {
       WSABUF receiveBufferInfo;
       char receiveBuffer[1024];
       DWORD recvFlags;
+      uint32_t id;
+
+      std::string remoteIp; // including the port
 
       void ReceiveData();
 
       /** Returns false if the connection has been closed
        */
-      bool ProcessReceivedData();
+      void ProcessReceivedData(DWORD bytesTransferred, OVERLAPPED* overlapped);
     };
+
+    /** This will create a Client object from the accepted socket and start listening for data
+     *  A reference to the newly created client will be returned
+     */
+    Client& ProcessAcceptedConnection();
+
 
     struct AcceptData {
       Resource<SOCKET> socket;
