@@ -65,7 +65,7 @@ class Server {
     };
 
 
-    std::thread listenThread;
+    std::thread networkThread;
     const int listenPort;
     Resource<SOCKET> listenSocket;
     Resource<HANDLE> ioCompletionPort;

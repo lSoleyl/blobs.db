@@ -10,12 +10,9 @@ Each transaction commit, which modifies at least one blob increments this counte
 Each blob knows (in some header) the commit id in which it has been commited.
 This serves two purposes:
 
-	1. It allows the client to keep pages in its cache across transactions and in a new transaction only
-	 request pages, which changed since the last transaction. This can save a lot of network bandwidth.
+  1. It allows the client to keep pages in its cache across transactions and in a new transaction only request pages, which changed since the last transaction. This can save a lot of network bandwidth.
 
-	2. It allows the server to securely update data structures in the database. By attaching the commit id to 
-	 updated pages/clusters/segments, the server can simply ignore partial updates on the next boot by ignoring 
-	 all data, which has a higher commit id than the database.
+  2. It allows the server to securely update data structures in the database. By attaching the commit id to updated pages/clusters/segments, the server can simply ignore partial updates on the next boot by ignoring all data, which has a higher commit id than the database.
 
 ### Id overflow
 Since we use 64-bit an overflow should practically never occur, but we could define a threshold - if reached at server boot time -
@@ -80,41 +77,42 @@ Maybe we should just allocate as much as is needed and ignore the wasted memory 
 
 ## Datastructures
 In the following notation Pointers must be translated to 64-bit file offsets.
-The database has one fixed field at file offset 0, which is the pointer to the currently valid Database header.
+The database file has one fixed field at file offset 8, which is the pointer to the currently valid Database header.
 
+    - filetype: char[8] = 'blobs.db'
 	- database: Database*
 
 ### Database
 The database header holds the following data
 
-	- commitId: `uint64_t` (Global commit id)
-	- segments: `List<Segment*>` (All segments)
+	- commitId: uint64_t (Global commit id)
+	- segments: List<Segment*> (All segments)
 
 
 ### Segment
 A segment holds the following data
 
 	- name: string
-	- commitId: `uint64_t` (commit id when this structure was last updated)
-	- clusters: `List<Cluster*>`
+	- commitId: uint64_t (commit id when this structure was last updated)
+	- clusters: List<Cluster*>
 
 ### Cluster
 A cluster holds the following data
 
-	- id: `uint32` (simply a running number)
-	- commitId: `uint64_t` (commit id when this structure was last updated)
-	- blobs: `List<Blob*>`
-	- maxBlobId: `uint32_t` (needed?)
+	- id: uint32 (simply a running number)
+	- commitId: uint64_t (commit id when this structure was last updated)
+	- blobs: List<Blob*>
+	- maxBlobId: uint32_t (needed?)
 
 ### Blob
 A blob holds the following data
 
-	- id: `uint32_t`
-	- commitId: `uint64_t` (commit id when this blob was last modified)
-	- size: `uint32_t` (bytes in this blob - 4GB max)
-	- data: uint8_t*
-	- metaSize: `uint32_t`
-	- metaData: uint8_t*
+	- id: uint32_t
+	- commitId: uint64_t (commit id when this blob was last modified)
+	- size: uint32_t (bytes in this blob - 4GB max)
+	- data: uint8_t[]
+	- metaSize: uint32_t
+	- metaData: uint8_t[]
 
 The metadata fields can also be completely replaced if we simply denote each odd numbered blob as metadata for the previous one. 
 The client would then just always request two blobs at once. This would cause an overhead in communication and memory usage, but could simplify the logic
@@ -123,7 +121,7 @@ and wouldn't hardcode this metadata into each blob (which may not be needed in s
 
 
 ## MVCC Mode
-With the commit ids and the tree like datastrucutres we can also quite efficiently implement an MVCC mode, by simply keeping the transient copies of old
+With the commit ids and the tree like data strucutres we can also quite efficiently implement an MVCC mode, by simply keeping the transient copies of old
 blobs even when new versions are commited (but we only do this if there is at least one MVCC client).
 
 We would thus hold a second in-memory copy of the database, which would grow in size (blobs) the more blobs are being touched since the MVCC snapshot has been made.

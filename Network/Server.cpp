@@ -6,14 +6,14 @@ namespace blobs {
 
 network::Server::Server(int listenPort) : listenPort(listenPort), running(true) {
   network::Initialize();
-  listenThread = std::thread([this]() { ListenThreadMain(); });
+  networkThread = std::thread([this]() { ListenThreadMain(); });
 }
 
 network::Server::~Server() {
   //TODO: signal listen thread to exit somehow
   
   // Wait for thread to exit
-  listenThread.join();
+  networkThread.join();
 
   // We must first close all sockets and only then the completion port
   listenSocket.Reset();
@@ -254,9 +254,8 @@ void network::Server::Client::ReceiveData() {
     }
     throw network::exception("WSARecv() failed with: ", errorCode);
   } else {
-
-    //TODO: what to do here? Call WSAGetOverlappedResult? How do I know the amount of bytes transferred?
-    throw std::exception("WSARecv() completed synchronously!");
+    // Otherwise Recv() completed synchronously (because the client is sending so much), which we will ignore here
+    // because the completion port has still been signalled and we will get the message from the completion port.
   }
 }
 
