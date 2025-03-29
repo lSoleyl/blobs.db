@@ -282,7 +282,7 @@ void network::Server::Client::ProcessReceivedData(DWORD bytesTransferred, OVERLA
   bytesTransferred += receive.bufferInfo.buf - receive.buffer;
   std::string_view dataToProcess(receive.buffer, bytesTransferred);
 
-  //TODO: we need a loop in case we receive multiple messages at once
+
   size_t receiveOffset = 0;
 
   while (!dataToProcess.empty()) {
@@ -300,7 +300,7 @@ void network::Server::Client::ProcessReceivedData(DWORD bytesTransferred, OVERLA
     } else if (dataToProcess.size() >= sizeof(decltype(message::Message::size))) {
       // We need to read at least the size of the message to be able to allocate anything
       auto messageSize = *reinterpret_cast<const decltype(message::Message::size)*>(dataToProcess.data());
-      // TODO: will this cause an issue that we allocate as char[] and delete as Message?
+      // Allocating as char[] and deleting as Message may be UB, but has always worked with msvc as the underlying allocation/deallocation function is the same.
       receive.message.reset(reinterpret_cast<message::Message*>(new char[messageSize]));
       
       // We must write at least the message size, otherwise the code in the above if-branch won't be able to tell how many
