@@ -29,7 +29,7 @@ network::Client::~Client() {
   networkThread.join();
 
   // We must first close all sockets, then the completion port
-  socket.Reset(); 
+  CloseSocket();
   ioCompletionPort.Reset();
   network::Shutdown();
 }
@@ -37,18 +37,11 @@ network::Client::~Client() {
 
 
 void network::Client::SendOpenDBMessage(std::string_view databaseName) {
-  // Acquire the mutex for the send queue
-  std::unique_lock<std::mutex> lock(send.mutex);
-  bool wasEmpty = send.queue.empty();
-  send.queue.push_back({});
-  // for now we ignore the return value as we always start with an emtpy buffer
-  message::OpenDB::EncodeMessage(send.queue.back(), databaseName);
-  lock.unlock(); // lock not needed past this point
-
-  if (wasEmpty) {
-    // The queue was empty before -> notify the network thread of a new available message
-    NotifyNewSendMesssages();
-  }
+  // Acquire the access to send queue and encode the message
+  // For now we ignore the return value as we always start with an emtpy buffer
+  message::OpenDB::EncodeMessage(*AccessSendQueue(), databaseName);
+  
+  // The network thread is automatically notified upon the access token falling out of scope (if necessary)
 }
 
 
@@ -68,12 +61,12 @@ network::Resource<addrinfo*> network::Client::GetServerAddress() const {
 }
 
 
-void network::Client::ConnectToServer() {
+network::Resource<SOCKET> network::Client::ConnectToServer() const {
   // First translate the server address
   auto serverAddr = GetServerAddress();
 
   // Create the client socket
-  socket = ::socket(serverAddr->ai_family, serverAddr->ai_socktype, serverAddr->ai_protocol);
+  Resource<SOCKET> socket(::socket(serverAddr->ai_family, serverAddr->ai_socktype, serverAddr->ai_protocol));
   if (!socket) {
     throw network::exception("Socket creation failed with: ");
   }
@@ -89,132 +82,51 @@ void network::Client::ConnectToServer() {
   if (setsockopt(*socket, SOL_SOCKET, SO_SNDBUF, (char*)&nZero, sizeof(nZero)) == SOCKET_ERROR) {
     throw network::exception("setsockopt(SO_SNDBUF=0) failed with: ");
   }
+
+  return socket;
 }
 
 void network::Client::NetworkThreadMain() {
 
   try {
-    ConnectToServer();
+    InitializeMessageSocket(ConnectToServer(), *ioCompletionPort);
 
-    if (!CreateIoCompletionPort(reinterpret_cast<HANDLE>(*socket), *ioCompletionPort, 0, 0)) {
-      throw network::exception("Failed to associate the socket with the io completion port: ");
-    }
-
-
-    //TODO: Also start receiving server responses
-    
     //TODO: listen to some event, which will terminate the client and close the connection properly
     while (true) {
 
       DWORD bytesTransferred;
-      void* completionKey;
+      IOCompletionHandler* completionHandler;
       OVERLAPPED* overlapped;
-      GetQueuedCompletionStatus(*ioCompletionPort, &bytesTransferred, reinterpret_cast<ULONG_PTR*>(&completionKey), &overlapped, INFINITE);
-
-      if (completionKey == &send) {
-        if (!overlapped) {
-          // Notification that we have new queued messages to send and are currently not sending anything
-          SendMessagesFromQueue();
-        } else {
-          // Last send operation completed
-          SendCompleted(bytesTransferred);
-        }
-      }
-      
+      GetQueuedCompletionStatus(*ioCompletionPort, &bytesTransferred, reinterpret_cast<ULONG_PTR*>(&completionHandler), &overlapped, INFINITE);
+      completionHandler->HandleIOCompletion(bytesTransferred, overlapped);
     }
 
-    if (shutdown(*socket, SD_SEND) == SOCKET_ERROR) {
-      throw network::exception("shutdown() failed with: ");
-    }
+
+    CloseSocket();
 
   } catch (std::exception& ex) {
     //TODO: we should push the error just like any other message to the calling thread
     std::cerr << "FATAL: " << ex.what();
   }
-
-}
-
-void network::Client::SendMessagesFromQueue() {
-  std::unique_lock<std::mutex> lock(send.mutex);
-  if (send.queue.empty()) {
-    return; // nothing to send
-  }
-  send.buffers.reserve(send.queue.size());
-  for (auto& buffer : send.queue) {
-    send.buffers.push_back({ static_cast<ULONG>(buffer.size()), buffer.data() });
-  }
-  lock.unlock(); // send.queue mutex not needed after this point
-
-  // Reinitialize our overlapped
-  send.overlapped = { 0 };
-  if (WSASend(*socket, send.buffers.data(), send.buffers.size(), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
-    auto error = WSAGetLastError();
-    if (error == WSA_IO_PENDING) {
-      // send has been scheduled
-      return;
-    }
-
-    // Send failed
-    throw network::exception("WSASend() failed with: ", error);
-  }
-
-  // Otherwise send completed synchronously -> the message will be processed when handling the IOCOmpletionPort notification
 }
 
 
-void network::Client::SendCompleted(DWORD bytesTransferred) {
-  if (!bytesTransferred) {
-    // TODO: can this happen? If yes, is it an indication of a closed connection?
-    throw network::exception("WSASend() transmitted 0 bytes!");
-  }
 
-  std::unique_lock<std::mutex> lock(send.mutex);
 
-  // Remove fully transmitted buffers from the send buffer queue
-  while (!send.buffers.empty() && bytesTransferred >= send.buffers.front().len) {
-    bytesTransferred -= send.buffers.front().len;
-    send.buffers.erase(send.buffers.begin());
-    send.queue.pop_front();
-  }
-
-  // Update first partially transmitted buffer
-  if (!send.buffers.empty() && bytesTransferred > 0) {
-    assert(bytesTransferred < send.buffers.front().len); // if this fails, then WSASend() has sent more bytes than we requested, which should not be possible
-    send.buffers.front().buf += bytesTransferred;
-    send.buffers.front().len -= bytesTransferred;
-    bytesTransferred = 0;
-  }
-
-  // Schedule the send of the next entries in the queue if there are more than currently scheduled
-  if (send.queue.size() > send.buffers.size()) {
-    for (int i = send.buffers.size(); i < send.queue.size(); ++i) {
-      auto& entry = send.queue[i];
-      send.buffers.push_back({ static_cast<ULONG>(entry.size()), entry.data() });
-    }
-  }
-  lock.unlock(); // send.queue mutex not needed after this point
-
-  // If there is more data to send, trigger another WSASend()
-  if (!send.buffers.empty()) {
-    send.overlapped = { 0 };
-    if (WSASend(*socket, send.buffers.data(), send.buffers.size(), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
-      auto error = WSAGetLastError();
-      if (error == WSA_IO_PENDING) {
-        // send has been scheduled
-        return;
-      }
-
-      // Send failed
-      throw network::exception("WSASend() failed with: ", error);
-    }
-  }
-  // otherwise send has completed synchronously, which we will handle in GetQueuedCompletionStatus()
+void network::Client::HandleSocketClosed() {
+  //TODO: what to do here? reconnect? Quit? Notify the main thread?
+  std::cout << "Connection to server lost\n";
 }
 
+void network::Client::HandleMessageReceived(std::unique_ptr<message::Message> message) {
+  //TODO: pass the message to the main client thread
+  std::cout << "Server: ";
 
-void network::Client::NotifyNewSendMesssages() const {
-  // Simply post a completion packet with SEND as completion handle and a nullptr overlapped
-  PostQueuedCompletionStatus(*ioCompletionPort, 0, reinterpret_cast<ULONG_PTR>(&send), nullptr);
+  if (message->type == message::Type::OpenDB) {
+    std::cout << "OpenDB(" << static_cast<message::OpenDB*>(message.get())->GetDatabaseName() << ")\n";
+  } else {
+    std::cout << "Unkown message type (" << static_cast<int>(message->type) << ")\n";
+  }
 }
 
 

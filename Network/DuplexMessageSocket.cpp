@@ -1,19 +1,58 @@
 #include <network/DuplexMessageSocket.hpp>
 #include <network/Network.hpp>
 
+#include <cassert>
+
 namespace blobs {
 namespace network {
 
+DuplexMessageSocket::DuplexMessageSocket() : ioCompletionPort(INVALID_HANDLE_VALUE) {}
 
-DuplexMessageSocket::DuplexMessageSocket(Resource<SOCKET>&& socket, HANDLE ioCompletionPort) : socket(std::move(socket)) {
-  // Associate the client socket with our io completion port
+DuplexMessageSocket::DuplexMessageSocket(Resource<SOCKET>&& socket, HANDLE ioCompletionPort) {
+  InitializeMessageSocket(std::move(socket), ioCompletionPort);
+}
+
+void DuplexMessageSocket::InitializeMessageSocket(Resource<SOCKET>&& socket, HANDLE ioCompletionPort) {
+  this->socket = std::move(socket);
+  this->ioCompletionPort = ioCompletionPort;
+
+  // Associate the given socket with our io completion port
   if (!CreateIoCompletionPort(reinterpret_cast<HANDLE>(*this->socket), ioCompletionPort, reinterpret_cast<ULONG_PTR>(this), 0)) {
     throw network::exception("Failed to associate socket with IOCompletionPort: ", GetLastError());
   }
 
   // Immediately start listening
   ReceiveData();
+
+  // Send any data, which may already be in the send queue
+  SendData();
 }
+
+void DuplexMessageSocket::CloseSocket() {
+  if (socket) {
+    if (shutdown(*socket, SD_BOTH) == SOCKET_ERROR) {
+      throw network::exception("shutdown() failed with: ");
+    }
+    socket.Reset();
+  }
+}
+
+
+void DuplexMessageSocket::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
+  if (bytesTransferred == 0) {
+    // no bytes being transferred on a stream socket is used to indicate a closed connection
+    HandleSocketClosed();
+    //TODO: should we also cancel outstanding IO on this socket here?
+  } else if (overlapped == &receive.overlapped) {
+    // We received some data
+    ProcessReceivedData(bytesTransferred);
+  } else if (overlapped == &send.overlapped) {
+    // We completed sending data
+    ProcessSentData(bytesTransferred);
+  }
+}
+
+
 
 
 void DuplexMessageSocket::ReceiveData(size_t bufferOffset) {
@@ -87,30 +126,98 @@ void DuplexMessageSocket::ProcessReceivedData(DWORD bytesTransferred) {
   ReceiveData(receiveOffset);
 }
 
-
-
-void DuplexMessageSocket::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
-  if (bytesTransferred == 0) {
-    // no bytes being transferred on a stream socket is used to indicate a closed connection
-    HandleSocketClosed();
-    //TODO: should we also cancel outstanding IO on this socket here?
-  } else if (overlapped == &receive.overlapped) {
-    // We received some data
-    ProcessReceivedData(bytesTransferred);
+void DuplexMessageSocket::SendData() {
+  std::unique_lock<std::mutex> lock(send.mutex);
+  if (send.queue.empty()) {
+    return; // nothing to send
   }
+  send.buffers.reserve(send.queue.size());
+  for (auto& buffer : send.queue) {
+    send.buffers.push_back({ static_cast<ULONG>(buffer.size()), buffer.data() });
+  }
+  lock.unlock(); // send.queue mutex not needed after this point
+
+  // Reinitialize our overlapped
+  send.overlapped = { 0 };
+  if (WSASend(*socket, send.buffers.data(), send.buffers.size(), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
+    auto error = WSAGetLastError();
+    if (error == WSA_IO_PENDING) {
+      // send has been scheduled
+      return;
+    }
+
+    // Send failed
+    throw network::exception("WSASend() failed with: ", error);
+  }
+
+  // Otherwise send completed synchronously -> the message will be processed when handling the IOCOmpletionPort notification
 }
 
 
+void DuplexMessageSocket::ProcessSentData(DWORD bytesTransferred) {
+  std::unique_lock<std::mutex> lock(send.mutex);
 
+  // Remove fully transmitted buffers from the send buffer queue
+  while (!send.buffers.empty() && bytesTransferred >= send.buffers.front().len) {
+    bytesTransferred -= send.buffers.front().len;
+    send.buffers.erase(send.buffers.begin());
+    send.queue.pop_front();
+  }
 
+  // Update first partially transmitted buffer
+  if (!send.buffers.empty() && bytesTransferred > 0) {
+    assert(bytesTransferred < send.buffers.front().len); // if this fails, then WSASend() has sent more bytes than we requested, which should not be possible
+    send.buffers.front().buf += bytesTransferred;
+    send.buffers.front().len -= bytesTransferred;
+    bytesTransferred = 0;
+  }
 
+  // Schedule the send of the next entries in the queue if there are more than currently scheduled
+  if (send.queue.size() > send.buffers.size()) {
+    for (int i = send.buffers.size(); i < send.queue.size(); ++i) {
+      auto& entry = send.queue[i];
+      send.buffers.push_back({ static_cast<ULONG>(entry.size()), entry.data() });
+    }
+  }
+  lock.unlock(); // send.queue mutex not needed after this point
 
+  // If there is more data to send, trigger another WSASend()
+  if (!send.buffers.empty()) {
+    send.overlapped = { 0 };
+    if (WSASend(*socket, send.buffers.data(), send.buffers.size(), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
+      auto error = WSAGetLastError();
+      if (error == WSA_IO_PENDING) {
+        // send has been scheduled
+        return;
+      }
 
+      // Send failed
+      throw network::exception("WSASend() failed with: ", error);
+    }
+  }
+}
 
+DuplexMessageSocket::SendQueueAccessToken DuplexMessageSocket::AccessSendQueue() {
+  return SendQueueAccessToken(*this);
+}
 
+DuplexMessageSocket::SendQueueAccessToken::SendQueueAccessToken(DuplexMessageSocket& socket) : socket(socket), lock(socket.send.mutex), bufferCreated(false) {
+  wasEmpty = socket.send.queue.empty();
+}
 
+DuplexMessageSocket::SendQueueAccessToken::~SendQueueAccessToken() {
+  lock.unlock(); // not needed anymore
+  if (wasEmpty && bufferCreated) {
+    // Notify the socket about new available messages to send
+    PostQueuedCompletionStatus(socket.ioCompletionPort, 1, reinterpret_cast<ULONG_PTR>(this), nullptr);
+  }
+}
 
-
+std::vector<char>& DuplexMessageSocket::SendQueueAccessToken::operator*() {
+  socket.send.queue.push_back({});
+  bufferCreated = true;
+  return socket.send.queue.back();
+}
 
 
 
