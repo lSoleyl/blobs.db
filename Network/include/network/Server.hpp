@@ -2,6 +2,8 @@
 
 #include "Resource.hpp"
 #include "message/Message.hpp"
+#include "IOCompletionHandler.hpp"
+#include "DuplexMessageSocket.hpp"
 #include "..\win_include.hpp"
 
 #include <thread>
@@ -12,7 +14,7 @@
 namespace blobs {
 namespace network {
   
-class Server {
+class Server final : public IOCompletionHandler {
   public: 
     /** The constructor will immediately start listening
      */
@@ -30,43 +32,29 @@ class Server {
      */
     Resource<SOCKET> CreateDualStackSocket() const;
 
-    /** Returns true if the connection has completed immediately
+    /** Calls AcceptEx() to accept the next connection
      */
-    bool AcceptNewConnection();
+    void AcceptNewConnection();
 
-    struct Client {
-      Client(Server& server, Resource<SOCKET>&& socket);
+    /** IOCompletion handler for listen socket (effectively just accepts the new connection)
+     */
+    virtual void HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) override;
+
+
+    struct Client : public DuplexMessageSocket {
+      Client(Server& server, Resource<SOCKET>&& socket, HANDLE ioCompletionPort);
+
+      /** Connection to client closed
+       */
+      virtual void HandleSocketClosed() override;
+
+      /** Handle new incoming message
+       */
+      virtual void HandleMessageReceived(std::unique_ptr<message::Message> message) override;
 
       Server& server;
-      Resource<SOCKET> socket;
       uint32_t id;
       std::string remoteIp; // including the port
-
-      struct Receive {
-        WSAOVERLAPPED overlapped;
-        WSABUF bufferInfo;
-        char buffer[1024];
-        DWORD flags;
-
-        size_t writeOffset; // how many bytes of `message` have already been received
-        std::unique_ptr<message::Message> message; // the current (incompletely) received message
-      };
-
-      Receive receive;
-
-
-      //TODO: we must somehow process the data stream and convert it into messages
-
-
-      /** Schedules a WSARecv() call with an optional read buffer offset, which is used in case
-       *  the read buffer contains too little data for even the message header to be processed and
-       *  we have to wait for more data to arrive.
-       */
-      void ReceiveData(size_t bufferOffset = 0);
-
-      /** Returns false if the connection has been closed
-       */
-      void ProcessReceivedData(DWORD bytesTransferred, OVERLAPPED* overlapped);
     };
 
     /** This will create a Client object from the accepted socket and start listening for data

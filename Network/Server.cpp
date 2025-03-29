@@ -59,8 +59,8 @@ void network::Server::ListenThreadMain() {
       throw network::exception("CreateIoCompletionPort()2 failed with: ", GetLastError());
     }
 
-    //TODO: Should we actually process an immediately accepted connection here?
-    bool initialAccepted = AcceptNewConnection();
+    // Start accepting new connections
+    AcceptNewConnection();
 
     //TODO: using an atomic here is pretty primitive as it requires us to actively check whether we should shut down
     //      We should change this to a synchronization object, which can be signalled so we can await it together with waiting for new socket messages.
@@ -69,31 +69,10 @@ void network::Server::ListenThreadMain() {
       // Main loop:
 
       DWORD bytesTransferred;
-      void* completionKey;
+      IOCompletionHandler* completionHandler;
       OVERLAPPED* overlapped;
-      GetQueuedCompletionStatus(*ioCompletionPort, &bytesTransferred, reinterpret_cast<ULONG_PTR*>(&completionKey), &overlapped, INFINITE);
-
-
-      //TODO: Notify the (logical) server about new connections and about closed connections, because he needs to react to them
-
-      if (completionKey == this) {
-        // A new connection arrived at our listen socket
-        auto& client = ProcessAcceptedConnection();
-        std::cout << "Client " << client.id << " connected from: " << client.remoteIp << '\n';
-      } else {
-        // completion key must be a Client* and we received some data
-        Client* client = static_cast<Client*>(completionKey);
-        if (bytesTransferred) {
-          client->ProcessReceivedData(bytesTransferred, overlapped);
-        } else {
-          // Completion with no bytes received means the connection has been closed
-          // Remove the client from the connection list
-          std::cout << "Client " << client->id << " disconnected\n";
-          clients.erase(std::find_if(clients.begin(), clients.end(), [client](Client& c) { return &c == client; }));
-        }
-      }
-
-
+      GetQueuedCompletionStatus(*ioCompletionPort, &bytesTransferred, reinterpret_cast<ULONG_PTR*>(&completionHandler), &overlapped, INFINITE);
+      completionHandler->HandleIOCompletion(bytesTransferred, overlapped);
 
 
       // We can also use PostQueuedCompletionStatus() for efficient inter-thread communication. (https://learn.microsoft.com/en-us/windows/win32/fileio/postqueuedcompletionstatus)
@@ -154,7 +133,7 @@ network::Resource<addrinfo*> network::Server::GetListenAddress() const {
 
 LPFN_ACCEPTEX AcceptExFn = nullptr;
 
-bool network::Server::AcceptNewConnection() {
+void network::Server::AcceptNewConnection() {
   if (!AcceptExFn) {
     // Load the function pointer on the first call
     GUID GuidAcceptEx = WSAID_ACCEPTEX;
@@ -177,7 +156,7 @@ bool network::Server::AcceptNewConnection() {
     auto error = WSAGetLastError();
     if (error == ERROR_IO_PENDING) {
       // No error -> the async operation has been scheduled
-      return false;
+      return;
     } else if (error == WSAECONNRESET) {
       // Client aborted the connection -> restart accepting
       return AcceptNewConnection();
@@ -186,13 +165,19 @@ bool network::Server::AcceptNewConnection() {
     throw network::exception("AcceptEx() failed with: ", error);
   }
 
-  return true; // Accept completed synchronously
+  // Otherwise accept completed synchronously -> The IOCompletionPort will still be signalled
 }
 
 LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrsFn = nullptr;
 
+
+void network::Server::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
+  auto& client = ProcessAcceptedConnection();
+  std::cout << "Client " << client.id << " connected from: " << client.remoteIp << '\n';
+}
+
 network::Server::Client& network::Server::ProcessAcceptedConnection() {
-  clients.emplace_back(*this, std::move(accept.socket));
+  clients.emplace_back(*this, std::move(accept.socket), *ioCompletionPort);
   auto& client = clients.back();
 
   // Load the GetAcceptExSockaddrs function on first call
@@ -223,17 +208,8 @@ network::Server::Client& network::Server::ProcessAcceptedConnection() {
   client.remoteIp = ipBuffer; // This will contain the IP addres AND the port
 
 
-  // Associate the client socket with our io completion port
-  if (!CreateIoCompletionPort(reinterpret_cast<HANDLE>(*client.socket), *ioCompletionPort, reinterpret_cast<ULONG_PTR>(&client), 0)) {
-    throw network::exception("CreateIoCompletionPort()3 failed with: ", GetLastError());
-  }
-
-  // Start receiving data
-  client.ReceiveData();
-
   // Accept another connection
   AcceptNewConnection();
-
   return client;
 }
 
@@ -254,79 +230,20 @@ void network::Server::ProcessReceivedMessage(Client& client, std::unique_ptr<mes
 
 uint32_t lastClientId = 0;
 
-network::Server::Client::Client(Server& server, Resource<SOCKET>&& socket) : server(server), socket(std::move(socket)), id(++lastClientId) {}
+network::Server::Client::Client(Server& server, Resource<SOCKET>&& socket, HANDLE ioCompletionPort) : 
+  DuplexMessageSocket(std::move(socket), ioCompletionPort), server(server), id(++lastClientId) {}
 
-void network::Server::Client::ReceiveData(size_t bufferOffset) {
-  receive.bufferInfo.buf = receive.buffer + bufferOffset;
-  receive.bufferInfo.len = sizeof(receive.buffer) - bufferOffset;
 
-  receive.flags = 0;
-  receive.overlapped = { 0 }; // re initialize the overlapped structure before reusing it
-  auto result = WSARecv(*socket, &receive.bufferInfo, 1, nullptr, &receive.flags, &receive.overlapped, nullptr);
-  if (result == SOCKET_ERROR) {
-    auto errorCode = WSAGetLastError();
-    if (errorCode == WSA_IO_PENDING) {
-      // Recevie successfully scheduled
-      return;
-    }
-    throw network::exception("WSARecv() failed with: ", errorCode);
-  } else {
-    // Otherwise Recv() completed synchronously (because the client is sending so much), which we will ignore here
-    // because the completion port has still been signalled and we will get the message from the completion port.
-    // I verified this behavior in a simple test with a too small receive buffer
-  }
+
+void network::Server::Client::HandleSocketClosed() {
+  // Remove this client from the connection list
+  std::cout << "Client " << id << " disconnected\n";
+  server.clients.erase(std::find_if(server.clients.begin(), server.clients.end(), [this](Client& client) { return &client == this; }));
 }
 
-void network::Server::Client::ProcessReceivedData(DWORD bytesTransferred, OVERLAPPED* overlapped) {
-  // Add the buffer offset in case the last receive operation was performed with an offset
-  bytesTransferred += receive.bufferInfo.buf - receive.buffer;
-  std::string_view dataToProcess(receive.buffer, bytesTransferred);
-
-
-  size_t receiveOffset = 0;
-
-  while (!dataToProcess.empty()) {
-    if (receive.message) {
-      // We already have a paritally transferred message
-      // First bytes go into the partially transferred message
-      auto bytesToCopy = std::min(dataToProcess.size(), receive.message->size - receive.writeOffset);
-      std::copy_n(dataToProcess.data(), bytesToCopy, reinterpret_cast<char*>(receive.message.get()) + receive.writeOffset);
-      receive.writeOffset += bytesToCopy;
-      dataToProcess.remove_prefix(bytesToCopy);
-      if (receive.writeOffset == receive.message->size) {
-        // Message fully read -> process it
-        server.ProcessReceivedMessage(*this, std::move(receive.message));
-      }
-    } else if (dataToProcess.size() >= sizeof(decltype(message::Message::size))) {
-      // We need to read at least the size of the message to be able to allocate anything
-      auto messageSize = *reinterpret_cast<const decltype(message::Message::size)*>(dataToProcess.data());
-      // Allocating as char[] and deleting as Message may be UB, but has always worked with msvc as the underlying allocation/deallocation function is the same.
-      receive.message.reset(reinterpret_cast<message::Message*>(new char[messageSize]));
-      
-      // We must write at least the message size, otherwise the code in the above if-branch won't be able to tell how many
-      // bytes are left to copy
-      receive.message->size = messageSize;
-      receive.writeOffset = sizeof(messageSize);
-      dataToProcess.remove_prefix(sizeof(messageSize));
-
-      // The remaining message bytes be written in the next iteration
-    } else {
-      // Not enough bytes to allocate the Message structure -> we must wait for more data
-      // Copy the bytes to the start of the buffer if they aren't already and start receiving after these bytes.
-      receiveOffset = dataToProcess.size();
-      if (dataToProcess.data() > receive.buffer) {
-        std::copy(dataToProcess.begin(), dataToProcess.end(), receive.buffer);
-      }
-      dataToProcess = std::string_view(); // reset to empty string view to break the loop and continue with ReceiveData()
-    }
-  }
-
-
-  // And listen for more data
-  ReceiveData(receiveOffset);
+void network::Server::Client::HandleMessageReceived(std::unique_ptr<message::Message> message) {
+  server.ProcessReceivedMessage(*this, std::move(message));
 }
-
-
 
 
 

@@ -93,6 +93,7 @@
     <ClCompile Include="Client.cpp" />
     <ClCompile Include="message\OpenDB.cpp" />
     <ClCompile Include="Network.cpp" />
+    <ClCompile Include="DuplexMessageSocket.cpp" />
     <ClCompile Include="Resource.cpp" />
     <ClCompile Include="Server.cpp" />
   </ItemGroup>
@@ -100,6 +101,8 @@
     <None Include="Network.md" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\network\IOCompletionHandler.hpp" />
+    <ClInclude Include="include\network\DuplexMessageSocket.hpp" />
     <ClInclude Include="include\network\message\Message.hpp" />
     <ClInclude Include="include\network\message\OpenDB.hpp" />
     <ClInclude Include="include\network\Resource.hpp" />
