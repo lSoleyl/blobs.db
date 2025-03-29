@@ -24,7 +24,8 @@ void DuplexMessageSocket::InitializeMessageSocket(Resource<SOCKET>&& socket, HAN
   // Immediately start listening
   ReceiveData();
 
-  // Send any data, which may already be in the send queue
+  // We must also start sending any data, which may have been posted into the message queue BEFORE the thread starts
+  // for some reason we don't get the generated IO completion packet for messages posted before calling GetQueuedCompletionStatus()
   SendData();
 }
 
@@ -49,6 +50,9 @@ void DuplexMessageSocket::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED*
   } else if (overlapped == &send.overlapped) {
     // We completed sending data
     ProcessSentData(bytesTransferred);
+  } else if (bytesTransferred == 1 && !overlapped) {
+    // Notification that there are new messages to send in the queue
+    SendData();
   }
 }
 
@@ -209,7 +213,7 @@ DuplexMessageSocket::SendQueueAccessToken::~SendQueueAccessToken() {
   lock.unlock(); // not needed anymore
   if (wasEmpty && bufferCreated) {
     // Notify the socket about new available messages to send
-    PostQueuedCompletionStatus(socket.ioCompletionPort, 1, reinterpret_cast<ULONG_PTR>(this), nullptr);
+    PostQueuedCompletionStatus(socket.ioCompletionPort, 1, reinterpret_cast<ULONG_PTR>(&socket), nullptr);
   }
 }
 
