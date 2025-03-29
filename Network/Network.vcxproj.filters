@@ -16,6 +16,12 @@
     <Filter Include="Headerdateien\network">
       <UniqueIdentifier>{721ed222-4749-42cf-a825-89883b48d023}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Headerdateien\network\message">
+      <UniqueIdentifier>{1e323947-0672-402a-9d8b-9a63eb3270a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Quelldateien\message">
+      <UniqueIdentifier>{3469cd63-bb2d-467b-9931-79bdd7133338}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Network.cpp">
@@ -29,6 +35,9 @@
     </ClCompile>
     <ClCompile Include="Client.cpp">
       <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="message\OpenDB.cpp">
+      <Filter>Quelldateien\message</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -49,6 +58,12 @@
     </ClInclude>
     <ClInclude Include="include\network\Client.hpp">
       <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\Message.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\OpenDB.hpp">
+      <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Resource.hpp"
+#include "message/Message.hpp"
 #include "..\win_include.hpp"
 
 #include <thread>
@@ -34,18 +35,34 @@ class Server {
     bool AcceptNewConnection();
 
     struct Client {
-      Client(Resource<SOCKET>&& socket);
+      Client(Server& server, Resource<SOCKET>&& socket);
 
+      Server& server;
       Resource<SOCKET> socket;
-      WSAOVERLAPPED receiveOverlapped;
-      WSABUF receiveBufferInfo;
-      char receiveBuffer[1024];
-      DWORD recvFlags;
       uint32_t id;
-
       std::string remoteIp; // including the port
 
-      void ReceiveData();
+      struct Receive {
+        WSAOVERLAPPED overlapped;
+        WSABUF bufferInfo;
+        char buffer[1024];
+        DWORD flags;
+
+        size_t writeOffset; // how many bytes of `message` have already been received
+        std::unique_ptr<message::Message> message; // the current (incompletely) received message
+      };
+
+      Receive receive;
+
+
+      //TODO: we must somehow process the data stream and convert it into messages
+
+
+      /** Schedules a WSARecv() call with an optional read buffer offset, which is used in case
+       *  the read buffer contains too little data for even the message header to be processed and
+       *  we have to wait for more data to arrive.
+       */
+      void ReceiveData(size_t bufferOffset = 0);
 
       /** Returns false if the connection has been closed
        */
@@ -56,6 +73,10 @@ class Server {
      *  A reference to the newly created client will be returned
      */
     Client& ProcessAcceptedConnection();
+
+    /** Called by the client object whenever a new message has been fully received.
+     */
+    void ProcessReceivedMessage(Client& client, std::unique_ptr<message::Message> message);
 
 
     struct AcceptData {

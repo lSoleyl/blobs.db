@@ -1,6 +1,8 @@
 #include <network/Network.hpp>
+#include <network/message/OpenDB.hpp>
 
 #include <iostream>
+#include <algorithm>
 
 namespace blobs {
 
@@ -190,7 +192,7 @@ bool network::Server::AcceptNewConnection() {
 LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrsFn = nullptr;
 
 network::Server::Client& network::Server::ProcessAcceptedConnection() {
-  clients.emplace_back(std::move(accept.socket));
+  clients.emplace_back(*this, std::move(accept.socket));
   auto& client = clients.back();
 
   // Load the GetAcceptExSockaddrs function on first call
@@ -235,17 +237,32 @@ network::Server::Client& network::Server::ProcessAcceptedConnection() {
   return client;
 }
 
-uint32_t lastClientId = 0;
+void network::Server::ProcessReceivedMessage(Client& client, std::unique_ptr<message::Message> message) {
+  // For now simply print it to the stdout
 
-network::Server::Client::Client(Resource<SOCKET>&& socket) : socket(std::move(socket)), id(++lastClientId) {
-  receiveBufferInfo.buf = receiveBuffer;
-  receiveBufferInfo.len = sizeof(receiveBuffer);
+  //TODO: post these messages into some message queue to be processed by the actual server main thread
+  std::cout << "Client [" << client.id << "]: ";
+  if (message->type == message::Type::OpenDB) {
+    std::cout << "OpenDB(" << static_cast<message::OpenDB*>(message.get())->GetDatabaseName() << ")\n";
+  } else {
+    std::cout << "Unkown message type (" << static_cast<int>(message->type) << ")\n";
+  }
 }
 
-void network::Server::Client::ReceiveData() {
-  recvFlags = 0;
-  receiveOverlapped = { 0 }; // re initialize the overlapped structure before reusing it
-  auto result = WSARecv(*socket, &receiveBufferInfo, 1, nullptr, &recvFlags, &receiveOverlapped, nullptr);
+
+
+
+uint32_t lastClientId = 0;
+
+network::Server::Client::Client(Server& server, Resource<SOCKET>&& socket) : server(server), socket(std::move(socket)), id(++lastClientId) {}
+
+void network::Server::Client::ReceiveData(size_t bufferOffset) {
+  receive.bufferInfo.buf = receive.buffer + bufferOffset;
+  receive.bufferInfo.len = sizeof(receive.buffer) - bufferOffset;
+
+  receive.flags = 0;
+  receive.overlapped = { 0 }; // re initialize the overlapped structure before reusing it
+  auto result = WSARecv(*socket, &receive.bufferInfo, 1, nullptr, &receive.flags, &receive.overlapped, nullptr);
   if (result == SOCKET_ERROR) {
     auto errorCode = WSAGetLastError();
     if (errorCode == WSA_IO_PENDING) {
@@ -256,17 +273,57 @@ void network::Server::Client::ReceiveData() {
   } else {
     // Otherwise Recv() completed synchronously (because the client is sending so much), which we will ignore here
     // because the completion port has still been signalled and we will get the message from the completion port.
+    // I verified this behavior in a simple test with a too small receive buffer
   }
 }
 
 void network::Server::Client::ProcessReceivedData(DWORD bytesTransferred, OVERLAPPED* overlapped) {
-  // Receive operation completed -> for now simply print the received message
-  std::cout << "RECV: [" << std::string(receiveBuffer, bytesTransferred) << "]\n";
+  // Add the buffer offset in case the last receive operation was performed with an offset
+  bytesTransferred += receive.bufferInfo.buf - receive.buffer;
+  std::string_view dataToProcess(receive.buffer, bytesTransferred);
 
-  //TODO: Parse message header, wait for a complete mesage then put it into the server's message queue and notify the server about the new message
+  //TODO: we need a loop in case we receive multiple messages at once
+  size_t receiveOffset = 0;
+
+  while (!dataToProcess.empty()) {
+    if (receive.message) {
+      // We already have a paritally transferred message
+      // First bytes go into the partially transferred message
+      auto bytesToCopy = std::min(dataToProcess.size(), receive.message->size - receive.writeOffset);
+      std::copy_n(dataToProcess.data(), bytesToCopy, reinterpret_cast<char*>(receive.message.get()) + receive.writeOffset);
+      receive.writeOffset += bytesToCopy;
+      dataToProcess.remove_prefix(bytesToCopy);
+      if (receive.writeOffset == receive.message->size) {
+        // Message fully read -> process it
+        server.ProcessReceivedMessage(*this, std::move(receive.message));
+      }
+    } else if (dataToProcess.size() >= sizeof(decltype(message::Message::size))) {
+      // We need to read at least the size of the message to be able to allocate anything
+      auto messageSize = *reinterpret_cast<const decltype(message::Message::size)*>(dataToProcess.data());
+      // TODO: will this cause an issue that we allocate as char[] and delete as Message?
+      receive.message.reset(reinterpret_cast<message::Message*>(new char[messageSize]));
+      
+      // We must write at least the message size, otherwise the code in the above if-branch won't be able to tell how many
+      // bytes are left to copy
+      receive.message->size = messageSize;
+      receive.writeOffset = sizeof(messageSize);
+      dataToProcess.remove_prefix(sizeof(messageSize));
+
+      // The remaining message bytes be written in the next iteration
+    } else {
+      // Not enough bytes to allocate the Message structure -> we must wait for more data
+      // Copy the bytes to the start of the buffer if they aren't already and start receiving after these bytes.
+      receiveOffset = dataToProcess.size();
+      if (dataToProcess.data() > receive.buffer) {
+        std::copy(dataToProcess.begin(), dataToProcess.end(), receive.buffer);
+      }
+      dataToProcess = std::string_view(); // reset to empty string view to break the loop and continue with ReceiveData()
+    }
+  }
+
 
   // And listen for more data
-  ReceiveData();
+  ReceiveData(receiveOffset);
 }
 
 

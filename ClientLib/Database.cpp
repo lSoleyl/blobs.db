@@ -19,7 +19,10 @@ void blobs::Database::Open(const char* connectionString) {
   //TODO: For now lets establish the a test connection directly here
   network::Client client(serverAddress, port);
 
-
+  //TODO: for testing purposes send 10 messages
+  for (int i = 0; i < 10; ++i) {
+    client.SendOpenDBMessage(connectionString);
+  }
 
   //TODO: parse the connection string and fetch the server address from it
   //TODO: use a server manager to manage the server connection (only one connection per process!)
