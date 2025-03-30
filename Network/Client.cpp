@@ -11,13 +11,7 @@ network::Client::Client(std::string serverAddress, std::string serverPort) : ser
 
   // We must create the ioCompletionPort before actually starting the network thread as we may want to immediately
   // schedule messages to send and want to notify the thread about it using the completion port.
-  if (auto completionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0)) {
-    // We assign after the check, because this function returns NULL instead of INVALID_HANDLE_VALUE upon failure and I don't want to extend
-    // Resource<HANDLE> to check for NULL too
-    ioCompletionPort = completionPort;
-  } else {
-    throw network::exception("CreateIoCompletionPort() failed with: ", GetLastError());
-  }
+  ioCompletionPort.Create();
 
   // start the network thread
   networkThread = std::thread([this]() { NetworkThreadMain(); });
@@ -89,16 +83,11 @@ network::Resource<SOCKET> network::Client::ConnectToServer() const {
 void network::Client::NetworkThreadMain() {
 
   try {
-    InitializeMessageSocket(ConnectToServer(), *ioCompletionPort);
+    InitializeMessageSocket(ConnectToServer(), ioCompletionPort);
 
     //TODO: listen to some event, which will terminate the client and close the connection properly
     while (true) {
-
-      DWORD bytesTransferred;
-      IOCompletionHandler* completionHandler;
-      OVERLAPPED* overlapped;
-      GetQueuedCompletionStatus(*ioCompletionPort, &bytesTransferred, reinterpret_cast<ULONG_PTR*>(&completionHandler), &overlapped, INFINITE);
-      completionHandler->HandleIOCompletion(bytesTransferred, overlapped);
+      ioCompletionPort.ProcessIOCompletionPacket();
     }
 
 

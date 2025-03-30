@@ -34,7 +34,7 @@ private:
   std::thread networkThread;
   std::string serverAddress;
   std::string serverPort;
-  Resource<HANDLE> ioCompletionPort;
+  IOCompletionPort ioCompletionPort;
 };
 
 

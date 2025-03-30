@@ -1,8 +1,6 @@
 #pragma once
 
-#include "Resource.hpp"
 #include "message/Message.hpp"
-#include "IOCompletionHandler.hpp"
 #include "DuplexMessageSocket.hpp"
 #include "..\win_include.hpp"
 
@@ -42,7 +40,7 @@ class Server final : public IOCompletionHandler {
 
 
     struct Client : public DuplexMessageSocket {
-      Client(Server& server, Resource<SOCKET>&& socket, HANDLE ioCompletionPort);
+      Client(Server& server, Resource<SOCKET>&& socket, IOCompletionPort& ioCompletionPort);
 
       /** Connection to client closed
        */
@@ -77,7 +75,7 @@ class Server final : public IOCompletionHandler {
     std::thread networkThread;
     const int listenPort;
     Resource<SOCKET> listenSocket;
-    Resource<HANDLE> ioCompletionPort;
+    IOCompletionPort ioCompletionPort;
     std::list<Client> clients; // all connected clients
     std::atomic<bool> running;
 

@@ -1,7 +1,6 @@
 #pragma once
 
-#include "IOCompletionHandler.hpp"
-#include "Resource.hpp"
+#include "IOCompletionPort.hpp"
 #include "message/Message.hpp"
 
 #include <memory>
@@ -28,12 +27,12 @@ protected:
   /** Default initializes and immediately calls InitializeMessageSocket() to take ownership of the socket, 
    *  associate it with the given IO completion port and immediately start receiving messages.
    */
-  DuplexMessageSocket(Resource<SOCKET>&& socket, HANDLE ioCompletionPort);
+  DuplexMessageSocket(Resource<SOCKET>&& socket, IOCompletionPort& ioCompletionPort);
 
   /** Takes ownership of the passed socket and associates it with the specified IO completion port
    *  and starts receiving messages immediately.
    */
-  void InitializeMessageSocket(Resource<SOCKET>&& socket, HANDLE ioCompletionPort);
+  void InitializeMessageSocket(Resource<SOCKET>&& socket, IOCompletionPort& ioCompletionPort);
 
   /** Simply calls shutdown on the socket (if initialized)
    */
@@ -112,7 +111,7 @@ private:
   Receive receive;
   Send send;
   Resource<SOCKET> socket;
-  HANDLE ioCompletionPort; // the completion port, this socket is associate with
+  IOCompletionPort* ioCompletionPort; // the completion port, this socket is associated with
 };
 
 

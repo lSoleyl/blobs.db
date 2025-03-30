@@ -46,19 +46,12 @@ void network::Server::ListenThreadMain() {
     }
     
     // Create the completion port to use for all async operations in this server thread
-    if (auto completionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0 /* or restrict to 1 thread here? */)) {
-      // We assign after the check, because this function returns NULL instead of INVALID_HANDLE_VALUE upon failure and I don't want to extend
-      // Resource<HANDLE> to check for NULL too
-      ioCompletionPort = completionPort;
-    } else {
-      throw network::exception("CreateIoCompletionPort() failed with: ", GetLastError());
-    }
+    ioCompletionPort.Create(); // or restrict to 1 thread here?
+    
 
     // Now associate the listen socket with this completion port (we will actually associate all our sockets with this single completion port)
-    if (!CreateIoCompletionPort(reinterpret_cast<HANDLE>(*listenSocket), *ioCompletionPort, reinterpret_cast<ULONG_PTR>(this), 0)) {
-      throw network::exception("CreateIoCompletionPort()2 failed with: ", GetLastError());
-    }
-
+    ioCompletionPort.AssociateSocket(*listenSocket, this);
+    
     // Start accepting new connections
     AcceptNewConnection();
 
@@ -67,13 +60,7 @@ void network::Server::ListenThreadMain() {
     //      That way we also avoid this active polling kind of processing
     while (running) {
       // Main loop:
-
-      DWORD bytesTransferred;
-      IOCompletionHandler* completionHandler;
-      OVERLAPPED* overlapped;
-      GetQueuedCompletionStatus(*ioCompletionPort, &bytesTransferred, reinterpret_cast<ULONG_PTR*>(&completionHandler), &overlapped, INFINITE);
-      completionHandler->HandleIOCompletion(bytesTransferred, overlapped);
-
+      ioCompletionPort.ProcessIOCompletionPacket();
 
       // We can also use PostQueuedCompletionStatus() for efficient inter-thread communication. (https://learn.microsoft.com/en-us/windows/win32/fileio/postqueuedcompletionstatus)
       // -> especially useful to notify the thread about a shut down or something like this.
@@ -177,7 +164,7 @@ void network::Server::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* ove
 }
 
 network::Server::Client& network::Server::ProcessAcceptedConnection() {
-  clients.emplace_back(*this, std::move(accept.socket), *ioCompletionPort);
+  clients.emplace_back(*this, std::move(accept.socket), ioCompletionPort);
   auto& client = clients.back();
 
   // Load the GetAcceptExSockaddrs function on first call
@@ -230,7 +217,7 @@ void network::Server::ProcessReceivedMessage(Client& client, std::unique_ptr<mes
 
 uint32_t lastClientId = 0;
 
-network::Server::Client::Client(Server& server, Resource<SOCKET>&& socket, HANDLE ioCompletionPort) : 
+network::Server::Client::Client(Server& server, Resource<SOCKET>&& socket, IOCompletionPort& ioCompletionPort) : 
   DuplexMessageSocket(std::move(socket), ioCompletionPort), server(server), id(++lastClientId) {}
 
 

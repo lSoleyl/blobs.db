@@ -4,6 +4,7 @@
 #include "Server.hpp"
 #include "Client.hpp"
 
+#include <string>
 
 namespace blobs {
 namespace network {

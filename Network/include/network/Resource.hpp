@@ -57,7 +57,7 @@ public:
     *this = Resource();
   }
 
-  /** Derefence to access the hanlde
+  /** Derefence to access the handle
    */
   T operator*() const {
     return handle;
@@ -72,6 +72,10 @@ public:
   /** Converts to true in boolean contexts if the handle is initialized.
    */
   explicit operator bool() const {
+    return HasHandle();
+  }
+
+  bool HasHandle() const {
     return handle != NullHandle();
   }
 

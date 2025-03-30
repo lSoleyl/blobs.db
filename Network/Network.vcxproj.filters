@@ -42,6 +42,9 @@
     <ClCompile Include="message\OpenDB.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
+    <ClCompile Include="IOCompletionPort.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -72,6 +75,9 @@
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
     <ClInclude Include="include\network\DuplexMessageSocket.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\IOCompletionPort.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
   </ItemGroup>

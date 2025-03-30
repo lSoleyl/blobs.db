@@ -6,26 +6,25 @@
 namespace blobs {
 namespace network {
 
-DuplexMessageSocket::DuplexMessageSocket() : ioCompletionPort(INVALID_HANDLE_VALUE) {}
+DuplexMessageSocket::DuplexMessageSocket() : ioCompletionPort(nullptr) {}
 
-DuplexMessageSocket::DuplexMessageSocket(Resource<SOCKET>&& socket, HANDLE ioCompletionPort) {
+DuplexMessageSocket::DuplexMessageSocket(Resource<SOCKET>&& socket, IOCompletionPort& ioCompletionPort) {
   InitializeMessageSocket(std::move(socket), ioCompletionPort);
 }
 
-void DuplexMessageSocket::InitializeMessageSocket(Resource<SOCKET>&& socket, HANDLE ioCompletionPort) {
+void DuplexMessageSocket::InitializeMessageSocket(Resource<SOCKET>&& socket, IOCompletionPort& ioCompletionPort) {
   this->socket = std::move(socket);
-  this->ioCompletionPort = ioCompletionPort;
+  this->ioCompletionPort = &ioCompletionPort;
 
   // Associate the given socket with our io completion port
-  if (!CreateIoCompletionPort(reinterpret_cast<HANDLE>(*this->socket), ioCompletionPort, reinterpret_cast<ULONG_PTR>(this), 0)) {
-    throw network::exception("Failed to associate socket with IOCompletionPort: ", GetLastError());
-  }
+  ioCompletionPort.AssociateSocket(*this->socket, this);
 
   // Immediately start listening
   ReceiveData();
 
-  // We must also start sending any data, which may have been posted into the message queue BEFORE the thread starts
-  // for some reason we don't get the generated IO completion packet for messages posted before calling GetQueuedCompletionStatus()
+  // We must also start sending any data, which may have been posted into the message queue BEFORE IntializeMessageSocket() has been
+  // called (eg. for client sockets before connect() completed) and thus BEFORE the IO completion port has been associated with this
+  // DuplexMessageSocket, so no IO completion packet could have been posted for enqueuing the first message then.
   SendData();
 }
 
@@ -211,9 +210,11 @@ DuplexMessageSocket::SendQueueAccessToken::SendQueueAccessToken(DuplexMessageSoc
 
 DuplexMessageSocket::SendQueueAccessToken::~SendQueueAccessToken() {
   lock.unlock(); // not needed anymore
-  if (wasEmpty && bufferCreated) {
+  if (wasEmpty && bufferCreated && socket.ioCompletionPort) {
+    // We have to check for the existence of the ioCompletionPort, because we may attempt to schedule messages to send on a client socket
+    // BEFORE connect() has finished and thus BEFORE the DuplexMessageSocket has been associated with a completion port.
     // Notify the socket about new available messages to send
-    PostQueuedCompletionStatus(socket.ioCompletionPort, 1, reinterpret_cast<ULONG_PTR>(&socket), nullptr);
+    socket.ioCompletionPort->PostIOCompletionPacket(&socket, 1, nullptr);
   }
 }
 
