@@ -1,8 +1,12 @@
 #include <network/Network.hpp>
 #include <network/message/OpenDB.hpp>
+#include <network/message/ConnectionClosed.hpp>
+#include <network/message/ConnectionOpened.hpp>
 
 #include <iostream>
 #include <algorithm>
+#include <unordered_set>
+#include <cassert>
 
 namespace blobs {
 
@@ -19,11 +23,25 @@ network::Server::~Server() {
 
   // We must first close all sockets and only then the completion port
   listenSocket.Reset();
-  clients.clear(); // reset all client connections
+  clients.Clear(); // reset all client connections
   ioCompletionPort.Reset();
 
   network::Shutdown();
 }
+
+
+network::MessagePointer network::Server::AwaitMessage() {
+  return receiveQueue.AwaitMessage();
+}
+
+
+void network::Server::SendOpenDBResponse(uint16_t client, message::OpenDBResponse::Result result, uint8_t dbId) {
+  // QueueClientMessage() will handle the necessary synchronization
+  clients.QueueClientMessage(client, message::OpenDBResponse::Create(result, dbId));
+}
+
+
+
 
 
 void network::Server::ListenThreadMain() {
@@ -160,12 +178,13 @@ LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrsFn = nullptr;
 
 void network::Server::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
   auto& client = ProcessAcceptedConnection();
-  std::cout << "Client " << client.id << " connected from: " << client.remoteIp << '\n';
+  // Notify the main thread about the new client connection.
+  // We also include the remote ip in this message as requesting it would require additional synchronization
+  receiveQueue.MessageReceived(message::ConnectionOpened::Create(client.id, client.remoteIp));
 }
 
 network::Server::Client& network::Server::ProcessAcceptedConnection() {
-  clients.emplace_back(*this, std::move(accept.socket), ioCompletionPort);
-  auto& client = clients.back();
+  auto& client = clients.Add(*this, std::move(accept.socket));
 
   // Load the GetAcceptExSockaddrs function on first call
   if (!GetAcceptExSockaddrsFn) {
@@ -200,42 +219,80 @@ network::Server::Client& network::Server::ProcessAcceptedConnection() {
   return client;
 }
 
-void network::Server::ProcessReceivedMessage(Client& client, std::unique_ptr<message::Message> message) {
-  // For now simply print it to the stdout
+void network::Server::ProcessReceivedMessage(Client& client, MessagePointer message) {
+  //TODO: filter out illegal messages, which the client is not allowed to send over the network.
 
-  //TODO: post these messages into some message queue to be processed by the actual server main thread
-  std::cout << "Client [" << client.id << "]: ";
-  if (message->type == message::Type::OpenDB) {
-    std::cout << "OpenDB(" << static_cast<message::OpenDB*>(message.get())->GetDatabaseName() << ")\n";
-  } else {
-    std::cout << "Unkown message type (" << static_cast<int>(message->type) << ")\n";
-  }
+  // Set the client id and put the message into the receive queue
+  message->clientId = client.id;
+  receiveQueue.MessageReceived(std::move(message));
 }
 
-
-
-
-uint32_t lastClientId = 0;
-
-network::Server::Client::Client(Server& server, Resource<SOCKET>&& socket, IOCompletionPort& ioCompletionPort) : 
-  DuplexMessageSocket(std::move(socket), ioCompletionPort), server(server), id(++lastClientId) {}
+network::Server::Client::Client(Server& server, uint16_t id, Resource<SOCKET>&& socket) : 
+  DuplexMessageSocket(std::move(socket), server.ioCompletionPort), server(server), id(id) {}
 
 
 
 void network::Server::Client::HandleSocketClosed() {
-  // Remove this client from the connection list
-  std::cout << "Client " << id << " disconnected\n";
-  server.clients.erase(std::find_if(server.clients.begin(), server.clients.end(), [this](Client& client) { return &client == this; }));
+  // Post a connection closed message to notify the server main thread
+  server.receiveQueue.MessageReceived(message::ConnectionClosed::Create(id));
+
+  // Remove this client from the connection list, which will destroy this object
+  server.clients.Remove(*this);
 }
 
-void network::Server::Client::HandleMessageReceived(std::unique_ptr<message::Message> message) {
+void network::Server::Client::HandleMessageReceived(MessagePointer message) {
   server.ProcessReceivedMessage(*this, std::move(message));
 }
 
 
 
+network::Server::Client& network::Server::Clients::Add(Server& server, Resource<SOCKET>&& socket) {
+  //TODO: if we have the maximum number of clients connected, we must simply reject new connections
+  assert(map.size() < std::numeric_limits<uint16_t>::max());
+
+  // Find the next free id
+  uint16_t id = ++lastId;
+  while (map.find(id) != map.end()) {
+    id = ++lastId;
+  }
+
+  // We only lock the modification down here, because we don't have to protect against concurrent calls of Add()/Remove() [only called from network thread]
+  // we only have to protect against reads from another thread while we are modifying the data structures in Add()/Remove()
+  std::unique_lock<std::mutex> lock(mutex);
+  list.emplace_back(server, id, std::move(socket));
+  auto& client = list.back();
+  map.emplace(id, &client);
+
+  return client;
+}
 
 
+void network::Server::Clients::Remove(Client& client) {
+  // Synchronize with reads from the main thread
+  std::unique_lock<std::mutex> lock(mutex);
+  map.erase(client.id);
+  list.erase(std::find_if(list.begin(), list.end(), [&client](Client& listClient) { return &client == &listClient; }));
+}
+
+void network::Server::Clients::Clear() {
+  // Synchronize with reads from the main thread
+  std::unique_lock<std::mutex> lock(mutex);
+  list.clear();
+  map.clear();
+}
+
+
+bool network::Server::Clients::QueueClientMessage(uint16_t clientId, MessagePointer message) {
+  // We must always acquire the mutex to ensure the list of clients isn't modified while we enqueue a message
+  std::unique_lock<std::mutex> lock(mutex);
+  auto pos = map.find(clientId);
+  if (pos != map.end()) {
+    pos->second->AccessSendQueue() << std::move(message);
+    return true;
+  } else {
+    return false; // client doesn't exist
+  }
+}
 
 
 

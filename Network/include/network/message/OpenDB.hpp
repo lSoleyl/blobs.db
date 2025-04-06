@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Message.hpp"
+#include "..\MessagePointer.hpp"
 #include <string_view>
 #include <vector>
 
@@ -16,14 +16,13 @@ struct OpenDB : public Message {
   // because we can simply calculate it from the message length
   std::string_view GetDatabaseName() const;
 
-  /** Encode the OpenDB message into the given target buffer, which will be resized if necessary. 
-   *  The returned string_view will contain the byte range of the buffer, which makes up this message.
+  /** Encode the OpenDB message and return a pointer to the message's memory
    */
-  static std::string_view EncodeMessage(std::vector<char>& targetBuffer, std::string_view databaseName);
+  static MessagePointer Create(std::string_view databaseName);
 
-
+  static constexpr Type type = Type::OpenDB;
 private:
-  OpenDB(); // Do not use the constructor -> use EncodeMessage
+  OpenDB(uint32_t messageSize); // Do not use the constructor -> use EncodeMessage
 };
 
 

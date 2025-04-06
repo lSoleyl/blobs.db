@@ -135,8 +135,8 @@ void DuplexMessageSocket::SendData() {
     return; // nothing to send
   }
   send.buffers.reserve(send.queue.size());
-  for (auto& buffer : send.queue) {
-    send.buffers.push_back({ static_cast<ULONG>(buffer.size()), buffer.data() });
+  for (auto& message : send.queue) {
+    send.buffers.push_back({ static_cast<ULONG>(message->size), reinterpret_cast<char*>(message.get()) });
   }
   lock.unlock(); // send.queue mutex not needed after this point
 
@@ -178,8 +178,8 @@ void DuplexMessageSocket::ProcessSentData(DWORD bytesTransferred) {
   // Schedule the send of the next entries in the queue if there are more than currently scheduled
   if (send.queue.size() > send.buffers.size()) {
     for (int i = send.buffers.size(); i < send.queue.size(); ++i) {
-      auto& entry = send.queue[i];
-      send.buffers.push_back({ static_cast<ULONG>(entry.size()), entry.data() });
+      auto& message = send.queue[i];
+      send.buffers.push_back({ static_cast<ULONG>(message->size), reinterpret_cast<char*>(message.get()) });
     }
   }
   lock.unlock(); // send.queue mutex not needed after this point
@@ -204,13 +204,13 @@ DuplexMessageSocket::SendQueueAccessToken DuplexMessageSocket::AccessSendQueue()
   return SendQueueAccessToken(*this);
 }
 
-DuplexMessageSocket::SendQueueAccessToken::SendQueueAccessToken(DuplexMessageSocket& socket) : socket(socket), lock(socket.send.mutex), bufferCreated(false) {
+DuplexMessageSocket::SendQueueAccessToken::SendQueueAccessToken(DuplexMessageSocket& socket) : socket(socket), lock(socket.send.mutex), messageAdded(false) {
   wasEmpty = socket.send.queue.empty();
 }
 
 DuplexMessageSocket::SendQueueAccessToken::~SendQueueAccessToken() {
   lock.unlock(); // not needed anymore
-  if (wasEmpty && bufferCreated && socket.ioCompletionPort) {
+  if (wasEmpty && messageAdded && socket.ioCompletionPort) {
     // We have to check for the existence of the ioCompletionPort, because we may attempt to schedule messages to send on a client socket
     // BEFORE connect() has finished and thus BEFORE the DuplexMessageSocket has been associated with a completion port.
     // Notify the socket about new available messages to send
@@ -218,10 +218,10 @@ DuplexMessageSocket::SendQueueAccessToken::~SendQueueAccessToken() {
   }
 }
 
-std::vector<char>& DuplexMessageSocket::SendQueueAccessToken::operator*() {
-  socket.send.queue.push_back({});
-  bufferCreated = true;
-  return socket.send.queue.back();
+DuplexMessageSocket::SendQueueAccessToken& DuplexMessageSocket::SendQueueAccessToken::operator<<(MessagePointer&& message) {
+  socket.send.queue.push_back(std::move(message));
+  messageAdded = true;
+  return *this;
 }
 
 

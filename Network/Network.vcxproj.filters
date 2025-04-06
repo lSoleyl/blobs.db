@@ -45,6 +45,24 @@
     <ClCompile Include="IOCompletionPort.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="message\ReadBlobs.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="message\OpenDBResponse.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="message\Message.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="ReceiveMessageQueue.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="message\ConnectionClosed.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="message\ConnectionOpened.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -79,6 +97,24 @@
     </ClInclude>
     <ClInclude Include="include\network\IOCompletionPort.hpp">
       <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\ReadBlobs.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\OpenDBResponse.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\ReceiveMessageQueue.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\MessagePointer.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\ConnectionClosed.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\ConnectionOpened.hpp">
+      <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

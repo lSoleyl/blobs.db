@@ -1,5 +1,6 @@
 #include <network/Network.hpp>
 #include <network/message/OpenDB.hpp>
+#include <network/message/ConnectionClosed.hpp>
 
 #include <iostream>
 #include <cassert>
@@ -31,13 +32,17 @@ network::Client::~Client() {
 
 
 void network::Client::SendOpenDBMessage(std::string_view databaseName) {
-  // Acquire the access to send queue and encode the message
-  // For now we ignore the return value as we always start with an emtpy buffer
-  message::OpenDB::EncodeMessage(*AccessSendQueue(), databaseName);
-  
+  // Acquire the access to the send queue and encode the message
+  AccessSendQueue() << message::OpenDB::Create(databaseName);
+
   // The network thread is automatically notified upon the access token falling out of scope (if necessary)
 }
 
+
+
+network::MessagePointer network::Client::AwaitMessage() {
+  return receiveQueue.AwaitMessage();
+}
 
 network::Resource<addrinfo*> network::Client::GetServerAddress() const {
   addrinfo* serverAddr = nullptr;
@@ -103,19 +108,13 @@ void network::Client::NetworkThreadMain() {
 
 
 void network::Client::HandleSocketClosed() {
-  //TODO: what to do here? reconnect? Quit? Notify the main thread?
-  std::cout << "Connection to server lost\n";
+  // Notify the client's main thread about this by simply posting a connection closed message into the message receive queue
+  receiveQueue.MessageReceived(message::ConnectionClosed::Create());
 }
 
-void network::Client::HandleMessageReceived(std::unique_ptr<message::Message> message) {
-  //TODO: pass the message to the main client thread
-  std::cout << "Server: ";
-
-  if (message->type == message::Type::OpenDB) {
-    std::cout << "OpenDB(" << static_cast<message::OpenDB*>(message.get())->GetDatabaseName() << ")\n";
-  } else {
-    std::cout << "Unkown message type (" << static_cast<int>(message->type) << ")\n";
-  }
+void network::Client::HandleMessageReceived(MessagePointer message) {
+  // Simply put the message into the client's receive queue for the main thread to handle it
+  receiveQueue.MessageReceived(std::move(message));
 }
 
 

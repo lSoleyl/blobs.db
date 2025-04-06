@@ -1,7 +1,7 @@
 #pragma once
 
 #include "IOCompletionPort.hpp"
-#include "message/Message.hpp"
+#include "MessagePointer.hpp"
 
 #include <memory>
 #include <mutex>
@@ -44,7 +44,7 @@ protected:
 
   /** To be implemented by the inheriting class. Handle a new message being fully received
    */
-  virtual void HandleMessageReceived(std::unique_ptr<message::Message> message) = 0;
+  virtual void HandleMessageReceived(MessagePointer message) = 0;
 
 private:
   /** This structure is used to give safe access send queue while the token exists on the stack.
@@ -54,18 +54,18 @@ private:
     SendQueueAccessToken(DuplexMessageSocket& socket);
     ~SendQueueAccessToken();
 
-    /** Places a new buffer into the send queue and returns a reference to it.
+    /** Places a new message into the message queue to send
      */
-    std::vector<char>& operator*();
+    SendQueueAccessToken& operator<<(MessagePointer&& message);
   private:
     DuplexMessageSocket& socket;
     std::unique_lock<std::mutex> lock; // send queue lock
-    bool wasEmpty, bufferCreated;
+    bool wasEmpty, messageAdded;
   };
 
-protected:
+public:
   /** Use this method to get access to the send queue. This will properly synchronize the write access and
-   *  will return a token, which can be dereferenced to get a send buffer to fill.
+   *  will return a token, into which new messages can be piped using the <<-operator
    */
   SendQueueAccessToken AccessSendQueue();
 
@@ -98,12 +98,12 @@ private:
     DWORD flags;
 
     size_t writeOffset; // how many bytes of `message` have already been received
-    std::unique_ptr<message::Message> message; // the current (incompletely) received message
+    MessagePointer message; // the current (incompletely) received message
   };
 
   struct Send {
     std::vector<WSABUF> buffers; // Send buffers of the current send operation. If this is not empty, then a WSASend() is currently in progress
-    std::deque<std::vector<char>> queue; // TODO: what is the correct type here?
+    std::deque<MessagePointer> queue;
     WSAOVERLAPPED overlapped;
     std::mutex mutex; // synchronizing access to the sendQueue between the network thread and the main thread
   };

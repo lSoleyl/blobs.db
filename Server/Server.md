@@ -85,21 +85,22 @@ The database file has one fixed field at file offset 8, which is the pointer to 
 ### Database
 The database header holds the following data
 
-	- commitId: uint64_t (Global commit id)
+	- commitId: uint64_t (Global commit id - should start at 1 for the first commit [see ReadBlobs message]) 
 	- segments: List<Segment*> (All segments)
 
 
 ### Segment
 A segment holds the following data
 
-	- name: string
+	- id: uint32_t
+	- name: string (optional name)
 	- commitId: uint64_t (commit id when this structure was last updated)
 	- clusters: List<Cluster*>
 
 ### Cluster
 A cluster holds the following data
 
-	- id: uint32 (simply a running number)
+	- id: uint32_t (simply a running number)
 	- commitId: uint64_t (commit id when this structure was last updated)
 	- blobs: List<Blob*>
 	- maxBlobId: uint32_t (needed?)

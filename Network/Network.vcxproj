@@ -92,9 +92,15 @@
   <ItemGroup>
     <ClCompile Include="Client.cpp" />
     <ClCompile Include="IOCompletionPort.cpp" />
+    <ClCompile Include="message\ConnectionClosed.cpp" />
+    <ClCompile Include="message\ConnectionOpened.cpp" />
+    <ClCompile Include="message\Message.cpp" />
     <ClCompile Include="message\OpenDB.cpp" />
+    <ClCompile Include="message\OpenDBResponse.cpp" />
+    <ClCompile Include="message\ReadBlobs.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="DuplexMessageSocket.cpp" />
+    <ClCompile Include="ReceiveMessageQueue.cpp" />
     <ClCompile Include="Resource.cpp" />
     <ClCompile Include="Server.cpp" />
   </ItemGroup>
@@ -105,8 +111,14 @@
     <ClInclude Include="include\network\IOCompletionHandler.hpp" />
     <ClInclude Include="include\network\DuplexMessageSocket.hpp" />
     <ClInclude Include="include\network\IOCompletionPort.hpp" />
+    <ClInclude Include="include\network\MessagePointer.hpp" />
+    <ClInclude Include="include\network\message\ConnectionClosed.hpp" />
+    <ClInclude Include="include\network\message\ConnectionOpened.hpp" />
     <ClInclude Include="include\network\message\Message.hpp" />
     <ClInclude Include="include\network\message\OpenDB.hpp" />
+    <ClInclude Include="include\network\message\OpenDBResponse.hpp" />
+    <ClInclude Include="include\network\message\ReadBlobs.hpp" />
+    <ClInclude Include="include\network\ReceiveMessageQueue.hpp" />
     <ClInclude Include="include\network\Resource.hpp" />
     <ClInclude Include="include\network\Client.hpp" />
     <ClInclude Include="include\network\Network.hpp" />
