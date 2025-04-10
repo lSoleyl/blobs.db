@@ -13,7 +13,8 @@ namespace message {
 struct OpenDBResponse : public Message {
   enum class Result : uint8_t {
     SUCCESS,
-    DATABASE_NOT_FOUND
+    DATABASE_NOT_FOUND,
+    TOO_MANY_DATABASES_OPEN
   };
 
 
