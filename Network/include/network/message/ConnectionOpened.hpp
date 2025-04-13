@@ -23,7 +23,7 @@ public:
 
   static constexpr Type type = Type::ConnectionOpened;
 private:
-  ConnectionOpened(uint32_t messageSize, uint16_t clientId);
+  ConnectionOpened(uint32_t messageSize, uint16_t clientId, std::string_view remoteIp);
 };
 
 

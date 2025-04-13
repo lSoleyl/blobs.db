@@ -39,16 +39,16 @@
     <ClCompile Include="DuplexMessageSocket.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="message\OpenDB.cpp">
+    <ClCompile Include="message\DatabaseOpen.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
     <ClCompile Include="IOCompletionPort.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="message\ReadBlobs.cpp">
+    <ClCompile Include="message\BlobsRead.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
-    <ClCompile Include="message\OpenDBResponse.cpp">
+    <ClCompile Include="message\DatabaseOpenResponse.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
     <ClCompile Include="message\Message.cpp">
@@ -61,6 +61,15 @@
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
     <ClCompile Include="message\ConnectionOpened.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="message\TransactionAbort.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="message\DatabaseClose.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="message\NetworkException.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
   </ItemGroup>
@@ -86,7 +95,7 @@
     <ClInclude Include="include\network\message\Message.hpp">
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
-    <ClInclude Include="include\network\message\OpenDB.hpp">
+    <ClInclude Include="include\network\message\DatabaseOpen.hpp">
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
     <ClInclude Include="include\network\IOCompletionHandler.hpp">
@@ -98,10 +107,10 @@
     <ClInclude Include="include\network\IOCompletionPort.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
-    <ClInclude Include="include\network\message\ReadBlobs.hpp">
+    <ClInclude Include="include\network\message\BlobsRead.hpp">
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
-    <ClInclude Include="include\network\message\OpenDBResponse.hpp">
+    <ClInclude Include="include\network\message\DatabaseOpenResponse.hpp">
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
     <ClInclude Include="include\network\ReceiveMessageQueue.hpp">
@@ -114,6 +123,18 @@
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
     <ClInclude Include="include\network\message\ConnectionOpened.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\TransactionAbort.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\All.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\DatabaseClose.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\NetworkException.hpp">
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
   </ItemGroup>

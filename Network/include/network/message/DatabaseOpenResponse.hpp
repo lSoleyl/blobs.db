@@ -10,7 +10,7 @@ namespace message {
 
 
 
-struct OpenDBResponse : public Message {
+struct DatabaseOpenResponse : public Message {
   enum class Result : uint8_t {
     SUCCESS,
     DATABASE_NOT_FOUND,
@@ -27,9 +27,9 @@ struct OpenDBResponse : public Message {
   static MessagePointer Create(Result result, uint8_t dbId);
 
 
-  static constexpr Type type = Type::OpenDBResponse;
+  static constexpr Type type = Type::DatabaseOpenResponse;
 private:
-  OpenDBResponse(Result result, uint8_t dbId); // Do not use the constructor -> use EncodeMessage
+  DatabaseOpenResponse(Result result, uint8_t dbId); // Do not use the constructor -> use EncodeMessage
 };
 
 

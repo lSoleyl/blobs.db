@@ -1,6 +1,5 @@
 #include <network/Network.hpp>
-#include <network/message/OpenDB.hpp>
-#include <network/message/ConnectionClosed.hpp>
+#include <network/message/All.hpp>
 
 #include <iostream>
 #include <cassert>
@@ -20,7 +19,7 @@ network::Client::Client(std::string serverAddress, std::string serverPort) : ser
 
 
 network::Client::~Client() {
-  //TODO: signal the network thread to exit immediately (through IOCompletionPort?)
+  ioCompletionPort.StopProcessing();
   networkThread.join();
 
   // We must first close all sockets, then the completion port
@@ -31,11 +30,16 @@ network::Client::~Client() {
 
 
 
-void network::Client::SendOpenDBMessage(std::string_view databaseName) {
+void network::Client::SendDatabaseOpen(std::string_view databaseName) {
   // Acquire the access to the send queue and encode the message
-  AccessSendQueue() << message::OpenDB::Create(databaseName);
+  AccessSendQueue() << message::DatabaseOpen::Create(databaseName);
 
   // The network thread is automatically notified upon the access token falling out of scope (if necessary)
+}
+
+void network::Client::SendDatabaseClose(uint8_t databaseId) {
+  // Acquire the access to the send queue and encode the message
+  AccessSendQueue() << message::DatabaseClose::Create(databaseId);
 }
 
 
@@ -70,7 +74,7 @@ network::Resource<SOCKET> network::Client::ConnectToServer() const {
     throw network::exception("Socket creation failed with: ");
   }
 
-  if (connect(*socket, serverAddr->ai_addr, serverAddr->ai_addrlen) == SOCKET_ERROR) {
+  if (connect(*socket, serverAddr->ai_addr, static_cast<int>(serverAddr->ai_addrlen)) == SOCKET_ERROR) {
     throw network::exception("connect() failed with: ");
   }
 
@@ -90,17 +94,18 @@ void network::Client::NetworkThreadMain() {
   try {
     InitializeMessageSocket(ConnectToServer(), ioCompletionPort);
 
-    //TODO: listen to some event, which will terminate the client and close the connection properly
-    while (true) {
+    // This loop may be terminated by calling ioCompletionPort.StopProcessing()
+    while (true) { 
       ioCompletionPort.ProcessIOCompletionPacket();
     }
 
 
-    CloseSocket();
+  } catch (IOCompletionPort::Stopped&) {
+    // Processing stopped as requested by the main thread
 
   } catch (std::exception& ex) {
-    //TODO: we should push the error just like any other message to the calling thread
-    std::cerr << "FATAL: " << ex.what();
+    // Transmit the exception to the main thread
+    receiveQueue.MessageReceived(message::NetworkException::Create(ex.what()));
   }
 }
 

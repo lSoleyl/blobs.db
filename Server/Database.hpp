@@ -14,12 +14,18 @@ public:
    */
   static Database& Get(std::string_view databaseName);
 
-
+  //TODO: add commitId
+  
   //TODO: should the database keep an open count to efficiently perform the check whether any client still uses it?
 private:
   Database(std::string name);
 
   std::string name;
+
+  /** Global commit id counter of the last commited transaction for this database.
+   *  Initialized to 1 for a new database.
+   */
+  uint64_t commitId;
   uint32_t lastSegmentId;
   std::unordered_map<uint32_t, std::unique_ptr<Segment>> segments;
   static std::map<std::string, Database, std::less<>> databases;

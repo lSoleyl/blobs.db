@@ -14,7 +14,8 @@ public:
   Client(std::string serverAddress, std::string serverPort);
   ~Client();
 
-  void SendOpenDBMessage(std::string_view databaseName);
+  void SendDatabaseOpen(std::string_view databaseName);
+  void SendDatabaseClose(uint8_t databaseId);
 
   /** Wait for the next sever message without a timeout
    */

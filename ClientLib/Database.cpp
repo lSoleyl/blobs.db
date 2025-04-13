@@ -1,41 +1,63 @@
-#include "pch.h"
+#include "pch.hpp"
 #include <blobs/Database.hpp>
+#include <blobs/Exception.hpp>
+#include <internal/Network.hpp>
 #include <network/Client.hpp>
-#include <network/message/OpenDBResponse.hpp>
 
-#include <iostream>
+#include <network/message/All.hpp>
 
-void blobs::Database::Open(const char* connectionString) {
-  //TODO: add better parsing than this here... maybe use regex for it instead  
-  std::string serverAddress = connectionString;
-  std::string port;
-  auto colonPos = serverAddress.find(':');
 
-  if (colonPos != std::string::npos) {
-    port = serverAddress.substr(colonPos + 1);
-    serverAddress = serverAddress.substr(0, colonPos);
-  } else {
-    port = "8888"; // default port for now
-  }
+blobs::Database::Database(std::string name, uint8_t id, size_t connectionId) : name(std::move(name)), id(id), connectionId(connectionId) {}
 
-  //TODO: use a server manager to manage the server connection (only one connection per process!)
-  //TODO: For now lets establish the a test connection directly here
-  network::Client client(serverAddress, port);
+blobs::Database* blobs::Database::Open(const char* connectionString) {
+  // Get the connection to the database server (open or reuse)
+  auto clientId = internal::Network::Get(connectionString);
 
-  client.SendOpenDBMessage(connectionString);
+  // TODO: the database name is obviously not the full connection string, but for now we can treat it like this
+  std::string databaseName = connectionString;
 
-  // Await the OpenDBResponse
-  auto message = client.AwaitMessage();
-  if (auto rep = message.Get<network::message::OpenDBResponse>()) {
+  auto& client = internal::Network::Get(clientId);
+  client.SendDatabaseOpen(databaseName);
+
+  // Await the DatabaseOpenResponse
+  auto message = internal::Network::AwaitMessage(client);
+  if (auto rep = message.Get<network::message::DatabaseOpenResponse>()) {
     //TODO: actually initialize a local logical database structure
-    if (rep->result == network::message::OpenDBResponse::Result::SUCCESS) {
-      std::cout << "OpenDB(" << connectionString << ") -> dbId: " << static_cast<int>(rep->databaseId) << "\n";
-    } else {
-      //TODO: handle error
+    if (rep->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
+      return new Database(databaseName, rep->databaseId, clientId);
+    } else if (rep->result == network::message::DatabaseOpenResponse::Result::DATABASE_NOT_FOUND) {
+      throw blobs::Exception("Database not found!");
+    } else if (rep->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {
+      throw blobs::Exception("Too many databases already open. Close unused databases and retry.");
     }
-  } else {
+  } else if (auto closed = message.Get<network::message::ConnectionClosed>()) {
     //TODO: handle error (like a closed connection and so on)
+    throw blobs::Exception("Connection has been closed by the server");
+  } else {
+    throw blobs::Exception("Unexpected message received from the server");
   }
 
-  
+  // not reached
+  return nullptr;
+}
+
+
+
+void blobs::Database::Close() {
+  auto& client = internal::Network::Get(connectionId);
+
+  client.SendDatabaseClose(id);
+  auto message = internal::Network::AwaitMessage(client);
+  if (auto confirmation = message.Get<network::message::DatabaseClose>()) {
+    // Server confirmed closing of this database -> release connection and delete this database instance
+    internal::Network::Release(connectionId);  
+  } else if (auto closed = message.Get<network::message::ConnectionClosed>()) {
+    // Server confirmed close of last database by simply closing the connection
+    internal::Network::ServerClosedConnection(connectionId);
+  } else {
+    //TODO: the server should probably close the connection if we close the last database
+    throw Exception("Unexpected server response to DatabaseClose");
+  }
+
+  delete this;
 }

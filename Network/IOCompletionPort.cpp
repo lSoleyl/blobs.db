@@ -31,6 +31,20 @@ void IOCompletionPort::PostIOCompletionPacket(IOCompletionHandler* completionHan
   PostQueuedCompletionStatus(**this, bytesTransferred, reinterpret_cast<ULONG_PTR>(completionHandler), overlapped);
 }
 
+void IOCompletionPort::StopProcessing() {
+  struct StoppingHandler : IOCompletionHandler {
+    virtual void HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
+      throw IOCompletionPort::Stopped();
+    }
+  };
+
+  // Create an instance, which will not be deleted and post it to the completion port
+  static StoppingHandler stopHandler;
+  PostIOCompletionPacket(&stopHandler, 0, nullptr);
+}
+
+
+
 void IOCompletionPort::ProcessIOCompletionPacket() {
   DWORD bytesTransferred;
   IOCompletionHandler* completionHandler;

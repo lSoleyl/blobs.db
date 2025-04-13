@@ -1,7 +1,5 @@
 #include <network/Network.hpp>
-#include <network/message/OpenDB.hpp>
-#include <network/message/ConnectionClosed.hpp>
-#include <network/message/ConnectionOpened.hpp>
+#include <network/message/All.hpp>
 
 #include <iostream>
 #include <algorithm>
@@ -35,14 +33,14 @@ network::MessagePointer network::Server::AwaitMessage() {
 }
 
 
-void network::Server::SendOpenDBResponse(uint16_t client, message::OpenDBResponse::Result result, uint8_t dbId) {
+void network::Server::SendDatabaseOpenResponse(uint16_t client, message::DatabaseOpenResponse::Result result, uint8_t dbId) {
   // QueueClientMessage() will handle the necessary synchronization
-  clients.QueueClientMessage(client, message::OpenDBResponse::Create(result, dbId));
+  clients.QueueClientMessage(client, message::DatabaseOpenResponse::Create(result, dbId));
 }
 
-
-
-
+void network::Server::SendMessageToClient(uint16_t client, MessagePointer message) {
+  clients.QueueClientMessage(client, std::move(message));
+}
 
 void network::Server::ListenThreadMain() {
   SetThreadDescription(GetCurrentThread(), L"Network thread");
@@ -54,7 +52,7 @@ void network::Server::ListenThreadMain() {
 
     {
       auto listenAddress = GetListenAddress();
-      if (bind(*listenSocket, listenAddress->ai_addr, listenAddress->ai_addrlen) == SOCKET_ERROR) {
+      if (bind(*listenSocket, listenAddress->ai_addr, static_cast<int>(listenAddress->ai_addrlen)) == SOCKET_ERROR) {
         throw network::exception("bind() failed with: ");
       }
     }
@@ -90,7 +88,8 @@ void network::Server::ListenThreadMain() {
     }
 
   } catch (std::exception& ex) {
-    std::cerr << "FATAL: " << ex.what() << "\n";
+    // Transmit this kind of error back to the server main thread
+    receiveQueue.MessageReceived(network::message::NetworkException::Create(ex.what()));
   }
 }
 

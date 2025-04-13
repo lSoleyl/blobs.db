@@ -9,10 +9,18 @@ namespace message {
 /** The type of network message
  */
 enum class Type : uint8_t {
-  OpenDB, OpenDBResponse, ReadBlobs,
+  DatabaseOpen,
+  DatabaseOpenResponse,
+  DatabaseClose, // No response, because the server will simply confirm by replying with the same DatabaseClose message
+  
+  BlobsRead,
+
+  TransactionAbort,
+  TransactionCommit, //TODO: what if we want to commit more than 2GB of data? How to split such a transaction commit into multiple parts?
 
   ConnectionOpened, // internally used message to notify the server about a new client connection
-  ConnectionClosed  // internally used message to indicate that the network socket connection has been closed
+  ConnectionClosed, // internally used message to indicate that the network socket connection has been closed
+  NetworkException, // internally used to throw an exception from the network thread in the main processing thread in AwaitMessage()
 };
 
 

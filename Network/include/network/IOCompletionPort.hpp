@@ -29,8 +29,19 @@ public:
   void PostIOCompletionPacket(IOCompletionHandler* completionHandler, DWORD bytesTransferred, OVERLAPPED* overlapped);
 
 
+  /** This method may be called from within another thread to interrupt a currently waiting ProcessIOCompletionPort() and exit the
+   *  surrounding loop by throwing an exception.
+   */
+  void StopProcessing();
+
+
+  // Used as an exception to be thrown by ProceessIOCompletionPacket() if processing has been stopped
+  struct Stopped {};
+
   /** Calls GetQueuedCompletionStatus() to wait for a new completion packet on this IO completion port and processes it by calling
    *  the corresponding completion handler
+   * 
+   * @throws false if the processing loop should be quit
    */
   void ProcessIOCompletionPacket();
 

@@ -16,6 +16,9 @@
     <Filter Include="Headerdateien\blobs">
       <UniqueIdentifier>{593a9218-6753-4721-8d2c-f32543f0dec3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Headerdateien\internal">
+      <UniqueIdentifier>{2d9d3990-0e36-428f-97c1-4f6abd78afec}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -27,6 +30,12 @@
     <ClCompile Include="pch.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="Network.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="Exception.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="ClientLib.md" />
@@ -35,10 +44,19 @@
     <ClInclude Include="include\blobs\Database.hpp">
       <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
-    <ClInclude Include="pch.h">
+    <ClInclude Include="pch.hpp">
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="include\blobs\Config.hpp">
+      <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\internal\Network.hpp">
+      <Filter>Headerdateien\internal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\blobs\Exception.hpp">
+      <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\blobs\Blobs.hpp">
       <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
   </ItemGroup>

@@ -2,7 +2,13 @@
 
 #define BLOBS_EXPORT __declspec(dllexport)
 
+#include <cassert>
+#include <memory>
 #include <string>
+#include <string_view>
+
+#include <vector>
+
 
 
 

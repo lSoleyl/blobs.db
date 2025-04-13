@@ -4,7 +4,7 @@
 #include "DuplexMessageSocket.hpp"
 #include "ReceiveMessageQueue.hpp"
 #include "..\win_include.hpp"
-#include "message/OpenDBResponse.hpp"
+#include "message/DatabaseOpenResponse.hpp"
 
 #include <thread>
 #include <atomic>
@@ -31,10 +31,11 @@ class Server final : private IOCompletionHandler {
     MessagePointer AwaitMessage();
 
 
-    void SendOpenDBResponse(uint16_t client, message::OpenDBResponse::Result result, uint8_t dbId = 0);
+    void SendDatabaseOpenResponse(uint16_t client, message::DatabaseOpenResponse::Result result, uint8_t dbId = 0);
 
-    
-    //TODO: ideally we want to be notified about new messages through an IO completion port to be able to perform both: file I/O and network I/O interleaved
+    /** Send an already allocated message to the specified client
+     */
+    void SendMessageToClient(uint16_t client, MessagePointer message);
     
     
 

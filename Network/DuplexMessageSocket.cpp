@@ -60,7 +60,7 @@ void DuplexMessageSocket::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED*
 
 void DuplexMessageSocket::ReceiveData(size_t bufferOffset) {
   receive.bufferInfo.buf = receive.buffer + bufferOffset;
-  receive.bufferInfo.len = sizeof(receive.buffer) - bufferOffset;
+  receive.bufferInfo.len = static_cast<ULONG>(sizeof(receive.buffer) - bufferOffset);
 
   receive.flags = 0;
   receive.overlapped = { 0 }; // re initialize the overlapped structure before reusing it
@@ -82,7 +82,7 @@ void DuplexMessageSocket::ReceiveData(size_t bufferOffset) {
 
 void DuplexMessageSocket::ProcessReceivedData(DWORD bytesTransferred) {
   // Add the buffer offset in case the last receive operation was performed with an offset
-  bytesTransferred += receive.bufferInfo.buf - receive.buffer;
+  bytesTransferred += static_cast<DWORD>(receive.bufferInfo.buf - receive.buffer);
   std::string_view dataToProcess(receive.buffer, bytesTransferred);
 
 
@@ -93,7 +93,7 @@ void DuplexMessageSocket::ProcessReceivedData(DWORD bytesTransferred) {
       // We already have a paritally transferred message
       // First bytes go into the partially transferred message
       auto bytesToCopy = std::min(dataToProcess.size(), receive.message->size - receive.writeOffset);
-      std::copy_n(dataToProcess.data(), bytesToCopy, reinterpret_cast<char*>(receive.message.get()) + receive.writeOffset);
+      std::copy_n(dataToProcess.data(), bytesToCopy, reinterpret_cast<char*>(receive.message.Get()) + receive.writeOffset);
       receive.writeOffset += bytesToCopy;
       dataToProcess.remove_prefix(bytesToCopy);
       if (receive.writeOffset == receive.message->size) {
@@ -104,7 +104,7 @@ void DuplexMessageSocket::ProcessReceivedData(DWORD bytesTransferred) {
       // We need to read at least the size of the message to be able to allocate anything
       auto messageSize = *reinterpret_cast<const decltype(message::Message::size)*>(dataToProcess.data());
       // Allocating as char[] and deleting as Message may be UB, but has always worked with msvc as the underlying allocation/deallocation function is the same.
-      receive.message.reset(reinterpret_cast<message::Message*>(new char[messageSize]));
+      receive.message.Reset(reinterpret_cast<message::Message*>(new char[messageSize]));
 
       // We must write at least the message size, otherwise the code in the above if-branch won't be able to tell how many
       // bytes are left to copy
@@ -136,13 +136,13 @@ void DuplexMessageSocket::SendData() {
   }
   send.buffers.reserve(send.queue.size());
   for (auto& message : send.queue) {
-    send.buffers.push_back({ static_cast<ULONG>(message->size), reinterpret_cast<char*>(message.get()) });
+    send.buffers.push_back({ static_cast<ULONG>(message->size), reinterpret_cast<char*>(message.Get()) });
   }
   lock.unlock(); // send.queue mutex not needed after this point
 
   // Reinitialize our overlapped
   send.overlapped = { 0 };
-  if (WSASend(*socket, send.buffers.data(), send.buffers.size(), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
+  if (WSASend(*socket, send.buffers.data(), static_cast<DWORD>(send.buffers.size()), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
     auto error = WSAGetLastError();
     if (error == WSA_IO_PENDING) {
       // send has been scheduled
@@ -177,9 +177,9 @@ void DuplexMessageSocket::ProcessSentData(DWORD bytesTransferred) {
 
   // Schedule the send of the next entries in the queue if there are more than currently scheduled
   if (send.queue.size() > send.buffers.size()) {
-    for (int i = send.buffers.size(); i < send.queue.size(); ++i) {
+    for (auto i = send.buffers.size(); i < send.queue.size(); ++i) {
       auto& message = send.queue[i];
-      send.buffers.push_back({ static_cast<ULONG>(message->size), reinterpret_cast<char*>(message.get()) });
+      send.buffers.push_back({ static_cast<ULONG>(message->size), reinterpret_cast<char*>(message.Get()) });
     }
   }
   lock.unlock(); // send.queue mutex not needed after this point
@@ -187,7 +187,7 @@ void DuplexMessageSocket::ProcessSentData(DWORD bytesTransferred) {
   // If there is more data to send, trigger another WSASend()
   if (!send.buffers.empty()) {
     send.overlapped = { 0 };
-    if (WSASend(*socket, send.buffers.data(), send.buffers.size(), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
+    if (WSASend(*socket, send.buffers.data(), static_cast<DWORD>(send.buffers.size()), NULL, NULL, &send.overlapped, nullptr) == SOCKET_ERROR) {
       auto error = WSAGetLastError();
       if (error == WSA_IO_PENDING) {
         // send has been scheduled

@@ -24,6 +24,9 @@ public:
 private: 
   Client(uint16_t id);
 
+  //TODO: we also need a list of all held locks by this client
+  
+
   /** All databases opened by this client. The index is the database id and 
    *  closed databases will be replaced with nullptr and their ids can later be reused.
    */ 

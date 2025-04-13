@@ -60,7 +60,7 @@
       <PreprocessorDefinitions>_DEBUG;CLIENTLIB_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
-      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderFile>pch.hpp</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(SolutionDir)Network\include\</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -79,7 +79,7 @@
       <PreprocessorDefinitions>NDEBUG;CLIENTLIB_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
-      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderFile>pch.hpp</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>$(SolutionDir)Network\include\</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -94,6 +94,8 @@
   <ItemGroup>
     <ClCompile Include="Database.cpp" />
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="Exception.cpp" />
+    <ClCompile Include="Network.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -110,7 +112,10 @@
   <ItemGroup>
     <ClInclude Include="include\blobs\Config.hpp" />
     <ClInclude Include="include\blobs\Database.hpp" />
-    <ClInclude Include="pch.h" />
+    <ClInclude Include="include\blobs\Exception.hpp" />
+    <ClInclude Include="include\blobs\Blobs.hpp" />
+    <ClInclude Include="include\internal\Network.hpp" />
+    <ClInclude Include="pch.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

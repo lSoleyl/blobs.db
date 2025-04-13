@@ -108,6 +108,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="Segment.cpp" />
+    <ClCompile Include="Server.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Blob.hpp" />
@@ -116,6 +117,7 @@
     <ClInclude Include="Database.hpp" />
     <ClInclude Include="pch.hpp" />
     <ClInclude Include="Segment.hpp" />
+    <ClInclude Include="Server.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

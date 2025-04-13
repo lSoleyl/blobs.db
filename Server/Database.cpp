@@ -6,8 +6,9 @@ namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), lastSegmentId(0) {
+Database::Database(std::string name) : name(std::move(name)), lastSegmentId(0), commitId(1) {
   segments.emplace(0, std::make_unique<Segment>(0));
+  //TODO: how do we initialize the initial blob to commitId 1?
 }
 
 Database& Database::Get(std::string_view databaseName) {

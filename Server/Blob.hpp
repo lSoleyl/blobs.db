@@ -10,6 +10,7 @@ public:
 
   const uint32_t id;
 private:
+  uint64_t commitId; // id of commit/transaction when this blob was created/written
   std::vector<uint8_t> data;
 };
 
