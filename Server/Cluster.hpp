@@ -7,13 +7,14 @@ namespace server {
 
 class Cluster {
 public:
-  Cluster(uint32_t id);
+  Cluster(cluster_id id);
 
-  const uint32_t id;
+  const cluster_id id;
 private:
-  uint32_t lastBlobId;
+  blob_id lastBlobId;
 
-  std::unordered_map<uint32_t, std::unique_ptr<Blob>> blobs;
+  // We allow holes in blob numbering due to deletion, so we need a map to hold all blobs of a cluster
+  std::unordered_map<blob_id, std::unique_ptr<Blob>> blobs;
 };
 
 

@@ -5,11 +5,11 @@ namespace network {
 namespace message {
 
 
-ConnectionClosed::ConnectionClosed(uint16_t clientId) : Message(sizeof(ConnectionClosed), ConnectionClosed::type) {
+ConnectionClosed::ConnectionClosed(client_id clientId) : Message(sizeof(ConnectionClosed), ConnectionClosed::type) {
   this->clientId = clientId;
 }
 
-MessagePointer ConnectionClosed::Create(uint16_t clientId) {
+MessagePointer ConnectionClosed::Create(client_id clientId) {
   return MessagePointer(new ConnectionClosed(clientId));
 }
 

@@ -12,15 +12,15 @@ namespace message {
  */
 struct DatabaseClose : public Message {
 public:
-  uint8_t databaseId; // the database to close
+  database_id databaseId; // the database to close
 
   /** Encode the DatabaseClose message
    */
-  static MessagePointer Create(uint8_t databaseId);
+  static MessagePointer Create(database_id databaseId);
 
   static constexpr Type type = Type::DatabaseClose;
 private:
-  DatabaseClose(uint8_t databaseId);
+  DatabaseClose(database_id databaseId);
 };
 
 

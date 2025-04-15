@@ -33,12 +33,12 @@ network::MessagePointer network::Server::AwaitMessage() {
 }
 
 
-void network::Server::SendDatabaseOpenResponse(uint16_t client, message::DatabaseOpenResponse::Result result, uint8_t dbId) {
+void network::Server::SendDatabaseOpenResponse(client_id client, message::DatabaseOpenResponse::Result result, database_id dbId) {
   // QueueClientMessage() will handle the necessary synchronization
   clients.QueueClientMessage(client, message::DatabaseOpenResponse::Create(result, dbId));
 }
 
-void network::Server::SendMessageToClient(uint16_t client, MessagePointer message) {
+void network::Server::SendMessageToClient(client_id client, MessagePointer message) {
   clients.QueueClientMessage(client, std::move(message));
 }
 
@@ -226,7 +226,7 @@ void network::Server::ProcessReceivedMessage(Client& client, MessagePointer mess
   receiveQueue.MessageReceived(std::move(message));
 }
 
-network::Server::Client::Client(Server& server, uint16_t id, Resource<SOCKET>&& socket) : 
+network::Server::Client::Client(Server& server, client_id id, Resource<SOCKET>&& socket) : 
   DuplexMessageSocket(std::move(socket), server.ioCompletionPort), server(server), id(id) {}
 
 
@@ -247,10 +247,10 @@ void network::Server::Client::HandleMessageReceived(MessagePointer message) {
 
 network::Server::Client& network::Server::Clients::Add(Server& server, Resource<SOCKET>&& socket) {
   //TODO: if we have the maximum number of clients connected, we must simply reject new connections
-  assert(map.size() < std::numeric_limits<uint16_t>::max());
+  assert(map.size() < std::numeric_limits<client_id>::max());
 
   // Find the next free id
-  uint16_t id = ++lastId;
+  client_id id = ++lastId;
   while (map.find(id) != map.end()) {
     id = ++lastId;
   }
@@ -281,7 +281,7 @@ void network::Server::Clients::Clear() {
 }
 
 
-bool network::Server::Clients::QueueClientMessage(uint16_t clientId, MessagePointer message) {
+bool network::Server::Clients::QueueClientMessage(client_id clientId, MessagePointer message) {
   // We must always acquire the mutex to ensure the list of clients isn't modified while we enqueue a message
   std::unique_lock<std::mutex> lock(mutex);
   auto pos = map.find(clientId);

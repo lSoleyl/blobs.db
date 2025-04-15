@@ -15,7 +15,7 @@ public:
   ~Client();
 
   void SendDatabaseOpen(std::string_view databaseName);
-  void SendDatabaseClose(uint8_t databaseId);
+  void SendDatabaseClose(database_id databaseId);
 
   /** Wait for the next sever message without a timeout
    */

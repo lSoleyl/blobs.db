@@ -21,7 +21,7 @@ struct NetworkException : public Message {
   static constexpr Type type = Type::NetworkException;
 private:
   // private constructor -> call Create instead
-  NetworkException(uint32_t messageSize, std::string_view exceptionMessage);
+  NetworkException(message_size messageSize, std::string_view exceptionMessage);
 
 };
 

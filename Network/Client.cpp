@@ -37,7 +37,7 @@ void network::Client::SendDatabaseOpen(std::string_view databaseName) {
   // The network thread is automatically notified upon the access token falling out of scope (if necessary)
 }
 
-void network::Client::SendDatabaseClose(uint8_t databaseId) {
+void network::Client::SendDatabaseClose(database_id databaseId) {
   // Acquire the access to the send queue and encode the message
   AccessSendQueue() << message::DatabaseClose::Create(databaseId);
 }

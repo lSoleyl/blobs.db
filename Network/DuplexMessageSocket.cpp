@@ -100,17 +100,17 @@ void DuplexMessageSocket::ProcessReceivedData(DWORD bytesTransferred) {
         // Message fully read -> process it
         HandleMessageReceived(std::move(receive.message));
       }
-    } else if (dataToProcess.size() >= sizeof(decltype(message::Message::size))) {
+    } else if (dataToProcess.size() >= sizeof(message_size)) {
       // We need to read at least the size of the message to be able to allocate anything
-      auto messageSize = *reinterpret_cast<const decltype(message::Message::size)*>(dataToProcess.data());
+      auto messageSize = *reinterpret_cast<const message_size*>(dataToProcess.data());
       // Allocating as char[] and deleting as Message may be UB, but has always worked with msvc as the underlying allocation/deallocation function is the same.
       receive.message.Reset(reinterpret_cast<message::Message*>(new char[messageSize]));
 
       // We must write at least the message size, otherwise the code in the above if-branch won't be able to tell how many
       // bytes are left to copy
       receive.message->size = messageSize;
-      receive.writeOffset = sizeof(messageSize);
-      dataToProcess.remove_prefix(sizeof(messageSize));
+      receive.writeOffset = sizeof(message_size);
+      dataToProcess.remove_prefix(sizeof(message_size));
 
       // The remaining message bytes be written in the next iteration
     } else {

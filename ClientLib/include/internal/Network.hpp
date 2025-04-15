@@ -12,20 +12,20 @@ public:
   /** Opens a new client connection and returns a client id, which can be used to reference this client or 
    *  returns the id of an already existing connection if the connection string matches.
    */
-  static size_t Get(std::string_view connectionString);
+  static connection_id Get(std::string_view connectionString);
 
   /** When a connection retrieved through Get() is no longer needed, Release should be called to close it once
    *  the last user releases it.
    */
-  static void Release(size_t connectionId);
+  static void Release(connection_id connectionId);
 
   /** When receiving a close notification from the server, this should be called to properly deinitialize the client connection and thread.
    */
-  static void ServerClosedConnection(size_t connectionId);
+  static void ServerClosedConnection(connection_id connectionId);
 
   /** Returns the previously initialized client connection instance
    */
-  static network::Client& Get(size_t connectionId);
+  static network::Client& Get(connection_id connectionId);
 
 
   /** A wrapper around AwaitMessage, which will automatically translate a NetworkException message into a thrown blobs::Exception

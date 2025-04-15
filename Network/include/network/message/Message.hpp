@@ -2,6 +2,10 @@
 
 #include <cstdint>
 
+// This include path is horrible, but since the client lib headers are the once being distributed, its headers must be the single source of truth
+// to prevent copying
+#include "../../ClientLib/include/blobs/Config.hpp"
+
 namespace blobs {
 namespace network {
 namespace message {
@@ -27,19 +31,19 @@ enum class Type : uint8_t {
 /** Format for a generic network message, which all messages have to follow
  */
 struct Message {
-  uint32_t size; // total length of the message in bytes. This includes this header and the content bytes
+  message_size size; // total length of the message in bytes. This includes this header and the content bytes
   Type type;     // kind/class of message
 
   /** This field identifies the client a message is from / for and is only used internally
    *  by the server and is ignored in client/server communication.
    */
-  uint16_t clientId; 
+  client_id clientId; 
 
   // Everything following is the payload
 protected:
   /** Provide a constructor to ensure the concrete message types initialize all Message fields
    */
-  Message(uint32_t size, Type type);
+  Message(message_size size, Type type);
 };
 
 }}}

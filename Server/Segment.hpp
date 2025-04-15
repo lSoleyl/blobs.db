@@ -7,12 +7,12 @@ namespace server {
 
 class Segment {
 public:
-  Segment(uint32_t id);
+  Segment(segment_id id);
 
-  const uint32_t id;
+  const segment_id id;
 private:
-  uint32_t lastClusterId;
-  std::unordered_map<uint32_t, std::unique_ptr<Cluster>> clusters;
+  cluster_id lastClusterId;
+  std::unordered_map<cluster_id, std::unique_ptr<Cluster>> clusters;
 };
 
 }}

@@ -10,9 +10,9 @@ namespace server {
  */
 class Client {
 public:
-  static void ClientConnected(uint16_t id);
+  static void ClientConnected(client_id id);
   
-  static Client& Get(uint16_t id);
+  static Client& Get(client_id id);
 
   /** Marks the specified database as opened by this client and returns the client local database id for it.
    *  Throws an exception if the client already opened 256 databases.
@@ -20,9 +20,9 @@ public:
   uint8_t OpenDatabase(Database& db);
 
 
-  const uint16_t id;
-private: 
-  Client(uint16_t id);
+  const client_id id;
+private:
+  Client(client_id id);
 
   //TODO: we also need a list of all held locks by this client
   
@@ -34,7 +34,7 @@ private:
 
   /** A map of all connected clients
    */
-  static std::unordered_map<uint16_t, Client> clients;
+  static std::unordered_map<client_id, Client> clients;
 };
 
 

@@ -31,11 +31,11 @@ class Server final : private IOCompletionHandler {
     MessagePointer AwaitMessage();
 
 
-    void SendDatabaseOpenResponse(uint16_t client, message::DatabaseOpenResponse::Result result, uint8_t dbId = 0);
+    void SendDatabaseOpenResponse(client_id client, message::DatabaseOpenResponse::Result result, database_id dbId = 0);
 
     /** Send an already allocated message to the specified client
      */
-    void SendMessageToClient(uint16_t client, MessagePointer message);
+    void SendMessageToClient(client_id client, MessagePointer message);
     
     
 
@@ -57,7 +57,7 @@ class Server final : private IOCompletionHandler {
 
 
     struct Client : public DuplexMessageSocket {
-      Client(Server& server, uint16_t id, Resource<SOCKET>&& socket);
+      Client(Server& server, client_id id, Resource<SOCKET>&& socket);
 
       /** Connection to client closed
        */
@@ -72,7 +72,7 @@ class Server final : private IOCompletionHandler {
       /** client id is only 16 bit (see message::Message), which restricts the server to handle 65k Clients at a time, which is a reasonable limit.
        *  client ids will be reused once the counter loops (but we make sure to not reassing an id, which is currently in use).
        */
-      uint16_t id;
+      client_id id;
       std::string remoteIp; // including the port
     };
 
@@ -114,13 +114,13 @@ class Server final : private IOCompletionHandler {
        *  Returns false if the client doesn't exist and the message has been dropped.
        *  This method will mainly be called from within the main thread.
        */
-      bool QueueClientMessage(uint16_t clientId, MessagePointer message);
+      bool QueueClientMessage(client_id clientId, MessagePointer message);
       
       std::list<Client> list; // all connected clients
 
       /** Map from client id to client. This is used for efficiently sending replies to clients based on their id
        */
-      std::unordered_map<uint16_t, Client*> map;
+      std::unordered_map<client_id, Client*> map;
 
       /** Mutex, which must be acquired by the network thread when modifying the client list and by the main thread
        *  when performing a lookup in the client map to ensure the data structure doesn't change while attempting to schedule a send
@@ -130,7 +130,7 @@ class Server final : private IOCompletionHandler {
       /** The last used client id. This is used to assign a unique id to each new client.
        *  This field can and will overflow, but we will ensure to not reassign an id, which is currently in use.
        */
-      uint16_t lastId = 0;
+      client_id lastId = 0;
     };
 
 

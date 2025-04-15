@@ -25,9 +25,9 @@ private:
   /** Global commit id counter of the last commited transaction for this database.
    *  Initialized to 1 for a new database.
    */
-  uint64_t commitId;
-  uint32_t lastSegmentId;
-  std::unordered_map<uint32_t, std::unique_ptr<Segment>> segments;
+  commit_id commitId;
+  segment_id lastSegmentId;
+  std::unordered_map<segment_id, std::unique_ptr<Segment>> segments;
   static std::map<std::string, Database, std::less<>> databases;
 };
 

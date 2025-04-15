@@ -19,11 +19,11 @@ public:
 
   /** Constructs a new internally used ConnectionOpened message
    */
-  static MessagePointer Create(uint16_t clientId, std::string_view remoteIp);
+  static MessagePointer Create(client_id clientId, std::string_view remoteIp);
 
   static constexpr Type type = Type::ConnectionOpened;
 private:
-  ConnectionOpened(uint32_t messageSize, uint16_t clientId, std::string_view remoteIp);
+  ConnectionOpened(message_size messageSize, client_id clientId, std::string_view remoteIp);
 };
 
 

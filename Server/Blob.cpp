@@ -4,6 +4,6 @@
 namespace blobs {
 namespace server {
 
-Blob::Blob(uint32_t id) : id(id) {}
+Blob::Blob(blob_id id) : id(id) {}
 
 }}

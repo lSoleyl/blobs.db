@@ -4,7 +4,7 @@
 namespace blobs {
 namespace server {
 
-Cluster::Cluster(uint32_t id) : id(id), lastBlobId(0) {
+Cluster::Cluster(cluster_id id) : id(id), lastBlobId(0) {
   blobs.emplace(0, std::make_unique<Blob>(0));
 }
 

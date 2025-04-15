@@ -21,13 +21,13 @@ public:
   BLOBS_EXPORT void Close();
 
 private:
-  Database(std::string name, uint8_t id, size_t connectionId);
+  Database(std::string name, database_id id, connection_id connectionId);
   Database(const Database&) = delete;
   Database& operator=(const Database&) = delete;
 
   std::string name;
-  size_t connectionId;
-  uint8_t id;
+  connection_id connectionId;
+  database_id id;
 };
 
 

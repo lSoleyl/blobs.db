@@ -11,7 +11,7 @@ namespace internal {
 std::vector<Network::Connection> Network::connections;
 
 
-size_t Network::Get(std::string_view connectionString) {
+connection_id Network::Get(std::string_view connectionString) {
   //TODO: Maybe use a regex for proper parsing
   // First check for an existing client
   for (auto& entry : connections) {
@@ -27,12 +27,18 @@ size_t Network::Get(std::string_view connectionString) {
     }
   }
 
+  if (connections.size() == std::numeric_limits<connection_id>::max() - 1) {
+    // Should this happen -> recompile with larger connection_id type
+    throw Exception("Maximum number of server connections reached");
+  }
+
+
   // No connection to that server made yet -> create a new entry
   connections.push_back({ std::string(connectionString), ClientFromConnectionString(connectionString), 1 });
-  return connections.size() - 1;
+  return static_cast<connection_id>(connections.size() - 1);
 }
 
-void Network::Release(size_t connectionId) {
+void Network::Release(connection_id connectionId) {
   assert(connectionId < connections.size() && connections[connectionId].useCount > 0);
   if (--connections[connectionId].useCount == 0) {
     // Last user released the connection -> close it
@@ -41,7 +47,7 @@ void Network::Release(size_t connectionId) {
 }
 
 
-void Network::ServerClosedConnection(size_t connectionId) {
+void Network::ServerClosedConnection(connection_id connectionId) {
   assert(connectionId < connections.size());
   --connections[connectionId].useCount;
   connections[connectionId].client.reset(); // always reset the connection if the server closed it
@@ -50,7 +56,7 @@ void Network::ServerClosedConnection(size_t connectionId) {
 
 
 
-network::Client& Network::Get(size_t connectionId) {
+network::Client& Network::Get(connection_id connectionId) {
   assert(connectionId < connections.size());
   if (!connections[connectionId].client) {
     // Database attempting to access an already closed connection

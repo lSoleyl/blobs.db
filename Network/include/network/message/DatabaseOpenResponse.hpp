@@ -19,17 +19,17 @@ struct DatabaseOpenResponse : public Message {
 
 
   Result result;  // != 0 if opening the database failed for some reason
-  uint8_t databaseId; // the id to use to refer to this database in future messages
+  database_id databaseId; // the id to use to refer to this database in future messages
 
 
   /** Allocate a DBResponse message and return it as message pointer
    */
-  static MessagePointer Create(Result result, uint8_t dbId);
+  static MessagePointer Create(Result result, database_id dbId);
 
 
   static constexpr Type type = Type::DatabaseOpenResponse;
 private:
-  DatabaseOpenResponse(Result result, uint8_t dbId); // Do not use the constructor -> use EncodeMessage
+  DatabaseOpenResponse(Result result, database_id dbId); // Do not use the constructor -> use EncodeMessage
 };
 
 

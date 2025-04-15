@@ -6,11 +6,11 @@ namespace server {
 class Blob {
 public:
   // Initialize an empty blob
-  Blob(uint32_t id);
+  Blob(blob_id id);
 
-  const uint32_t id;
+  const blob_id id;
 private:
-  uint64_t commitId; // id of commit/transaction when this blob was created/written
+  commit_id commitId; // id of commit/transaction when this blob was created/written
   std::vector<uint8_t> data;
 };
 

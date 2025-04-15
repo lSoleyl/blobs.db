@@ -12,11 +12,11 @@ struct ConnectionClosed : public Message {
 public:
   /** Constructs a new internally used ConnectionClosed message
    */
-  static MessagePointer Create(uint16_t clientId = 0);
+  static MessagePointer Create(client_id clientId = 0);
 
   static constexpr Type type = Type::ConnectionClosed;
 private:
-  ConnectionClosed(uint16_t clientId);
+  ConnectionClosed(client_id clientId);
 };
 
 
