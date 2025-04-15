@@ -2,8 +2,8 @@
 
 #include <cstdint>
 
-// This include path is horrible, but since the client lib headers are the once being distributed, its headers must be the single source of truth
-// to prevent copying
+// This include path is horrible, but since the client lib headers are the ones being distributed and should be self contained,
+// its headers must be the single source of truth to prevent copying.
 #include "../../ClientLib/include/blobs/Config.hpp"
 
 namespace blobs {
