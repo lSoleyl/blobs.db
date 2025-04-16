@@ -72,6 +72,9 @@
     <ClCompile Include="message\NetworkException.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
+    <ClCompile Include="message\ReadBlobsResponse.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -135,6 +138,9 @@
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
     <ClInclude Include="include\network\message\NetworkException.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\BlobsReadResponse.hpp">
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
   </ItemGroup>

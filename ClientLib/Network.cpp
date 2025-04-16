@@ -23,7 +23,7 @@ connection_id Network::Get(std::string_view connectionString) {
 
       // Return the index into the vector as the client id
       ++entry.useCount;
-      return &entry - connections.data();
+      return static_cast<connection_id>(&entry - connections.data());
     }
   }
 

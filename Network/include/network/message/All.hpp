@@ -13,4 +13,5 @@
 #include "TransactionAbort.hpp"
 
 #include "BlobsRead.hpp"
+#include "BlobsReadResponse.hpp"
 

@@ -18,6 +18,7 @@ enum class Type : uint8_t {
   DatabaseClose, // No response, because the server will simply confirm by replying with the same DatabaseClose message
   
   BlobsRead,
+  BlobsReadResponse,
 
   TransactionAbort,
   TransactionCommit, //TODO: what if we want to commit more than 2GB of data? How to split such a transaction commit into multiple parts?

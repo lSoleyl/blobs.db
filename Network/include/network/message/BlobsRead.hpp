@@ -18,8 +18,10 @@ struct BlobsRead : public Message {
   // One such following structure is written into the message for each requested blob
   // The requested blobs should already be sorted in ascending order to reduce the risk of deadlocks
   struct BlobAddress {
-    uint32_t segment, cluster, blob;
-    uint64_t ifCommitIdHigher; // Only return the blob contents if the commit id is higher than specified here
+    segment_id segment;
+    cluster_id cluster;
+    blob_id blob;
+    commit_id ifCommitIdHigher; // Only return the blob contents if the commit id is higher than specified here
   };
 
   /** STL like iteration over each single blob request

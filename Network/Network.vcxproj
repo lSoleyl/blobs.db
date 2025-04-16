@@ -100,6 +100,7 @@
     <ClCompile Include="message\DatabaseOpenResponse.cpp" />
     <ClCompile Include="message\BlobsRead.cpp" />
     <ClCompile Include="message\NetworkException.cpp" />
+    <ClCompile Include="message\ReadBlobsResponse.cpp" />
     <ClCompile Include="message\TransactionAbort.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="DuplexMessageSocket.cpp" />
@@ -116,6 +117,7 @@
     <ClInclude Include="include\network\IOCompletionPort.hpp" />
     <ClInclude Include="include\network\MessagePointer.hpp" />
     <ClInclude Include="include\network\message\All.hpp" />
+    <ClInclude Include="include\network\message\BlobsReadResponse.hpp" />
     <ClInclude Include="include\network\message\ConnectionClosed.hpp" />
     <ClInclude Include="include\network\message\ConnectionOpened.hpp" />
     <ClInclude Include="include\network\message\DatabaseClose.hpp" />
