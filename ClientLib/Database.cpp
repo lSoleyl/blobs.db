@@ -14,7 +14,7 @@ public:
   struct CachedBlob {
     std::vector<uint8_t> data;
     commit_id lastUpdated; // commit id when the blob was last updated (according to the cache)
-    //TODO: add some LRU counter to decache rarely used blobs and save memory?
+    TODO("add some LRU counter to decache rarely used blobs and save memory?")
 
     std::pair<const void*, blob_size> Data() const {
       return std::pair<const void*, blob_size>(data.data(), static_cast<blob_size>(data.size()));
@@ -55,7 +55,7 @@ Database* Database::Open(const char* connectionString) {
   // Get the connection to the database server (open or reuse)
   auto connectionId = internal::Network::Get(connectionString);
 
-  // TODO: the database name is obviously not the full connection string, but for now we can treat it like this
+  FIXME("the database name is obviously not the full connection string, but for now we can treat it like this")
   std::string databaseName = connectionString;
 
   auto& client = internal::Network::Get(connectionId);
@@ -80,12 +80,12 @@ Database* Database::Open(const char* connectionString) {
 
 
 std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
-  //TODO: add synchronization: Only one thread may communicate with the database at any given time.
+  TODO("add synchronization: Only one thread may communicate with the database at any given time.")
 
   BlobLocation location(segment, cluster, blob);
   auto cachedBlob = cache->Get(location);
-  //TODO: If we already requested this blob with the same lock inside the same transaction, then we can simply return it from our cache
-  //      without talking to the server.
+  
+  TODO("If we already requested this blob with the same lock inside the same transaction, then we can simply return it from our cache without talking to the server.")
 
   // Request the blob from the server
   auto& client = internal::Network::Get(connectionId);
@@ -120,11 +120,11 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
         throw Exception("internal error: Database not opened!");
 
       case network::message::BlobsReadResponse::Result::LOCK_TIMEOUT:
-        //TODO: somehow add more detail to this response... or should we return a different message for this error?
+        TODO("somehow add more detail to this response... or should we return a different message for this error?")
         throw Exception("Lock timeout while waiting to lock!");
 
       case network::message::BlobsReadResponse::Result::DEADLOCK:
-        //TODO: somehow add more detail to this response... or should we return a different message for this error?
+        TODO("somehow add more detail to this response... or should we return a different message for this error?")
         throw Exception("Deadlock occurred while waiting for lock!");
 
       default:
@@ -150,7 +150,6 @@ void Database::Close() {
     // Server confirmed close of last database by simply closing the connection
     internal::Network::ServerClosedConnection(connectionId);
   } else {
-    //TODO: the server should probably close the connection if we close the last database
     throw Exception("Unexpected server response to DatabaseClose");
   }
 

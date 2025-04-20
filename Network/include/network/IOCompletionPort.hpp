@@ -4,6 +4,8 @@
 #include "IOCompletionHandler.hpp"
 #include "..\win_include.hpp"
 
+#include <functional>
+
 namespace blobs {
 namespace network {
 
@@ -27,6 +29,11 @@ public:
   /** A wrapper around PostQueuedCompletionStatus() to post a completion packet to this IO completion port for the specified completion handler
    */
   void PostIOCompletionPacket(IOCompletionHandler* completionHandler, DWORD bytesTransferred, OVERLAPPED* overlapped);
+
+  /** This helper method will wrap the function object into an IOCompletionHandler and post it to have it being processed by
+   *  ProcessIOCompletionPacket()
+   */
+  void PostSimpleTask(std::function<void()>&& task);
 
 
   /** This method may be called from within another thread to interrupt a currently waiting ProcessIOCompletionPort() and exit the

@@ -11,8 +11,8 @@ Server::Server(int port) : server(port) {}
 
 
 void Server::ServerMain() {
+  TODO("Figure out when to shutdown the server");
 
-  //TODO: when to shutdown the server?
   while (true) {
     auto message = server.AwaitMessage();
     switch (message->type) {
@@ -60,7 +60,7 @@ void Server::HandleConnectionOpened(network::MessagePointer_T<network::message::
 void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::ConnectionClosed> message) {
   // A client closed the connection
 
-  //TODO: Remove from client map, release all held locks, release database references and close database if this was the last one
+  TODO("Remove from client map, release all held locks, release database references and close database if this was the last one");
 
   std::cout << "Client[" << message->clientId << "] disconnected\n";
 }
@@ -72,7 +72,7 @@ void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::Data
   // log the message for now
   std::cout << "Client[" << message->clientId << "]: DatabaseOpen(" << dbName << ")\n";
 
-  //TODO: handle error in case database is not found
+  TODO("Handle error in case database is not found");
   auto& db = server::Database::Get(dbName);
   auto& client = server::Client::Get(message->clientId);
 
@@ -85,20 +85,20 @@ void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::Data
 
 
 void Server::HandleDatabaseClose(network::MessagePointer_T<network::message::DatabaseClose> message) {
-  //TODO: get the database to close
+  TODO("Get the database to close");
   std::cout << "Client[" << message->clientId << "]: DatabaseClose(" << static_cast<int>(message->databaseId) << ")\n";
   // Confirm closing the database to the client by replying with the same DatabaseClose message.
   // Here we simply post the same message object into the client send buffer to avoid the unnecessary reallocation
   auto clientId = message->clientId; // assign to local variable here, because we will move the message as a whole
   server.SendMessageToClient(clientId, std::move(message));
 
-  //TODO: don't allow db close if there is a transaction running
-  //TODO: if this was the last database, then we can also just close the connection
+  TODO("Don't allow db close if there is a transaction running")
+  TODO("If this was the last database, then we can also just close the connection")
 }
 
 
 void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRead> message) {
-  //TODO: log the message
+  TODO("Log the message");
 
   auto& client = server::Client::Get(message->clientId);
   auto database = client.GetDatabase(message->databaseId);
@@ -107,13 +107,9 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
     return;
   }
 
-  //TODO: Implicitly start a transaction (unless already in a transaction)
-  //TODO: check and set locks (what if a lock conflicts with the request? queue it somehow?)
-  //       -> We can simply queue this message and whenever locks are released we will check the queue for messages, which can be served now
-  //TODO: check blob transaction id
- 
+  TODO("Implicitly start a transaction (unless already in a transaction)");
 
-  //TODO: handle special blob ids (blobId = 0xFFFFFFFF -> cluster table)
+  TODO("Handle special blob ids (blobId = 0xFFFFFFFF -> cluster table)");
 
   if (message->nBlobsRequested == 1) { 
     // Fast path: at most 1 blob needs to be sent to the client
@@ -124,27 +120,36 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
       return;
     }
 
-    if (requestedBlob.ifCommitIdHigher >= blob->commitId) {
-      // The client has the current version of the blob -> we can send an empty response
-      server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::Create(0, 0));
+    if (database->AcquireLocks(*message)) {
+      // Locks successfully acquired (no conflicts) -> send response
+      if (requestedBlob.ifCommitIdHigher >= blob->commitId) {
+        // The client has the current version of the blob -> we can send an empty response
+        server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::Create(0, 0));
+      } else {
+        // Client's blob is not up to date -> send the server's current version
+        auto response = network::message::BlobsReadResponse::Create(blob->data.size());
+        response->begin().SetBlob(requestedBlob, blob->commitId, blob->data.data(), static_cast<blob_size>(blob->data.size()));
+        server.SendMessageToClient(message->clientId, std::move(response));
+      }
     } else {
-      // Client's blob is not up to date -> send the server's current version
-      auto response = network::message::BlobsReadResponse::Create(blob->data.size());
-      response->begin().SetBlob(requestedBlob, blob->commitId, blob->data.data(), static_cast<blob_size>(blob->data.size()));
-      server.SendMessageToClient(message->clientId, std::move(response));
+      // Queue this message to the databse to be processed as soon as the conflicting locks are released
+      if (!database->QueueReadCheckDeadlock(std::move(message))) {
+        // Deadlock detected -> cannot enqueue message
+        server.SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
+        TODO("Abort the client's running transaction (and release any locks held)");
+      }
     }
   } else {
-
-    //TODO: handle multi blob requests
-
+    TODO("Handle multi blob requests");
   }
   
 }
 
 
 void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message) {
-  //TODO: simply release all locks, which are held by this client and cancel the current transaction (we don't need to send any confirmation for this message)
-  //TODO: we should also make sure to clear any queued up locks for this client
+  TODO("simply release all locks, which are held by this client and cancel the current transaction (we don't need to send any confirmation for this message)");
+  TODO("we should also make sure to clear any queued up locks for this client");
+  TODO("Actually move this logic into some Transaction class, on which we can simply call Abort()");
 }
 
 

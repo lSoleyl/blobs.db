@@ -141,11 +141,11 @@ class Server final : private IOCompletionHandler {
     Resource<SOCKET> listenSocket;
     IOCompletionPort ioCompletionPort;
     Clients clients; // all connected clients
-    std::atomic<bool> running;
+    bool running;
 
     AcceptData accept; // structure containing the necessary fields for the current async accept call
 
-    //TODO: or better one queue per Client?
+    //FIXME: Or should we rather have one queue per client?
     ReceiveMessageQueue receiveQueue; // all received messages will be pushed into this queue
 };
 

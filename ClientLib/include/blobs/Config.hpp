@@ -28,3 +28,11 @@ using connection_id = uint16_t; // limits the number distinct server connections
 
 }
 
+#define _STR(x) #x
+#define STR(x) _STR(x)
+
+#define MSVS_WARN(x) __pragma(message(__FILE__ "(" STR(__LINE__) "): warning: " x))
+
+#define TODO(x) MSVS_WARN("'" __FUNCTION__ "' TODO: " x)
+#define FIXME(x) MSVS_WARN("'" __FUNCTION__ "' FIXME: " x)
+

@@ -2,8 +2,9 @@
 
 namespace blobs {
 
-// FIXME: this field initialization is only here to remove the warning, but it is only unnecessary overhead in the regular case
-BlobLocation::BlobLocation() : segment(0), cluster(0), blob(0) {}
+BlobLocation::BlobLocation() : segment(0), cluster(0), blob(0) {
+  FIXME("This field initialization is only here to remove the warning, but it is only unnecessary overhead in the regular case")
+}
 
 BlobLocation::BlobLocation(segment_id segment, cluster_id cluster, blob_id blob) : segment(segment), cluster(cluster), blob(blob) {}
 

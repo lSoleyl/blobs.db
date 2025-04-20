@@ -28,7 +28,7 @@ public:
 private:
   Client(client_id id);
 
-  //TODO: we also need a list of all held locks by this client
+  TODO("we also need a list of all held locks by this client.. or should it be held by the Transaction object")
   
 
   /** All databases opened by this client. The index is the database id and 

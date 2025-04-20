@@ -41,7 +41,7 @@ public:
    */
   BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false);
 
-  //TODO: WriteBlob()
+  TODO("Implement WriteBlob()")
 
   /** Closes the connection to this database and deletes this object.
    */

@@ -8,7 +8,6 @@ std::map<std::string, Database, std::less<>> Database::databases;
 
 Database::Database(std::string name) : name(std::move(name)), lastSegmentId(0), commitId(1) {
   segments.emplace(0, std::make_unique<Segment>(0));
-  //TODO: how do we initialize the initial blob to commitId 1?
 }
 
 Database& Database::Get(std::string_view databaseName) {
@@ -37,5 +36,22 @@ Segment* Database::GetSegment(segment_id segment) {
   auto pos = segments.find(segment);
   return (pos != segments.end()) ? pos->second.get() : nullptr;
 }
+
+bool Database::AcquireLocks(const network::message::BlobsRead& message) {
+  TODO("check for lock conflicts with other clients for all requested blobs");
+  TODO("set locks if no conflicts");
+  TODO("return true if successful");
+  TODO("what if the blobs we are trying to lock don't exist? This should be communicated back to the caller too!");
+  return true;
+}
+
+bool Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message) {
+  TODO("Check for Deadlocks");
+  queuedReads.push_back(std::move(message));
+  return true;
+}
+  
+
+
 
 }}

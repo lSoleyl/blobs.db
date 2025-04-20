@@ -14,7 +14,8 @@ network::Server::Server(int listenPort) : listenPort(listenPort), running(true) 
 }
 
 network::Server::~Server() {
-  //TODO: signal listen thread to exit somehow
+  // Simply schedule an IO completion packet, which will set the running state to false to exit the network thread.
+  ioCompletionPort.PostSimpleTask([this]() { running = false; });
   
   // Wait for thread to exit
   networkThread.join();
@@ -71,20 +72,9 @@ void network::Server::ListenThreadMain() {
     // Start accepting new connections
     AcceptNewConnection();
 
-    //TODO: using an atomic here is pretty primitive as it requires us to actively check whether we should shut down
-    //      We should change this to a synchronization object, which can be signalled so we can await it together with waiting for new socket messages.
-    //      That way we also avoid this active polling kind of processing
     while (running) {
-      // Main loop:
+      // Main loop - just process IO completions (receiving and sending messages and processing the queue)
       ioCompletionPort.ProcessIOCompletionPacket();
-
-      // We can also use PostQueuedCompletionStatus() for efficient inter-thread communication. (https://learn.microsoft.com/en-us/windows/win32/fileio/postqueuedcompletionstatus)
-      // -> especially useful to notify the thread about a shut down or something like this.
-      //
-      // TODO: How will the thread be notified about new messages to send from the message queue? Probably simply be also posting a message to the IOCompletionPort. That port will
-      //       therefore be the single synchronization point for that thread... But how to ensure that nobody writes into the message queue while the thread pops a message out?
-      //       Either we use a lock (probably too expensive) or some lock free alternative, since this kind of congestion should happen rarely
-
     }
 
   } catch (std::exception& ex) {
@@ -219,7 +209,7 @@ network::Server::Client& network::Server::ProcessAcceptedConnection() {
 }
 
 void network::Server::ProcessReceivedMessage(Client& client, MessagePointer message) {
-  //TODO: filter out illegal messages, which the client is not allowed to send over the network.
+  TODO("Filter out illegal messages, which the client is not allowed to send over the network.");
 
   // Set the client id and put the message into the receive queue
   message->clientId = client.id;
@@ -246,7 +236,7 @@ void network::Server::Client::HandleMessageReceived(MessagePointer message) {
 
 
 network::Server::Client& network::Server::Clients::Add(Server& server, Resource<SOCKET>&& socket) {
-  //TODO: if we have the maximum number of clients connected, we must simply reject new connections
+  TODO("If we have the maximum number of clients connected, we must simply reject new connections");
   assert(map.size() < std::numeric_limits<client_id>::max());
 
   // Find the next free id

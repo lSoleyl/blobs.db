@@ -40,9 +40,9 @@ void DuplexMessageSocket::CloseSocket() {
 
 void DuplexMessageSocket::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
   if (bytesTransferred == 0) {
-    // no bytes being transferred on a stream socket is used to indicate a closed connection
+    // No bytes being transferred on a stream socket is used to indicate a closed connection
     HandleSocketClosed();
-    //TODO: should we also cancel outstanding IO on this socket here?
+    FIXME("We probably should also cancel outstanding IO on this socket here...")
   } else if (overlapped == &receive.overlapped) {
     // We received some data
     ProcessReceivedData(bytesTransferred);

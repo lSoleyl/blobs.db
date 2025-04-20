@@ -12,7 +12,7 @@ Client::Client(client_id id) : id(id) {}
 
 void Client::ClientConnected(client_id id) {
   auto inserted = clients.emplace(id, Client(id)).second;
-  //TODO: we should return some kind of error code and cancel the connection if there is already a client with this id
+  TODO("We should return some kind of error code and cancel the connection if there is already a client with this id");
   assert(inserted);
 }
 
