@@ -21,5 +21,10 @@ using commit_id = uint64_t; // limits the number of commits in the databse befor
 
 using connection_id = uint16_t; // limits the number distinct server connections a single client can establish
 
+
+//TODO: the actual max blob size should be a bit smaller than the type allows for to be able that we never have to split a single blob across multiple messages.
+//TODO: also the maximum id will be a bit lower as we will reserve special ids to refer to the segment/cluster tables
+
+
 }
 

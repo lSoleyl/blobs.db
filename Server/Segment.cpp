@@ -9,7 +9,10 @@ Segment::Segment(uint32_t id) : id(id), lastClusterId(0) {
   clusters.emplace(0, std::make_unique<Cluster>(0));
 }
 
-
+Cluster* Segment::GetCluster(cluster_id cluster) {
+  auto pos = clusters.find(cluster);
+  return (pos != clusters.end()) ? pos->second.get() : nullptr;
+}
 
 
 }}

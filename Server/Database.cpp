@@ -21,6 +21,21 @@ Database& Database::Get(std::string_view databaseName) {
   return databases.emplace(nameStr, Database(nameStr)).first->second;
 }
 
+Blob* Database::GetBlob(const BlobLocation& location) {
+  if (auto segment = GetSegment(location.segment)) {
+    if (auto cluster = segment->GetCluster(location.cluster)) {
+      if (auto blob = cluster->GetBlob(location.blob)) {
+        return blob;
+      }
+    }
+  }
+  return nullptr;
+}
 
+
+Segment* Database::GetSegment(segment_id segment) {
+  auto pos = segments.find(segment);
+  return (pos != segments.end()) ? pos->second.get() : nullptr;
+}
 
 }}

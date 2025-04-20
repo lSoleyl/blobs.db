@@ -4,6 +4,6 @@
 namespace blobs {
 namespace server {
 
-Blob::Blob(blob_id id) : id(id) {}
+Blob::Blob(blob_id id, commit_id commitId) : id(id), commitId(commitId) {}
 
 }}

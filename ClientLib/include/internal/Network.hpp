@@ -1,6 +1,9 @@
 #pragma once
 
 #include <network/MessagePointer.hpp>
+#include "..\blobs\Exception.hpp"
+
+#include <sstream>
 
 namespace blobs {
 namespace network { class Client; }
@@ -28,9 +31,23 @@ public:
   static network::Client& Get(connection_id connectionId);
 
 
-  /** A wrapper around AwaitMessage, which will automatically translate a NetworkException message into a thrown blobs::Exception
+  /** A wrapper around Client::AwaitMessage, which will automatically translate a NetworkException message into a thrown blobs::Exception
    */
   static network::MessagePointer AwaitMessage(network::Client& connection);
+
+  /** A wrapper around AwaitMessage, which ensures that the returned message is of the correct type and casts it into the given message pointer.
+   *  T should obviously be a type derived from network::Message
+   */
+  template<typename T>
+  static network::MessagePointer_T<T> ExpectMessage(network::Client& connection) {
+    auto message = AwaitMessage(connection);
+    if (!message.Is<T>()) {
+      std::ostringstream errorMsg;
+      errorMsg << "Expected " << T::type << ", but server replied with " << *message;
+      throw blobs::Exception(errorMsg.str());
+    }
+    return message.Cast<T>();
+  }
 
 
 private:

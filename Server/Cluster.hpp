@@ -9,6 +9,10 @@ class Cluster {
 public:
   Cluster(cluster_id id);
 
+  /** Returns the blob or nullptr if it doesn't exist
+   */
+  Blob* GetBlob(blob_id blob);
+
   const cluster_id id;
 private:
   blob_id lastBlobId;

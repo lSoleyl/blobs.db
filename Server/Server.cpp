@@ -92,17 +92,53 @@ void Server::HandleDatabaseClose(network::MessagePointer_T<network::message::Dat
   auto clientId = message->clientId; // assign to local variable here, because we will move the message as a whole
   server.SendMessageToClient(clientId, std::move(message));
 
+  //TODO: don't allow db close if there is a transaction running
   //TODO: if this was the last database, then we can also just close the connection
 }
 
 
 void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRead> message) {
+  //TODO: log the message
+
+  auto& client = server::Client::Get(message->clientId);
+  auto database = client.GetDatabase(message->databaseId);
+  if (!database) {
+    server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED));
+    return;
+  }
+
   //TODO: Implicitly start a transaction (unless already in a transaction)
   //TODO: check and set locks (what if a lock conflicts with the request? queue it somehow?)
   //       -> We can simply queue this message and whenever locks are released we will check the queue for messages, which can be served now
   //TODO: check blob transaction id
-  //TODO: return the blobs which are newer
-  //TODO: what about not existing blobs?
+ 
+
+  //TODO: handle special blob ids (blobId = 0xFFFFFFFF -> cluster table)
+
+  if (message->nBlobsRequested == 1) { 
+    // Fast path: at most 1 blob needs to be sent to the client
+    auto& requestedBlob = *message->begin();
+    auto blob = database->GetBlob(requestedBlob);
+    if (!blob) {
+      server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
+      return;
+    }
+
+    if (requestedBlob.ifCommitIdHigher >= blob->commitId) {
+      // The client has the current version of the blob -> we can send an empty response
+      server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::Create(0, 0));
+    } else {
+      // Client's blob is not up to date -> send the server's current version
+      auto response = network::message::BlobsReadResponse::Create(blob->data.size());
+      response->begin().SetBlob(requestedBlob, blob->commitId, blob->data.data(), static_cast<blob_size>(blob->data.size()));
+      server.SendMessageToClient(message->clientId, std::move(response));
+    }
+  } else {
+
+    //TODO: handle multi blob requests
+
+  }
+  
 }
 
 

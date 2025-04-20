@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <iostream>
 
 // This include path is horrible, but since the client lib headers are the ones being distributed and should be self contained,
 // its headers must be the single source of truth to prevent copying.
@@ -16,18 +18,21 @@ enum class Type : uint8_t {
   DatabaseOpen,
   DatabaseOpenResponse,
   DatabaseClose, // No response, because the server will simply confirm by replying with the same DatabaseClose message
-  
+
   BlobsRead,
   BlobsReadResponse,
 
+  TransactionBegin,  // Only here for clients, which explcitily want to start a new transaction in a specific tranaction mode
   TransactionAbort,
-  TransactionCommit, //TODO: what if we want to commit more than 2GB of data? How to split such a transaction commit into multiple parts?
+  TransactionCommit, // Client transmits blobs in this message to the server (it has a continuation flag in case we need multiple messages)
+  TransactionSetMode, // Sets the default transaction mode (for a specified database) (regular/MVCC) for all implicitly started transactions
 
   ConnectionOpened, // internally used message to notify the server about a new client connection
   ConnectionClosed, // internally used message to indicate that the network socket connection has been closed
   NetworkException, // internally used to throw an exception from the network thread in the main processing thread in AwaitMessage()
 };
 
+std::ostream& operator<<(std::ostream& out, Type messageType);
 
 /** Format for a generic network message, which all messages have to follow
  */
@@ -41,10 +46,16 @@ struct Message {
   client_id clientId; 
 
   // Everything following is the payload
+
+  /** Returns a string representation of the message for debugging purposes
+   */
+  std::string ToString() const;
 protected:
   /** Provide a constructor to ensure the concrete message types initialize all Message fields
    */
   Message(message_size size, Type type);
 };
+
+std::ostream& operator<<(std::ostream& out, const Message& message);
 
 }}}

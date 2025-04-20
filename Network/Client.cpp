@@ -42,6 +42,10 @@ void network::Client::SendDatabaseClose(database_id databaseId) {
   AccessSendQueue() << message::DatabaseClose::Create(databaseId);
 }
 
+void network::Client::SendMessageToServer(MessagePointer&& message) {
+  AccessSendQueue() << std::move(message);
+}
+
 
 
 network::MessagePointer network::Client::AwaitMessage() {

@@ -17,6 +17,10 @@ public:
   void SendDatabaseOpen(std::string_view databaseName);
   void SendDatabaseClose(database_id databaseId);
 
+  /** Used to send already allocated messages to the server (SendMessage() is sadly already in use by WinAPI)
+   */
+  void SendMessageToServer(MessagePointer&& message);
+
   /** Wait for the next sever message without a timeout
    */
   MessagePointer AwaitMessage();

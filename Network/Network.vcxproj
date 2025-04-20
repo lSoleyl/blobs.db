@@ -91,6 +91,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Client.cpp" />
+    <ClCompile Include="common\BlobLocation.cpp" />
     <ClCompile Include="IOCompletionPort.cpp" />
     <ClCompile Include="message\ConnectionClosed.cpp" />
     <ClCompile Include="message\ConnectionOpened.cpp" />
@@ -100,7 +101,7 @@
     <ClCompile Include="message\DatabaseOpenResponse.cpp" />
     <ClCompile Include="message\BlobsRead.cpp" />
     <ClCompile Include="message\NetworkException.cpp" />
-    <ClCompile Include="message\ReadBlobsResponse.cpp" />
+    <ClCompile Include="message\BlobsReadResponse.cpp" />
     <ClCompile Include="message\TransactionAbort.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="DuplexMessageSocket.cpp" />
@@ -112,6 +113,7 @@
     <None Include="Network.md" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\common\BlobLocation.hpp" />
     <ClInclude Include="include\network\IOCompletionHandler.hpp" />
     <ClInclude Include="include\network\DuplexMessageSocket.hpp" />
     <ClInclude Include="include\network\IOCompletionPort.hpp" />

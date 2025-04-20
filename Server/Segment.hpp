@@ -9,6 +9,10 @@ class Segment {
 public:
   Segment(segment_id id);
 
+  /** Returns the cluster with the specified id or nullptr if it doesn't exist
+   */
+  Cluster* GetCluster(cluster_id cluster);
+
   const segment_id id;
 private:
   cluster_id lastClusterId;

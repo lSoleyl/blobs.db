@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Segment.hpp"
+#include <common/BlobLocation.hpp>
 
 namespace blobs {
 namespace server {
@@ -14,8 +15,14 @@ public:
    */
   static Database& Get(std::string_view databaseName);
 
-  //TODO: add commitId
-  
+  /** Returns a blob from this database (if it exists)
+   */
+  Blob* GetBlob(const BlobLocation& location);
+
+  /** Returns a segment from this databse (if it exists)
+   */
+  Segment* GetSegment(segment_id segment);
+
   //TODO: should the database keep an open count to efficiently perform the check whether any client still uses it?
 private:
   Database(std::string name);

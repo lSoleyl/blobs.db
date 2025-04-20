@@ -46,4 +46,10 @@ database_id Client::OpenDatabase(Database& db) {
 }
 
 
+Database* Client::GetDatabase(database_id id) {
+  return (id < openDatabases.size()) ? openDatabases[id] : nullptr;
+}
+
+
+
 }}

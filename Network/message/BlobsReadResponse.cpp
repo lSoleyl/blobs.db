@@ -23,20 +23,18 @@ MessagePointer_T<BlobsReadResponse> BlobsReadResponse::CreateError(Result result
 }
 
 
-std::string_view BlobsReadResponse::BlobData::Content() const {
-  return std::string_view(reinterpret_cast<const char*>(this) + sizeof(BlobData), blobSize);
+const void* BlobsReadResponse::BlobData::Data() const {
+  return reinterpret_cast<const char*>(this) + sizeof(BlobData);
 }
 
 BlobsReadResponse::Iterator::Iterator(void* payloadPos) : pos(payloadPos) {}
 
-void BlobsReadResponse::Iterator::SetBlob(segment_id segment, cluster_id cluster, blob_id blob, commit_id commitId, void* data, blob_size size) {
+void BlobsReadResponse::Iterator::SetBlob(const BlobLocation& location, commit_id commitId, const void* data, blob_size size) {
   auto& header = **this;
-  header.segment = segment;
-  header.cluster = cluster;
-  header.blob = blob;
+  header = location;
   header.blobSize = size;
   header.commitId = commitId;
-  std::copy_n(static_cast<char*>(data), size, static_cast<char*>(pos) + sizeof(BlobData));
+  std::copy_n(static_cast<const char*>(data), size, static_cast<char*>(pos) + sizeof(BlobData));
 }
 
 void BlobsReadResponse::Iterator::operator++() {
@@ -45,6 +43,22 @@ void BlobsReadResponse::Iterator::operator++() {
 
 BlobsReadResponse::BlobData& BlobsReadResponse::Iterator::operator*() const {
   return *static_cast<BlobData*>(pos);
+}
+
+bool BlobsReadResponse::Iterator::operator==(const Iterator& other) const { 
+  return pos == other.pos; 
+}
+bool BlobsReadResponse::Iterator::operator!=(const Iterator & other) const {
+  return pos != other.pos; 
+}
+
+
+BlobsReadResponse::Iterator BlobsReadResponse::begin() {
+  return Iterator(reinterpret_cast<char*>(this) + sizeof(BlobsReadResponse));
+}
+
+BlobsReadResponse::Iterator BlobsReadResponse::end() {
+  return Iterator(reinterpret_cast<char*>(this) + size);
 }
 
 }}}

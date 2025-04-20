@@ -22,6 +22,12 @@
     <Filter Include="Quelldateien\message">
       <UniqueIdentifier>{3469cd63-bb2d-467b-9931-79bdd7133338}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Headerdateien\common">
+      <UniqueIdentifier>{1aa799c2-244e-4fa5-a7a3-8ab6ab2a40e6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Quelldateien\common">
+      <UniqueIdentifier>{2212e6a4-bdb2-46e1-950b-8c440cdc8755}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Network.cpp">
@@ -72,8 +78,11 @@
     <ClCompile Include="message\NetworkException.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
-    <ClCompile Include="message\ReadBlobsResponse.cpp">
+    <ClCompile Include="message\BlobsReadResponse.cpp">
       <Filter>Quelldateien\message</Filter>
+    </ClCompile>
+    <ClCompile Include="common\BlobLocation.cpp">
+      <Filter>Quelldateien\common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -142,6 +151,9 @@
     </ClInclude>
     <ClInclude Include="include\network\message\BlobsReadResponse.hpp">
       <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\BlobLocation.hpp">
+      <Filter>Headerdateien\common</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

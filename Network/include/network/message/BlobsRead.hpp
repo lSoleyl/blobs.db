@@ -1,6 +1,8 @@
 #pragma once
 
 #include "..\MessagePointer.hpp"
+#include "..\..\common\BlobLocation.hpp"
+
 #include <string_view>
 #include <vector>
 
@@ -17,10 +19,8 @@ struct BlobsRead : public Message {
 
   // One such following structure is written into the message for each requested blob
   // The requested blobs should already be sorted in ascending order to reduce the risk of deadlocks
-  struct BlobAddress {
-    segment_id segment;
-    cluster_id cluster;
-    blob_id blob;
+  struct BlobAddress : public BlobLocation {
+    using BlobLocation::operator=; // allow assignment from BlobLocation
     commit_id ifCommitIdHigher; // Only return the blob contents if the commit id is higher than specified here
   };
 

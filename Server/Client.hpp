@@ -17,7 +17,11 @@ public:
   /** Marks the specified database as opened by this client and returns the client local database id for it.
    *  Throws an exception if the client already opened 256 databases.
    */
-  uint8_t OpenDatabase(Database& db);
+  database_id OpenDatabase(Database& db);
+
+  /** Returns the open database or nullptr if the specified id doesn't correspond to an open database
+   */
+  Database* GetDatabase(database_id id);
 
 
   const client_id id;
