@@ -41,9 +41,6 @@ public:
    */
   BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false);
 
-
-  //TODO: ReadBlob()
-  //TODO: what should be the return value of ReadBlob()? to be cross dll compatible?
   //TODO: WriteBlob()
 
   /** Closes the connection to this database and deletes this object.
