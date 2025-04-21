@@ -44,6 +44,9 @@
     <ClCompile Include="Server.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="Lock.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Database.hpp">
@@ -65,6 +68,9 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="Server.hpp">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="Lock.hpp">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

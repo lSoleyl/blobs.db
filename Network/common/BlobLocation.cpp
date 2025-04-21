@@ -48,6 +48,11 @@ bool BlobLocation::operator>=(const BlobLocation& other) const {
   return !(*this < other);
 }
 
+
+std::ostream& operator<<(std::ostream& out, const BlobLocation& location) {
+  return out << '(' << location.segment << ',' << location.cluster << ',' << location.blob << ')';
+}
+
 }
 
 namespace {
@@ -71,4 +76,3 @@ namespace {
 size_t std::hash<blobs::BlobLocation>::operator()(const blobs::BlobLocation& location) const noexcept {
   return hash_all(location.segment, location.cluster, location.blob);
 }
-

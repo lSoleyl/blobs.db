@@ -15,6 +15,8 @@ void Server::ServerMain() {
 
   while (true) {
     auto message = server.AwaitMessage();
+    LogMessage(*message);
+
     switch (message->type) {
       case network::message::Type::ConnectionOpened:
         HandleConnectionOpened(message.Cast<network::message::ConnectionOpened>());
@@ -43,34 +45,27 @@ void Server::ServerMain() {
         //TODO: handle other messages
 
       default:
-        std::cerr << "[ERR] Server received message of unexpected type " << static_cast<int>(message->type) << " from client " << message->clientId << "\n";
+        std::cerr << "[ERR] Server received message of unexpected type " << message->type << "(" << static_cast<int>(message->type) << ") from client " << message->clientId << "\n";
         break;
     }
   }
 }
 
+
+
 void Server::HandleConnectionOpened(network::MessagePointer_T<network::message::ConnectionOpened> message) {
   // New client connected (initialize logical client data)
   Client::ClientConnected(message->clientId);
-
-  // For now simply log this
-  std::cout << "Client[" << message->clientId << "] connected from " << message->GetRemoteIp() << "\n";
 }
 
 void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::ConnectionClosed> message) {
   // A client closed the connection
-
   TODO("Remove from client map, release all held locks, release database references and close database if this was the last one");
-
-  std::cout << "Client[" << message->clientId << "] disconnected\n";
 }
 
 void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::DatabaseOpen> message) {
   // OpenDB request
   auto dbName = message->GetDatabaseName();
-
-  // log the message for now
-  std::cout << "Client[" << message->clientId << "]: DatabaseOpen(" << dbName << ")\n";
 
   TODO("Handle error in case database is not found");
   auto& db = server::Database::Get(dbName);
@@ -86,7 +81,6 @@ void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::Data
 
 void Server::HandleDatabaseClose(network::MessagePointer_T<network::message::DatabaseClose> message) {
   TODO("Get the database to close");
-  std::cout << "Client[" << message->clientId << "]: DatabaseClose(" << static_cast<int>(message->databaseId) << ")\n";
   // Confirm closing the database to the client by replying with the same DatabaseClose message.
   // Here we simply post the same message object into the client send buffer to avoid the unnecessary reallocation
   auto clientId = message->clientId; // assign to local variable here, because we will move the message as a whole
@@ -98,8 +92,6 @@ void Server::HandleDatabaseClose(network::MessagePointer_T<network::message::Dat
 
 
 void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRead> message) {
-  TODO("Log the message");
-
   auto& client = server::Client::Get(message->clientId);
   auto database = client.GetDatabase(message->databaseId);
   if (!database) {
@@ -147,9 +139,24 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
 
 
 void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message) {
-  TODO("simply release all locks, which are held by this client and cancel the current transaction (we don't need to send any confirmation for this message)");
-  TODO("we should also make sure to clear any queued up locks for this client");
-  TODO("Actually move this logic into some Transaction class, on which we can simply call Abort()");
+  AbortTransaction(message->clientId);
+}
+
+
+
+void Server::LogMessage(const network::message::Message& message) {
+  FIXME("This should be disabled in production code as it probably slows down the server as the windows console is known to be slow");
+  std::cout << "Client[" << message.clientId << "]: " << message << "\n";
+}
+
+
+
+void Server::AbortTransaction(client_id clientId) {
+  auto& client = server::Client::Get(clientId);
+  client.AbortTransaction();
+
+  TODO("Now try to satisfy any outstanding reads in all databases opened by the client");
+
 }
 
 

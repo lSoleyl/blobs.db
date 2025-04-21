@@ -24,7 +24,7 @@ private:
   DatabaseOpen(message_size messageSize, std::string_view databaseName); // Do not use the constructor -> use EncodeMessage
 };
 
-
+std::ostream& operator<<(std::ostream& out, const DatabaseOpen& message);
 
 
 }}}

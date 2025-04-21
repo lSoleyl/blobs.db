@@ -21,6 +21,10 @@ MessagePointer ConnectionOpened::Create(client_id clientId, std::string_view rem
 }
 
 
+std::ostream& operator<<(std::ostream& out, const ConnectionOpened& message) {
+  return out << message.type << '(' << message.GetRemoteIp() << ')';
 }
-}
-}
+
+
+
+}}}

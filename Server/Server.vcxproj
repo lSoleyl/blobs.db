@@ -102,6 +102,7 @@
     <ClCompile Include="Client.cpp" />
     <ClCompile Include="Cluster.cpp" />
     <ClCompile Include="Database.cpp" />
+    <ClCompile Include="Lock.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -115,6 +116,7 @@
     <ClInclude Include="Client.hpp" />
     <ClInclude Include="Cluster.hpp" />
     <ClInclude Include="Database.hpp" />
+    <ClInclude Include="Lock.hpp" />
     <ClInclude Include="pch.hpp" />
     <ClInclude Include="Segment.hpp" />
     <ClInclude Include="Server.hpp" />

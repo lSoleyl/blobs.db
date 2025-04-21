@@ -19,7 +19,9 @@ MessagePointer NetworkException::Create(std::string_view exceptionMessage) {
 }
 
 
-
+std::ostream& operator<<(std::ostream& out, const NetworkException& message) {
+  return out << message.type << '(' << message.GetExceptionMessage() << ')';
+}
 
 
 }}}

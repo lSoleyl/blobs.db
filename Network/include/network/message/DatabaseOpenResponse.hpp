@@ -33,8 +33,6 @@ private:
 };
 
 
+std::ostream& operator<<(std::ostream& out, const DatabaseOpenResponse& message);
 
-
-}
-}
-}
+}}}

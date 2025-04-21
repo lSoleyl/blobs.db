@@ -27,7 +27,6 @@ private:
 };
 
 
+std::ostream& operator<<(std::ostream& out, const ConnectionOpened& message);
 
-}
-}
-}
+}}}

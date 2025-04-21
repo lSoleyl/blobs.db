@@ -29,6 +29,9 @@ struct BlobsRead : public Message {
   BlobAddress* begin();
   BlobAddress* end();
 
+  const BlobAddress* begin() const;
+  const BlobAddress* end() const;
+
 
   /** Create a new OpenDB message with sufficient space to hold nBlobsRequested number of blobs.
    *  The BlobAddresses are at this point not initialized and have to be initialized using the begin()/end() iterators
@@ -41,6 +44,8 @@ private:
   BlobsRead(database_id databaseId, uint8_t nBlobsRequested, bool writeLock); // Do not use the constructor -> use EncodeMessage
 };
 
+
+std::ostream& operator<<(std::ostream& out, const BlobsRead& message);
 
 
 }}}

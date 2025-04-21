@@ -52,6 +52,31 @@ bool Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message
 }
   
 
+void Database::AbortClientTransaction(client_id client, const std::vector<BlobLocation>& locksToRelease) {
+  ReleaseLocks(client, locksToRelease);
+
+  for (auto pos = queuedReads.begin(); pos != queuedReads.end();) {
+    if ((*pos)->clientId == client) {
+      // Erase this queued read message
+      // Increment the iterator before erasing as it would otherwise be invalidated by the erase operation
+      queuedReads.erase(pos++);
+    } else {
+      ++pos;
+    }
+  }
+
+}
+
+void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& locations) {
+  for (auto& location : locations) {
+    auto lock = locks.find(location);
+    assert(lock != locks.end()); // This would indicate a programming error as the client assumes a lock which he doesn't has.
+    // The const_cast here is valid as we do not modify the sorting order in any respect
+    bool empty = const_cast<Lock&>(*lock).Release(client);
+    // Should we delete this Lock object now or keep it in memory forever? What is worse performance wise?
+  }
+}
+
 
 
 }}

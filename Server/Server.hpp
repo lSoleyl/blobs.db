@@ -30,6 +30,15 @@ private:
 
   void HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message);
 
+  /** Primitive logging of incoming messages.
+   */
+  void LogMessage(const network::message::Message& message);
+
+  /** Releases the client's locks from all opened databases and removes all queued read requests and
+   *  checks whether any client can now satisfy his outstanding read requests.
+   */
+  void AbortTransaction(client_id clientId);
+
   network::Server server;
 };
 

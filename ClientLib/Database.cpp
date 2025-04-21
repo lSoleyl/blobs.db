@@ -80,7 +80,7 @@ Database* Database::Open(const char* connectionString) {
 
 
 std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
-  TODO("add synchronization: Only one thread may communicate with the database at any given time.")
+  TODO("Add synchronization: Only one thread may communicate with the database at any given time.")
 
   BlobLocation location(segment, cluster, blob);
   auto cachedBlob = cache->Get(location);

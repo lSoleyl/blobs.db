@@ -23,7 +23,9 @@ MessagePointer DatabaseOpen::Create(std::string_view databaseName) {
 }
 
 
-
+std::ostream& operator<<(std::ostream& out, const DatabaseOpen& message) {
+  return out << message.type << '(' << message.GetDatabaseName() << ')';
+}
 
 
 }}}

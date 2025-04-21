@@ -1,4 +1,4 @@
-#include <network/message/Message.hpp>
+#include <network/message/All.hpp>
 
 #include <sstream>
 
@@ -41,9 +41,22 @@ std::string Message::ToString() const {
 }
 
 std::ostream& operator<<(std::ostream& out, const Message& message) {
-  // For now just stringify the message type... later maybe implement a ToString() in each message class and cast there based on the type
-  out << message.type;
-  return out;
+  // Some message types have their own stringification. Due to a lack of virtual methods we have to dispatch them manually
+  switch (message.type) {
+    case Type::DatabaseOpen: return out << static_cast<const DatabaseOpen&>(message);
+    case Type::DatabaseOpenResponse: return out << static_cast<const DatabaseOpenResponse&>(message);
+    case Type::DatabaseClose: return out << static_cast<const DatabaseClose&>(message);
+
+    case Type::BlobsRead: return out << static_cast<const BlobsRead&>(message);
+
+    case Type::ConnectionOpened: return out << static_cast<const ConnectionOpened&>(message);
+    case Type::NetworkException: return out << static_cast<const NetworkException&>(message);
+
+    
+    default: 
+      // Default stringification simply writes the message type
+      return out << message.type; 
+  }
 }
 
 

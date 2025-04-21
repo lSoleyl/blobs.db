@@ -4,6 +4,7 @@
 // its headers must be the single source of truth to prevent copying.
 #include "../../ClientLib/include/blobs/Config.hpp"
 #include <xhash>
+#include <iostream>
 
 namespace blobs {
 
@@ -26,6 +27,9 @@ struct BlobLocation {
   bool operator>(const BlobLocation& other) const;
   bool operator>=(const BlobLocation& other) const;
 };
+
+std::ostream& operator<<(std::ostream& out, const BlobLocation& location);
+
 }
 
 
@@ -35,3 +39,4 @@ struct std::hash<blobs::BlobLocation>
 {
   size_t operator()(const blobs::BlobLocation& location) const noexcept;
 };
+

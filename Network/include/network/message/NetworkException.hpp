@@ -22,9 +22,10 @@ struct NetworkException : public Message {
 private:
   // private constructor -> call Create instead
   NetworkException(message_size messageSize, std::string_view exceptionMessage);
-
 };
 
+
+std::ostream& operator<<(std::ostream& out, const NetworkException& message);
 
 
 }}}

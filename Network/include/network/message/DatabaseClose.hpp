@@ -23,6 +23,7 @@ private:
   DatabaseClose(database_id databaseId);
 };
 
+std::ostream& operator<<(std::ostream& out, const DatabaseClose& message);
 
 
 }}}

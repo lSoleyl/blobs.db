@@ -10,6 +10,13 @@ namespace server {
  */
 class Client {
 public:
+  enum class Transaction {
+    None, 
+    Write,  // Regular write transaction
+    MVCC,   // Not implemented yet 
+  };
+
+
   static void ClientConnected(client_id id);
   
   static Client& Get(client_id id);
@@ -23,18 +30,28 @@ public:
    */
   Database* GetDatabase(database_id id);
 
+  /** Aborts the client's current transaction and releases all held locks
+   */
+  void AbortTransaction();
+
 
   const client_id id;
 private:
   Client(client_id id);
 
-  TODO("we also need a list of all held locks by this client.. or should it be held by the Transaction object")
-  
+  struct DatabaseLocks {
+    Database* database;
+    std::vector<BlobLocation> locks; // All locks held by this client in the database (vector for more memory efficient storage)
+  };
 
-  /** All databases opened by this client. The index is the database id and 
+  /** All databases opened and locks held by this client. The index is the database id and 
    *  closed databases will be replaced with nullptr and their ids can later be reused.
    */ 
-  std::vector<Database*> openDatabases;
+  std::vector<DatabaseLocks> openDatabases;
+
+  /** The current transaction mode (if any opened)
+   */
+  Transaction transaction;
 
   /** A map of all connected clients
    */
