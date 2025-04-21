@@ -69,4 +69,31 @@ void Client::AbortTransaction() {
 
 
 
+bool Client::AcquireLocks(const network::message::BlobsRead& message) {
+  // The caller should ensure this is not called with an invalid database id
+  assert(openDatabases.size() > message.databaseId && openDatabases[message.databaseId].database != nullptr);
+  auto& openDb = openDatabases[message.databaseId]; 
+
+  if (openDb.database->AcquireLocks(message)) {
+    // Implicitly start a transaction upon acquiring the first lock
+    if (transaction == Transaction::None) {
+      transaction = Transaction::Write;
+    }
+
+    // All locks could be acquired -> enter them into the database entry to mark down all our lock locations
+    for (auto& location : message) {
+      auto pos = std::find(openDb.locks.begin(), openDb.locks.end(), location);
+      if (pos == openDb.locks.end()) {
+        // A new lock
+        openDb.locks.push_back(location);
+      }
+    }
+    
+    return true;
+  }
+   
+  return false;
+}
+
+
 }}

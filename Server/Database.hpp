@@ -30,6 +30,8 @@ public:
   Segment* GetSegment(segment_id segment);
 
   /** Acquires the locks specified in the blobs read message and returns true if successful, false if not
+   *  IMPORTANT: This only sets the locks in the database... For proper bookeeping the client also needs to know, which locks it holds
+   *             Therefore locks should always be acquired via Client::AcquireLocks(), which calls this method.
    */
   bool AcquireLocks(const network::message::BlobsRead& message);
 
@@ -49,6 +51,17 @@ public:
   TODO("Should the database keep an open count to efficiently perform the check whether any client still uses it?")
 private:
   Database(std::string name);
+
+  /** Returns true if the client can acquire a lock at the specified location with the specified access.
+   *  This will NOT acquire the lock itself.
+   */
+  bool CanClientAcquireLock(client_id client, const BlobLocation& location, bool write);
+
+  /** Sets a single lock at the specified location for the client and potentially upgrades a read lock into a write lock.
+   *  The caller must ensure that there is no conflicting lock before calling this method (CanClientAcquireLock()) as this is not 
+   *  check another time.
+   */
+  void AcquireClientLock(client_id client, const BlobLocation& location, bool write);
 
   /** Releases the specified locks for the given client
    */

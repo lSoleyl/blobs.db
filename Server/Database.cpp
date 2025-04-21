@@ -38,12 +38,81 @@ Segment* Database::GetSegment(segment_id segment) {
 }
 
 bool Database::AcquireLocks(const network::message::BlobsRead& message) {
-  TODO("check for lock conflicts with other clients for all requested blobs");
-  TODO("set locks if no conflicts");
-  TODO("return true if successful");
-  TODO("what if the blobs we are trying to lock don't exist? This should be communicated back to the caller too!");
-  return true;
+  auto client = message.clientId;
+  bool write = message.writeLock;
+
+  bool canAcquireLocks = std::all_of(message.begin(), message.end(), [=](const BlobLocation& location) {
+    return CanClientAcquireLock(client, location, write);
+  });
+  
+  if (canAcquireLocks) {
+    // Acquire all the locks at once
+    for (auto& location : message) {
+      AcquireClientLock(client, location, write);
+    }
+  }
+
+  FIXME("what if the blobs we are trying to lock don't exist? This should be communicated back to the caller too!");
+  return canAcquireLocks;
 }
+
+bool Database::CanClientAcquireLock(client_id client, const BlobLocation& location, bool write) {
+  TODO("Also handle special locking rules: When client attempts to lock cluster's blob table, no write locks on any blob may exist in that cluster!");
+
+  auto pos = locks.find(location);
+  if (pos == locks.end()) {
+    return true; // no lock yet at that location -> lock is possible
+  }
+
+  auto& lock = *pos;
+  if (!write) {
+    // A read lock can be acquired if no write lock is held or the write lock is being held by this client
+    return !lock.write || *lock.write == client;
+
+  } else {
+    // A write lock can only be acquired if this client is the only client holding the read lock (or no client)
+    if (lock.write) {
+      // If this is already write locked, then acquiring can only work if this client is already holding the write lock
+      return *lock.write == client;
+    }
+
+    // Either there are no read locks or this client holds the only read lock
+    return lock.read.empty() || (lock.read.size() == 1 && lock.read[0] == client);
+  }
+}
+
+
+void Database::AcquireClientLock(client_id client, const BlobLocation& location, bool write) {
+  auto pos = locks.find(location);
+  if (pos == locks.end()) {
+    // Simple case, nobody requested a lock for this location yet
+    Lock lock(location);
+    if (write) {
+      lock.write = client;
+    } else {
+      lock.read.push_back(client);
+    }
+    locks.insert(std::move(lock));
+  } else {
+    // Lock already exists
+    auto& lock = const_cast<Lock&>(*pos); // const_cast is safe here, because we don't modify the ordering criterion
+    if (write) {
+      // Set write lock and potentially upgrade read lock
+      lock.write = client;
+      lock.read.clear(); // no read locks can exists while a write lock exists
+    } else if (lock.write == client) {
+      // Nothing to do... we don't downgrade write locks into read locks
+    } else {
+      // Acquire a read lock
+      auto pos = std::find(lock.read.begin(), lock.read.end(), client);
+      if (pos == lock.read.end()) {
+        // The client didn't hold this read lock before
+        lock.read.push_back(client);
+      }
+    }
+  }
+}
+
 
 bool Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message) {
   TODO("Check for Deadlocks");

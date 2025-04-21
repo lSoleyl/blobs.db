@@ -35,6 +35,14 @@ public:
   void AbortTransaction();
 
 
+  /** Tries to acquire all locks specified in the message in the database specified in the message.
+   *  If any of the locks cannot be acquired, no lock will be acquired and the method returns false.
+   * 
+   * @pre message.databaseId must be a valid database index
+   */
+  bool AcquireLocks(const network::message::BlobsRead& message);
+
+
   const client_id id;
 private:
   Client(client_id id);

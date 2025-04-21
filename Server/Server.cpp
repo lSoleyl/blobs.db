@@ -99,8 +99,6 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
     return;
   }
 
-  TODO("Implicitly start a transaction (unless already in a transaction)");
-
   TODO("Handle special blob ids (blobId = 0xFFFFFFFF -> cluster table)");
 
   if (message->nBlobsRequested == 1) { 
@@ -111,8 +109,8 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
       server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
       return;
     }
-
-    if (database->AcquireLocks(*message)) {
+    
+    if (client.AcquireLocks(*message)) {
       // Locks successfully acquired (no conflicts) -> send response
       if (requestedBlob.ifCommitIdHigher >= blob->commitId) {
         // The client has the current version of the blob -> we can send an empty response
@@ -127,8 +125,9 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
       // Queue this message to the databse to be processed as soon as the conflicting locks are released
       if (!database->QueueReadCheckDeadlock(std::move(message))) {
         // Deadlock detected -> cannot enqueue message
+        client.AbortTransaction(); // abort the client's current transaction
         server.SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
-        TODO("Abort the client's running transaction (and release any locks held)");
+        TODO("Also check whether any outstanding reads can be completed now that the client has released his previously held locks");
       }
     }
   } else {
