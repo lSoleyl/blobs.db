@@ -64,52 +64,20 @@ bool Database::CanClientAcquireLock(client_id client, const BlobLocation& locati
     return true; // no lock yet at that location -> lock is possible
   }
 
-  auto& lock = *pos;
-  if (!write) {
-    // A read lock can be acquired if no write lock is held or the write lock is being held by this client
-    return !lock.write || *lock.write == client;
-
-  } else {
-    // A write lock can only be acquired if this client is the only client holding the read lock (or no client)
-    if (lock.write) {
-      // If this is already write locked, then acquiring can only work if this client is already holding the write lock
-      return *lock.write == client;
-    }
-
-    // Either there are no read locks or this client holds the only read lock
-    return lock.read.empty() || (lock.read.size() == 1 && lock.read[0] == client);
-  }
+  // Check the lock whether the client can acquire the specified access
+  return pos->CanAcquire(client, write);
 }
 
 
 void Database::AcquireClientLock(client_id client, const BlobLocation& location, bool write) {
   auto pos = locks.find(location);
   if (pos == locks.end()) {
-    // Simple case, nobody requested a lock for this location yet
-    Lock lock(location);
-    if (write) {
-      lock.write = client;
-    } else {
-      lock.read.push_back(client);
-    }
-    locks.insert(std::move(lock));
+    // Simple case, nobody requested a lock for this location yet -> create a new lock held by this client
+    locks.insert(Lock(location, client, write));
   } else {
     // Lock already exists
     auto& lock = const_cast<Lock&>(*pos); // const_cast is safe here, because we don't modify the ordering criterion
-    if (write) {
-      // Set write lock and potentially upgrade read lock
-      lock.write = client;
-      lock.read.clear(); // no read locks can exists while a write lock exists
-    } else if (lock.write == client) {
-      // Nothing to do... we don't downgrade write locks into read locks
-    } else {
-      // Acquire a read lock
-      auto pos = std::find(lock.read.begin(), lock.read.end(), client);
-      if (pos == lock.read.end()) {
-        // The client didn't hold this read lock before
-        lock.read.push_back(client);
-      }
-    }
+    lock.Acquire(client, write);
   }
 }
 
@@ -145,7 +113,6 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
     // Should we delete this Lock object now or keep it in memory forever? What is worse performance wise?
   }
 }
-
 
 
 }}

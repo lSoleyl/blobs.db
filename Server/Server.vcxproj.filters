@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Headerdateien\doctest">
+      <UniqueIdentifier>{f92de5b9-75d9-4062-b5da-d9b74b39a88f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\README.md" />
@@ -72,6 +75,9 @@
     </ClInclude>
     <ClInclude Include="Lock.hpp">
       <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="doctest\doctest.h">
+      <Filter>Headerdateien\doctest</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

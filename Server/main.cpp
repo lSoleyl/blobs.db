@@ -1,3 +1,4 @@
+#define DOCTEST_CONFIG_IMPLEMENT // we cannot use precompiled headers here becuase of this define
 #include "pch.hpp"
 
 #include "Server.hpp"
@@ -7,7 +8,22 @@
 
 using namespace blobs;
 
-int main() {
+/** Server main can be run with --test to run all unittest
+ */
+int main(int argc, char** argv) {
+#ifndef DOCTEST_CONFIG_DISABLE
+  if (argc >= 2 && std::string_view(argv[1]) == "--test") {
+    // Run unittests
+    doctest::Context context;
+    //context.setOption("order-by", "name");            // sort the test cases by their name
+
+    context.applyCommandLine(argc, argv);
+    context.setOption("no-breaks", true);             // don't break in the debugger when assertions fail
+
+    return context.run();
+  }
+#endif
+
 
   std::cout << "Server initializing\n";
 
@@ -21,4 +37,5 @@ int main() {
   server.ServerMain();
 
   std::cout << "Server exiting\n";
+  return 0;
 }

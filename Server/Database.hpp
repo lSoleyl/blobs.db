@@ -17,9 +17,9 @@ public:
     "fetching is simply a memory lookup.We shouldn't block the server while watiting for the database to be fully loaded and ready."
   )
 
-  /** Fetch an already opened database or open the specified database 
-   */
-  static Database& Get(std::string_view databaseName);
+    /** Fetch an already opened database or open the specified database
+     */
+    static Database& Get(std::string_view databaseName);
 
   /** Returns a blob from this database (if it exists)
    */
@@ -46,7 +46,7 @@ public:
   /** This method will release the specified client locks and then remove all queued up read requests for this client from the queued reads
    */
   void AbortClientTransaction(client_id client, const std::vector<BlobLocation>& locksToRelease);
-  
+
 
   TODO("Should the database keep an open count to efficiently perform the check whether any client still uses it?")
 private:
@@ -58,7 +58,7 @@ private:
   bool CanClientAcquireLock(client_id client, const BlobLocation& location, bool write);
 
   /** Sets a single lock at the specified location for the client and potentially upgrades a read lock into a write lock.
-   *  The caller must ensure that there is no conflicting lock before calling this method (CanClientAcquireLock()) as this is not 
+   *  The caller must ensure that there is no conflicting lock before calling this method (CanClientAcquireLock()) as this is not
    *  check another time.
    */
   void AcquireClientLock(client_id client, const BlobLocation& location, bool write);
@@ -76,7 +76,7 @@ private:
   segment_id lastSegmentId;
   std::unordered_map<segment_id, std::unique_ptr<Segment>> segments;
 
-  /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to 
+  /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to
    *  other clients holding conflicting locks. These messages should be retried as soon as the conflicting reads are released.
    */
   std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
@@ -87,7 +87,6 @@ private:
 
   static std::map<std::string, Database, std::less<>> databases;
 };
-
 
 
 }}
