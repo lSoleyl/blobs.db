@@ -103,6 +103,7 @@
     <ClCompile Include="message\NetworkException.cpp" />
     <ClCompile Include="message\BlobsReadResponse.cpp" />
     <ClCompile Include="message\TransactionAbort.cpp" />
+    <ClCompile Include="message\TransactionCommit.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="DuplexMessageSocket.cpp" />
     <ClCompile Include="ReceiveMessageQueue.cpp" />
@@ -129,6 +130,7 @@
     <ClInclude Include="include\network\message\BlobsRead.hpp" />
     <ClInclude Include="include\network\message\NetworkException.hpp" />
     <ClInclude Include="include\network\message\TransactionAbort.hpp" />
+    <ClInclude Include="include\network\message\TransactionCommit.hpp" />
     <ClInclude Include="include\network\ReceiveMessageQueue.hpp" />
     <ClInclude Include="include\network\Resource.hpp" />
     <ClInclude Include="include\network\Client.hpp" />
