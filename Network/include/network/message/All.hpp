@@ -11,6 +11,7 @@
 #include "NetworkException.hpp"
 
 #include "TransactionAbort.hpp"
+#include "TransactionCommit.hpp"
 
 #include "BlobsRead.hpp"
 #include "BlobsReadResponse.hpp"

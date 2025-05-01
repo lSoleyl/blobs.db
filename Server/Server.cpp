@@ -132,6 +132,7 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
     }
   } else {
     TODO("Handle multi blob requests");
+    assert(false);
   }
   
 }

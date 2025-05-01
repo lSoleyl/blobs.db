@@ -6,6 +6,8 @@ namespace network {
 namespace message {
 
 
+static_assert(sizeof(BlobsReadResponse) + sizeof(BlobsReadResponse::BlobData) <= constants::_BlobMessageSize, "constants::_BlobMessageSize is too small!");
+
 BlobsReadResponse::BlobsReadResponse(message_size messageSize, uint8_t nBlobs) : 
    Message(messageSize, BlobsReadResponse::type), result(Result::SUCCESS), nBlobs(nBlobs) {}
 
