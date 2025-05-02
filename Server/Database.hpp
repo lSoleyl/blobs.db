@@ -49,6 +49,12 @@ public:
 
 
   TODO("Should the database keep an open count to efficiently perform the check whether any client still uses it?")
+
+  /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to
+   *  other clients holding conflicting locks. These messages should be retried as soon as the conflicting reads are released.
+   */
+  std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
+
 private:
   Database(std::string name);
 
@@ -75,11 +81,6 @@ private:
   commit_id commitId;
   segment_id lastSegmentId;
   std::unordered_map<segment_id, std::unique_ptr<Segment>> segments;
-
-  /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to
-   *  other clients holding conflicting locks. These messages should be retried as soon as the conflicting reads are released.
-   */
-  std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
 
   /** All currently active locks in this database
    */

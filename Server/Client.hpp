@@ -28,7 +28,12 @@ public:
 
   /** Returns the open database or nullptr if the specified id doesn't correspond to an open database
    */
-  Database* GetDatabase(database_id id);
+  Database* GetDatabase(database_id id) const;
+
+  /** Returns the highest ever used database id of this client.
+   *  Returns 0 if no database has ever been opened.
+   */
+  database_id GetMaxDatabaseId() const;
 
   /** Aborts the client's current transaction and releases all held locks
    */

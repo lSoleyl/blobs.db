@@ -46,8 +46,12 @@ database_id Client::OpenDatabase(Database& db) {
 }
 
 
-Database* Client::GetDatabase(database_id id) {
+Database* Client::GetDatabase(database_id id) const {
   return (id < openDatabases.size()) ? openDatabases[id].database : nullptr;
+}
+
+database_id Client::GetMaxDatabaseId() const {
+  return openDatabases.empty() ? 0 : static_cast<database_id>(openDatabases.size() - 1);
 }
 
 void Client::AbortTransaction() {

@@ -92,49 +92,20 @@ void Server::HandleDatabaseClose(network::MessagePointer_T<network::message::Dat
 
 
 void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRead> message) {
-  auto& client = server::Client::Get(message->clientId);
-  auto database = client.GetDatabase(message->databaseId);
-  if (!database) {
-    server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED));
-    return;
-  }
+  if (!TryHandleBlobsRead(*message)) {
+    // Cannot immediately reply to message because of locking conflicts
+    auto& client = server::Client::Get(message->clientId);
+    auto database = client.GetDatabase(message->databaseId);
+    assert(database); // <- TryHandleBlobsRead() would have returned true otherwise
 
-  TODO("Handle special blob ids (blobId = 0xFFFFFFFF -> cluster table)");
-
-  if (message->nBlobsRequested == 1) { 
-    // Fast path: at most 1 blob needs to be sent to the client
-    auto& requestedBlob = *message->begin();
-    auto blob = database->GetBlob(requestedBlob);
-    if (!blob) {
-      server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
-      return;
+    // Queue this message to the databse to be processed as soon as the conflicting locks are released
+    if (!database->QueueReadCheckDeadlock(std::move(message))) {
+      // Deadlock detected -> cannot enqueue message
+      client.AbortTransaction(); // abort the client's current transaction
+      server.SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
+      TODO("Also check whether any outstanding reads can be completed now that the client has released his previously held locks");
     }
-    
-    if (client.AcquireLocks(*message)) {
-      // Locks successfully acquired (no conflicts) -> send response
-      if (requestedBlob.ifCommitIdHigher >= blob->commitId) {
-        // The client has the current version of the blob -> we can send an empty response
-        server.SendMessageToClient(message->clientId, network::message::BlobsReadResponse::Create(0, 0));
-      } else {
-        // Client's blob is not up to date -> send the server's current version
-        auto response = network::message::BlobsReadResponse::Create(blob->data.size());
-        response->begin().SetBlob(requestedBlob, blob->commitId, blob->data.data(), static_cast<blob_size>(blob->data.size()));
-        server.SendMessageToClient(message->clientId, std::move(response));
-      }
-    } else {
-      // Queue this message to the databse to be processed as soon as the conflicting locks are released
-      if (!database->QueueReadCheckDeadlock(std::move(message))) {
-        // Deadlock detected -> cannot enqueue message
-        client.AbortTransaction(); // abort the client's current transaction
-        server.SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
-        TODO("Also check whether any outstanding reads can be completed now that the client has released his previously held locks");
-      }
-    }
-  } else {
-    TODO("Handle multi blob requests");
-    assert(false);
   }
-  
 }
 
 
@@ -143,6 +114,47 @@ void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::
 }
 
 
+bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
+  auto& client = server::Client::Get(message.clientId);
+  auto database = client.GetDatabase(message.databaseId);
+  if (!database) {
+    server.SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED));
+    return true;
+  }
+
+  TODO("Handle special blob ids (blobId == constants::NextFreeBlobId)");
+
+  if (message.nBlobsRequested == 1) {
+    // Fast path: at most 1 blob needs to be sent to the client
+    auto& requestedBlob = *message.begin();
+    auto blob = database->GetBlob(requestedBlob);
+    if (!blob) {
+      server.SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
+      return true;
+    }
+
+    if (client.AcquireLocks(message)) {
+      // Locks successfully acquired (no conflicts) -> send response
+      if (requestedBlob.ifCommitIdHigher >= blob->commitId) {
+        // The client has the current version of the blob -> we can send an empty response
+        server.SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
+      } else {
+        // Client's blob is not up to date -> send the server's current version
+        auto response = network::message::BlobsReadResponse::Create(blob->data.size());
+        response->begin().SetBlob(requestedBlob, blob->commitId, blob->data.data(), static_cast<blob_size>(blob->data.size()));
+        server.SendMessageToClient(message.clientId, std::move(response));
+      }
+      return true; // messages fully processed
+    } else {
+      // We have conflicting lcoks
+      return false;
+    }
+  } else {
+    TODO("Handle multi blob requests");
+    assert(false);
+    return true;
+  }
+}
 
 void Server::LogMessage(const network::message::Message& message) {
   FIXME("This should be disabled in production code as it probably slows down the server as the windows console is known to be slow");
@@ -155,10 +167,34 @@ void Server::AbortTransaction(client_id clientId) {
   auto& client = server::Client::Get(clientId);
   client.AbortTransaction();
 
-  TODO("Now try to satisfy any outstanding reads in all databases opened by the client");
-
+  // Now try to process any outstanding reads
+  ClientTransactionEnded(client);
 }
 
+
+
+void Server::TryProcessQueuedReads(blobs::server::Database& database) {
+  for (auto pos = database.queuedReads.begin(), end = database.queuedReads.end(); pos != end;) {
+    auto& readBlobsMessage = *pos;
+    if (TryHandleBlobsRead(*readBlobsMessage)) {
+      // Message processed, we can remove it from the queue
+      database.queuedReads.erase(pos++);
+    } else {
+      // Check next queued message in queue
+      ++pos;
+    }
+  }
+}
+
+
+void Server::ClientTransactionEnded(const blobs::server::Client& client) {
+  for (database_id dbId = 0, maxId = client.GetMaxDatabaseId(); dbId <= maxId; ++dbId) {
+    if (auto database = client.GetDatabase(dbId)) {
+      // Database is actually open -> process all queued reads
+      TryProcessQueuedReads(*database);
+    }
+  }
+}
 
 
 }}

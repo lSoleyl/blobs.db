@@ -38,6 +38,7 @@ TransactionCommit::BlobDataIterator& TransactionCommit::BlobDataIterator::operat
   auto actualBlobSize = (header->blobSize == constants::DeleteBlobSize) ? 0 : header->blobSize;
   dataPos += actualBlobSize;
   ++header;
+  return *this;
 }
 
 TransactionCommit::BlobData& TransactionCommit::BlobDataIterator::operator*() const {
