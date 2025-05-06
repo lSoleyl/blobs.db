@@ -36,6 +36,9 @@
     <ClCompile Include="Exception.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="Transaction.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="ClientLib.md" />
@@ -57,6 +60,9 @@
       <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
     <ClInclude Include="include\blobs\Blobs.hpp">
+      <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\blobs\Transaction.hpp">
       <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,6 +1,7 @@
 #include "pch.hpp"
 #include <blobs/Database.hpp>
 #include <blobs/Exception.hpp>
+#include <blobs/Transaction.hpp>
 #include <internal/Network.hpp>
 #include <network/Client.hpp>
 
@@ -14,6 +15,7 @@ public:
   struct CachedBlob {
     std::vector<uint8_t> data;
     commit_id lastUpdated; // commit id when the blob was last updated (according to the cache)
+    uint64_t transactionId; // the id of the client transaction when this blobs was last written to the cache
     TODO("add some LRU counter to decache rarely used blobs and save memory?")
 
     std::pair<const void*, blob_size> Data() const {
@@ -30,10 +32,11 @@ public:
 
   /** Store/Update blob data in the cache and return a reference to the stored blob
    */
-  CachedBlob& Set(const BlobLocation& location, const void* data, blob_size size, commit_id lastUpdated) {
+  CachedBlob& Set(const BlobLocation& location, const void* data, blob_size size, commit_id lastUpdated, uint64_t transactionId) {
     auto& cachedBlob = cache[location];
     cachedBlob.data.assign(static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
     cachedBlob.lastUpdated = lastUpdated;
+    cachedBlob.transactionId = transactionId;
     return cachedBlob;
   }
 
@@ -80,12 +83,27 @@ Database* Database::Open(const char* connectionString) {
 
 
 std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
-  TODO("Add synchronization: Only one thread may communicate with the database at any given time.")
+  TODO("Add synchronization: Only one thread may communicate with the database at any given time.");
+
+  // Get the currently running transaction or start a new one if no is running yet
+  auto transaction = Transaction::Get(true);
 
   BlobLocation location(segment, cluster, blob);
   auto cachedBlob = cache->Get(location);
-  
-  TODO("If we already requested this blob with the same lock inside the same transaction, then we can simply return it from our cache without talking to the server.")
+
+  if (cachedBlob->transactionId == transaction->id) {
+    // We already read this blob. Now if we also aready hold a compatible lock to the requested one, then we can simply return the cached blob
+    auto currentLock = transaction->GetLockType(id, location);
+    if (currentLock >= (writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read)) {
+      // Our current lock is already sufficient to fullfill the request -> return the cached blob content
+      return cachedBlob->Data();
+    } else {
+      TODO(
+        "If we only want to upgrade a lock, then we don't have to re-request the blob's content, because we already know it as we already hold a read lock"
+        " and nobody can simply change the blob content while we hold this read lock"
+      );
+    }
+  }
 
   // Request the blob from the server
   auto& client = internal::Network::Get(connectionId);
@@ -104,7 +122,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
     } else if (response->nBlobs == 1) {
       // Server has responded with a newer version of the blob, or we don't have it in our cache yet
       auto& blobData = *response->begin();
-      auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId);
+      auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction->id);
       return cachedBlob.Data();
     } else {
       assert(false); // server repsonsed with an illegal number of blobs!
@@ -120,12 +138,13 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
         throw Exception("internal error: Database not opened!");
 
       case network::message::BlobsReadResponse::Result::LOCK_TIMEOUT:
-        TODO("somehow add more detail to this response... or should we return a different message for this error?")
-        throw Exception("Lock timeout while waiting to lock!");
+        TODO("somehow add more detail to this error...");
+        throw exception::LockTimeout();
 
       case network::message::BlobsReadResponse::Result::DEADLOCK:
-        TODO("somehow add more detail to this response... or should we return a different message for this error?")
-        throw Exception("Deadlock occurred while waiting for lock!");
+        Transaction::AbortDeadlock();
+        TODO("somehow add more detail to this error...")
+        throw exception::Deadlock();
 
       default:
         throw Exception("Server sent unknown result code!");
@@ -139,8 +158,11 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
 
 
 void Database::Close() {
-  auto& client = internal::Network::Get(connectionId);
+  if (Transaction::IsRunning()) {
+    throw exception::DbCloseDuringTxn(name);
+  }
 
+  auto& client = internal::Network::Get(connectionId);
   client.SendDatabaseClose(id);
   auto message = internal::Network::AwaitMessage(client);
   if (auto confirmation = message.Get<network::message::DatabaseClose>()) {
