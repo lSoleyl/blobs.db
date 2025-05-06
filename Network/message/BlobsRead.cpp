@@ -6,8 +6,8 @@ namespace network {
 namespace message {
 
 
-BlobsRead::BlobsRead(database_id databaseId, uint8_t nBlobsRequested, bool writeLock) :
-  Message(sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress), BlobsRead::type), databaseId(databaseId), nBlobsRequested(nBlobsRequested), writeLock(writeLock) {}
+BlobsRead::BlobsRead(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode) :
+  Message(sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress), BlobsRead::type), databaseId(databaseId), nBlobsRequested(nBlobsRequested), lockMode(lockMode) {}
 
 BlobsRead::BlobAddress* BlobsRead::begin() {
   return reinterpret_cast<BlobAddress*>(reinterpret_cast<uint8_t*>(this) + sizeof(BlobsRead));
@@ -25,9 +25,18 @@ const BlobsRead::BlobAddress* BlobsRead::end() const {
 }
 
 
-MessagePointer_T<BlobsRead> BlobsRead::Create(database_id databaseId, uint8_t nBlobsRequested, bool writeLock) {
+MessagePointer_T<BlobsRead> BlobsRead::Create(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode) {
   auto messageSize = sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress);
-  return MessagePointer_T<BlobsRead>(new (new char[messageSize]) BlobsRead(databaseId, nBlobsRequested, writeLock));
+  return MessagePointer_T<BlobsRead>(new (new char[messageSize]) BlobsRead(databaseId, nBlobsRequested, lockMode));
+}
+
+
+std::ostream& operator<<(std::ostream& out, BlobsRead::LockMode mode) {
+  switch (mode) {
+    case BlobsRead::LockMode::Read: return out << "read";
+    case BlobsRead::LockMode::Write: return out << "write";
+    case BlobsRead::LockMode::Delete: return out << "delete";
+  }
 }
 
 
@@ -35,7 +44,7 @@ std::ostream& operator<<(std::ostream& out, const BlobsRead& message) {
   out
     << message.type << "(db=" << message.databaseId << ", n=" << message.nBlobsRequested
     << ", blob[0]=" << *message.begin() << '@' << message.begin()->ifCommitIdHigher
-    << ", write=" << std::boolalpha << message.writeLock << ')';
+    << ", write=" << message.lockMode << ')';
 
   return out;
 }

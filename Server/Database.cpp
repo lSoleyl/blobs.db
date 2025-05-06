@@ -39,7 +39,7 @@ Segment* Database::GetSegment(segment_id segment) {
 
 bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   auto client = message.clientId;
-  bool write = message.writeLock;
+  bool write = (message.lockMode != network::message::BlobsRead::LockMode::Read);
 
   bool canAcquireLocks = std::all_of(message.begin(), message.end(), [=](const BlobLocation& location) {
     return CanClientAcquireLock(client, location, write);

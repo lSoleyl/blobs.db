@@ -135,8 +135,10 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
 
     if (client.AcquireLocks(message)) {
       // Locks successfully acquired (no conflicts) -> send response
-      if (requestedBlob.ifCommitIdHigher >= blob->commitId) {
-        // The client has the current version of the blob -> we can send an empty response
+      if (requestedBlob.ifCommitIdHigher >= blob->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+        // - The client has the current version of the blob 
+        // - Or the client requested the write locks only for deletion of the blobs
+        // --> In both cases we can simply send an empty response
         server.SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
       } else {
         // Client's blob is not up to date -> send the server's current version

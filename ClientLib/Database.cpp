@@ -89,7 +89,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
 
   // Request the blob from the server
   auto& client = internal::Network::Get(connectionId);
-  auto request = network::message::BlobsRead::Create(id, 1, writeLock);
+  auto request = network::message::BlobsRead::Create(id, 1, writeLock ? network::message::BlobsRead::LockMode::Write : network::message::BlobsRead::LockMode::Read);
   auto& address = *request->begin();
   address = location;
   address.ifCommitIdHigher = cachedBlob ? cachedBlob->lastUpdated : 0;
