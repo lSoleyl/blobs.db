@@ -29,7 +29,9 @@ BlobTooLarge::BlobTooLarge(size_t blobSize) : Exception(
   "which exceeds the maximum allowed blob size of " + std::to_string(blobs::constants::MaxBlobSize) + " bytes!",
   ExceptionCode::BlobTooLarge) {}
 
-}
+
+
+BlobDeleted::BlobDeleted() : Exception("Attempted to read/write a blob, which has been deleted in the current transaction", ExceptionCode::BlobDeleted) {}
 
 
 
@@ -37,4 +39,11 @@ BlobTooLarge::BlobTooLarge(size_t blobSize) : Exception(
 
 
 
-}
+
+
+
+
+
+
+
+}}

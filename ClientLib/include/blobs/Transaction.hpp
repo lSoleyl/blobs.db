@@ -1,6 +1,7 @@
 #pragma once
 #include "Config.hpp"
 #include <memory>
+#include <optional>
 
 
 namespace blobs {
@@ -55,8 +56,25 @@ public:
   /** Stores the specified blob data in the transaction's commit cache to transfer to the server upon transaction commit.
    *  The transaction copies the specified data into an internal buffer, so the blobData pointer doesn't have to stay valid 
    *  until the end of the transaction.
+   * 
+   * @throws exception::BlobDeleted when attempting to write blob data for a blob, which has already been deleted in this transaction
    */
   void WriteBlob(database_id dbId, const BlobLocation& location, const void* blobData, blob_size blobSize);
+
+
+  /** Marks a blob for deletion on transaction commit. After calling this method, the blob cannot be read or written anymore unless the
+   *  transaction is aborted.
+   */
+  void DeleteBlob(database_id dbId, const BlobLocation& location);
+
+
+  /** Reads the blob data from the transaction's write cache. If the blob has been written to in this transaction it will return 
+   *  the blob's content. Returns an empty optional if the blob has not been written to in this transaction.
+   *
+   * @throws exception::BlobDeleted when attempting to read a blob, which has been deleted in this transaction
+   */
+  std::optional<std::pair<const void* /*data*/, blob_size>> ReadBlob(database_id dbId, const BlobLocation& location) const;
+
 
   /** Each transaction has an id, which is counted up. This is not the same as the commit id of the server, which is stored in the blobs.
    *  This id is only used to determine, whether a cached blob has been read in the current transaction or a previous one.

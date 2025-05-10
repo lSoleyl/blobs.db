@@ -89,8 +89,12 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   auto transaction = Transaction::Get(true);
 
   BlobLocation location(segment, cluster, blob);
-  TODO("Fist check the transaction cache! Maybe we already called WriteBlob for that blob in that case we want to return the last written data!");
 
+  // First check whether we have already written this blob in the current transaction and return the written data if so
+  // This will also ensure that we don't read an already deleted blob and throw an exception if so
+  if (auto blobContent = transaction->ReadBlob(id, location)) {
+    return *blobContent;
+  }
 
   auto cachedBlob = cache->Get(location);
 
@@ -118,9 +122,6 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   // Wait for the response and handle it
   auto response = internal::Network::ExpectMessage<network::message::BlobsReadResponse>(client);
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
-    TODO("If we only acquire a Delete lock or the blob didn't change since the last transaction, then the server will respond with fewer blobs than requested!");
-    TODO("If the server responds with fever blobs than requested, we still have to register the acquired locks in the transaction")
-
     if (cachedBlob && response->nBlobs == 0) {
       // Our cached blob is up to date, but we still successfully acquired the lock -> notify the transaction of the lock
       transaction->AcquiredLock(id, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
@@ -155,14 +156,38 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
   auto transaction = Transaction::Get(true);
   BlobLocation location(segment, cluster, blob);
 
+
   if (transaction->GetLockType(id, location) != Transaction::LockMode::Write) {
     // We don't have the write lock yet -> acquire it
     // Since we want to write the blob, we don't have to read the content, we just want the write lock
     WriteLockNoContent(location);
   }
 
+  // Store the new blob data for the transaction commit in the transaction state.
+  // The following call will throw an exception if we attempt to write a blob, which has been deleted in this transaction.
   transaction->WriteBlob(id, location, blobData, static_cast<blob_size>(blobSize));
 }
+
+
+
+void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) {
+  // Get the currently running transaction or start a new one if no is running yet
+  auto transaction = Transaction::Get(true);
+  BlobLocation location(segment, cluster, blob);
+
+  // Acquire a write lock for deletion of the blob if we don't already hold one.
+  if (transaction->GetLockType(id, location) != Transaction::LockMode::Write) {
+    WriteLockNoContent(location); // no need to fetch the blob content -> we delete the blob anyway
+  }
+
+  TODO("Remove the blob from our local blob cache");
+
+  transaction->DeleteBlob(id, location);
+}
+
+
+
+
 
 
 

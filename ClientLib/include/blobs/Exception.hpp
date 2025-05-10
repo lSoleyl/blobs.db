@@ -12,6 +12,7 @@ enum class ExceptionCode {
   LockTimeout,      // Lock timeout while waiting for attempting to read/write lock a blob
   Deadlock,         // Deadlock while attempting to read/write a blob
   BlobTooLarge,     // Attempted to write a blob, which is too large to write into the database
+  BlobDeleted,      // Attempted to read/write a blob, which has been deleted in the current transaction
 };
 
 
@@ -53,6 +54,13 @@ class BlobTooLarge : public Exception {
 public:
   BlobTooLarge(size_t blobSize);
 };
+
+
+class BlobDeleted : public Exception {
+public:
+  BlobDeleted();
+};
+
 
 }
 

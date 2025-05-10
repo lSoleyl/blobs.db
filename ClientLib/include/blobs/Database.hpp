@@ -43,20 +43,26 @@ public:
    *  returned without asking the server.
    *  The returned memory is pointing to the client's blob cache. To reference it safely, it should be copied out of the cache as soon as the
    *  call returns and it should never be written to. Use ReadString()/ReadVector() instead for more convenient data access.
+   * 
+   * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
   BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false);
 
 
-
   /** This method starts a transaction if not already started, acquires a write lock for the specified location (if not already done) and
    *  stores the data to write into the transaction's commit cache.
+   * 
+   * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
   BLOBS_EXPORT void WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
 
+  /** This method deletes a blob from the database, which is not the same as overwriting it with an empty blob.
+   *  After a blob has been deleted, it can never be read/written again.
+   */
+  BLOBS_EXPORT void DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob);
 
-
-  TODO("Implement DeleteBlob()");
-  TODO("Implement CreateBlob(seg,cluster)");
+  
+  TODO("Implement CreateBlob(seg,cluster) -> blob_id");
 
 
 
