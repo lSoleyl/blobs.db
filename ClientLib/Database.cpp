@@ -89,6 +89,9 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   auto transaction = Transaction::Get(true);
 
   BlobLocation location(segment, cluster, blob);
+  TODO("Fist check the transaction cache! Maybe we already called WriteBlob for that blob in that case we want to return the last written data!");
+
+
   auto cachedBlob = cache->Get(location);
 
   if (cachedBlob->transactionId == transaction->id) {
@@ -97,11 +100,10 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
     if (currentLock >= (writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read)) {
       // Our current lock is already sufficient to fullfill the request -> return the cached blob content
       return cachedBlob->Data();
-    } else {
-      TODO(
-        "If we only want to upgrade a lock, then we don't have to re-request the blob's content, because we already know it as we already hold a read lock"
-        " and nobody can simply change the blob content while we hold this read lock"
-      );
+    } else if (currentLock == Transaction::LockMode::Read) {
+      // We want to upgrade our read lock to a write lock -> upgrade the lock and return the cached blob content
+      WriteLockNoContent(location);
+      return cachedBlob->Data();
     }
   }
 
@@ -116,44 +118,52 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   // Wait for the response and handle it
   auto response = internal::Network::ExpectMessage<network::message::BlobsReadResponse>(client);
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
+    TODO("If we only acquire a Delete lock or the blob didn't change since the last transaction, then the server will respond with fewer blobs than requested!");
+    TODO("If the server responds with fever blobs than requested, we still have to register the acquired locks in the transaction")
+
     if (cachedBlob && response->nBlobs == 0) {
-      // Our cached blob is up to date
+      // Our cached blob is up to date, but we still successfully acquired the lock -> notify the transaction of the lock
+      transaction->AcquiredLock(id, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
       return cachedBlob->Data();
     } else if (response->nBlobs == 1) {
       // Server has responded with a newer version of the blob, or we don't have it in our cache yet
       auto& blobData = *response->begin();
       auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction->id);
+      transaction->AcquiredLock(id, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
       return cachedBlob.Data();
     } else {
       assert(false); // server repsonsed with an illegal number of blobs!
     }
   } else {
-    // Error Response
-    switch (response->result) {
-      case network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST:
-        throw Exception("Requested blob does not exist!");
-
-      case network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED:
-        // This should never happen unless the client lib doesn't track database open/closes correctly
-        throw Exception("internal error: Database not opened!");
-
-      case network::message::BlobsReadResponse::Result::LOCK_TIMEOUT:
-        TODO("somehow add more detail to this error...");
-        throw exception::LockTimeout();
-
-      case network::message::BlobsReadResponse::Result::DEADLOCK:
-        Transaction::AbortDeadlock();
-        TODO("somehow add more detail to this error...")
-        throw exception::Deadlock();
-
-      default:
-        throw Exception("Server sent unknown result code!");
-    }
+    // Handle error response
+    HandleReadBlobErrorResponse(*response);
   }
 
   // not reached
   return std::make_pair(nullptr, 0);
 }
+
+
+
+void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
+  if (blobSize > constants::MaxBlobSize) {
+    // Make sure, the client cannot write blobs, which are larger than the supported maximum
+    throw exception::BlobTooLarge(blobSize);
+  }
+
+  // Get the currently running transaction or start a new one if no is running yet
+  auto transaction = Transaction::Get(true);
+  BlobLocation location(segment, cluster, blob);
+
+  if (transaction->GetLockType(id, location) != Transaction::LockMode::Write) {
+    // We don't have the write lock yet -> acquire it
+    // Since we want to write the blob, we don't have to read the content, we just want the write lock
+    WriteLockNoContent(location);
+  }
+
+  transaction->WriteBlob(id, location, blobData, static_cast<blob_size>(blobSize));
+}
+
 
 
 
@@ -177,5 +187,63 @@ void Database::Close() {
 
   delete this;
 }
+
+
+
+
+
+
+
+void Database::WriteLockNoContent(const BlobLocation& location) {
+  // Create the request for this blob
+  auto transaction = Transaction::Get(true);
+  auto& client = internal::Network::Get(connectionId);
+  auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
+  auto& address = *request->begin();
+  address = location;
+
+  // Send it and await the server's response
+  client.SendMessageToServer(std::move(request));
+  auto response = internal::Network::ExpectMessage<network::message::BlobsReadResponse>(client);
+  
+  // Handle response
+  if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
+    assert(response->nBlobs == 0); // The server should never respond with a blob to a Delete request
+    // Nothing to enter into the cache, but update the held lock type in the transaction
+    transaction->AcquiredLock(id, location, Transaction::LockMode::Write);
+  } else {
+    // Handle error response
+    HandleReadBlobErrorResponse(*response);
+  }
+}
+
+
+
+void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResponse& response) {
+  assert(response.result != network::message::BlobsReadResponse::Result::SUCCESS);
+
+  switch (response.result) {
+    case network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST:
+      throw Exception("Requested blob does not exist!");
+
+    case network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED:
+      // This should never happen unless the client lib doesn't track database open/closes correctly
+      throw Exception("internal error: Database not opened!");
+
+    case network::message::BlobsReadResponse::Result::LOCK_TIMEOUT:
+      TODO("somehow add more detail to this error...");
+      throw exception::LockTimeout();
+
+    case network::message::BlobsReadResponse::Result::DEADLOCK:
+      Transaction::AbortDeadlock();
+      TODO("somehow add more detail to this error...")
+        throw exception::Deadlock();
+
+    default:
+      throw Exception("Server sent unknown result code!");
+  }
+}
+
+
 
 }

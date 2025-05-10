@@ -75,8 +75,24 @@ Transaction::LockMode Transaction::GetLockType(database_id dbId, const BlobLocat
   return LockMode::None;
 }
 
+void Transaction::AcquiredLock(database_id dbId, const BlobLocation& location, LockMode lock) {
+  assert(lock != LockMode::None); // Why would anyone call it like this!?
+  auto& dbLocks = state->heldLocks[dbId];
+  
+  // We simply insert without checking for any invariants. Having both a write and read lock will be recognized as simply
+  // having a write lock by GetLockType() we thus don't have to worry about removing a read lock when upgrading to a write lock
+  if (lock == LockMode::Read) {
+    dbLocks.read.insert(location);
+  } else if (lock == LockMode::Write) {
+    dbLocks.write.insert(location);
+  }
+}
 
 
+
+void Transaction::WriteBlob(database_id dbId, const BlobLocation& location, const void* blobData, blob_size blobSize) {
+  TODO("Store the blob data in the internal transaction state for commit");
+}
 
 
 

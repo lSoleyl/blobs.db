@@ -6,6 +6,11 @@
 #include <vector>
 
 namespace blobs {
+struct BlobLocation;
+namespace network::message { 
+  struct BlobsReadResponse;
+}
+
 
 class Database {
 public:
@@ -41,8 +46,19 @@ public:
    */
   BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false);
 
-  TODO("Implement WriteBlob()")
-  TODO("Implement DeleteBlob()")
+
+
+  /** This method starts a transaction if not already started, acquires a write lock for the specified location (if not already done) and
+   *  stores the data to write into the transaction's commit cache.
+   */
+  BLOBS_EXPORT void WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
+
+
+
+  TODO("Implement DeleteBlob()");
+  TODO("Implement CreateBlob(seg,cluster)");
+
+
 
   /** Closes the connection to this database and deletes this object.
    */
@@ -51,6 +67,15 @@ public:
   class BlobCache;
 
 private:
+  /** This internal helper method will acquire/upgrade to a write lock without requesting the blob's contents.
+   */
+  void WriteLockNoContent(const BlobLocation& location);
+
+  /** Performs error handling when reading blobs, which just comes down to dispatching the correct exception and sometimes aborting a running transaction
+   */
+  void HandleReadBlobErrorResponse(const network::message::BlobsReadResponse& response);
+
+
   Database(std::string name, database_id id, connection_id connectionId);
   Database(const Database&) = delete;
   ~Database();

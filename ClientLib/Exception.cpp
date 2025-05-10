@@ -24,6 +24,11 @@ LockTimeout::LockTimeout() : Exception("Waiting for a lock timed out", Exception
 Deadlock::Deadlock() : Exception("Deadlock situation occurred while attemting to lock a blob", ExceptionCode::Deadlock) {}
 
 
+BlobTooLarge::BlobTooLarge(size_t blobSize) : Exception(
+  "Attempted to write blob of " + std::to_string(blobSize) + " bytes, "
+  "which exceeds the maximum allowed blob size of " + std::to_string(blobs::constants::MaxBlobSize) + " bytes!",
+  ExceptionCode::BlobTooLarge) {}
+
 }
 
 

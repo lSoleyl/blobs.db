@@ -45,6 +45,19 @@ public:
    */
   LockMode GetLockType(database_id dbId, const BlobLocation& location) const;
 
+  /** Stores the acquired lock type for the specified blob in this transaction. This method must be internally called to
+   *  correctly keep track of all currently held locks. This method ensures that locking invariants are followed. 
+   *  Calling AcquiredLock() with a read lock after already calling it with a write lock will not downgrade the existing lock.
+   */
+  void AcquiredLock(database_id dbId, const BlobLocation& location, LockMode lock);
+
+
+  /** Stores the specified blob data in the transaction's commit cache to transfer to the server upon transaction commit.
+   *  The transaction copies the specified data into an internal buffer, so the blobData pointer doesn't have to stay valid 
+   *  until the end of the transaction.
+   */
+  void WriteBlob(database_id dbId, const BlobLocation& location, const void* blobData, blob_size blobSize);
+
   /** Each transaction has an id, which is counted up. This is not the same as the commit id of the server, which is stored in the blobs.
    *  This id is only used to determine, whether a cached blob has been read in the current transaction or a previous one.
    */
