@@ -2,6 +2,7 @@
 #include "Config.hpp"
 #include <memory>
 #include <optional>
+#include <map>
 
 
 namespace blobs {
@@ -10,7 +11,7 @@ struct BlobLocation;
 /** Instances of this class represent a single global transaction.
  */
 class Transaction {
-  Transaction();
+  Transaction(connection_id connectionId);
 public:
   /** Returns true if a transaction is currently in progress
    */
@@ -27,17 +28,19 @@ public:
   BLOBS_EXPORT static bool Abort();
 
 
-  /** This function is called if a transaction is aborted by the server because of a deadlock.
-   *  The client will obviously not inform the server about that
+  /** This method is called if a transaction is aborted by the server because of a deadlock.
+   *  The client will obviously not inform the server about that. But if the client has connections to 
+   *  other servers, they will be informed about the transaction abort.
+   *  After calling this method, the transaction object doesn't exist anymore.
    */
-  static void AbortDeadlock();
+  void AbortDeadlock();
 
   /** Returns the currently running transaction or nullptr if no transaction is running.
    *  This is only used from within the ClientLib itself
    *
    * @param startIfNotActive if true implicitly starts a new transaction if now transaction is already running
    */
-  static Transaction* Get(bool startIfNotActive = false);
+  static Transaction* Get(connection_id connectionId, bool startIfNotActive);
 
 
   enum class LockMode { None, Read, Write };
@@ -82,7 +85,7 @@ public:
   const uint64_t id;
 private:
 
-  static std::unique_ptr<Transaction> current; // the currently active transaction
+  static std::map<connection_id, Transaction> active; // the currently active transactions (up to one per server connection)
   static uint64_t nextId;
 
   // I am not very fond of this additional indirection, but it is the best way to keep the whole implementation details from the client
@@ -90,7 +93,7 @@ private:
   struct State;
   std::unique_ptr<State> state; // The transaction state (held locks, outstanding writes)
 
-  TODO("Add the blobs, which have been written/deleted and should be written back upon a commit")
+  const connection_id connectionId;
 };
 
 

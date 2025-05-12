@@ -2,6 +2,9 @@
 #include <blobs/Transaction.hpp>
 #include <blobs/Exception.hpp>
 #include <common/BlobLocation.hpp>
+#include <internal/Network.hpp>
+#include <network/message/All.hpp>
+#include <network/Client.hpp>
 
 #include <set>
 #include <map>
@@ -23,17 +26,17 @@ struct Transaction::State {
 };
 
 uint64_t Transaction::nextId = 0;
-std::unique_ptr<Transaction> Transaction::current;
+std::map<connection_id, Transaction> Transaction::active;
 
-Transaction::Transaction() : id(nextId++), state(new State) {}
+Transaction::Transaction(connection_id connectionId) : id(nextId++), state(new State), connectionId(connectionId) {}
 
 
 bool Transaction::IsRunning() {
-  return !!current;
+  return !active.empty();
 }
 
 bool Transaction::Commit() {
-  if (!current) {
+  if (!IsRunning()) {
     return false;
   }
 
@@ -47,26 +50,49 @@ bool Transaction::Commit() {
 
 
 bool Transaction::Abort() {
-  if (!current) {
+  if (!IsRunning) {
     return false;
   }
 
-  TODO("Implement abort");
+  // Send a transaction abort message to all server connections where we have active connections
+  for (auto& [connectionId, transaction] : active) {
+    auto& client = internal::Network::Get(connectionId);
+    client.SendMessageToServer(network::message::TransactionAbort::Create());
+  }
+
+  // Then delete all transaction state to prevent any future commit if the aborted transaction
+  active.clear();
+
+  
+  // We don't expect a confirmation from the server for a transaction abort message, which is fine since
+  // the server won't randomly drop messages or receive them out of order.
+  return true;
 }
 
 
 void Transaction::AbortDeadlock() {
-  // Simply delete this transaction to clear up all locks and scheduled writes.
-  Transaction::current.reset();
+  // Notify all other database servers with active connections to abort them
+  for (auto& [connectionId, transaction] : active) {
+    if (connectionId != this->connectionId) {
+      auto& client = internal::Network::Get(connectionId);
+      client.SendMessageToServer(network::message::TransactionAbort::Create());
+      // We don't expect any response to the abort message there is nothing to wait for
+    }
+  }
+
+  // Finally clear all transaction state (This will delete `this`!)
+  Transaction::active.clear();
 }
 
 
-Transaction* Transaction::Get(bool startIfNotActive) {
-  if (!current && startIfNotActive) {
-    current.reset(new Transaction);
+Transaction* Transaction::Get(connection_id connectionId, bool startIfNotActive) {
+  auto pos = active.find(connectionId);
+
+  if (pos == active.end() && startIfNotActive) {
+    pos = active.emplace(connectionId, Transaction(connectionId)).first;
   }
 
-  return current.get();
+  return (pos != active.end()) ? &pos->second : nullptr;
 }
 
 

@@ -54,7 +54,7 @@ database_id Client::GetMaxDatabaseId() const {
   return openDatabases.empty() ? 0 : static_cast<database_id>(openDatabases.size() - 1);
 }
 
-void Client::AbortTransaction() {
+bool Client::AbortTransaction() {
   if (transaction != Transaction::None) { // Nothing to do if no transaction is in progress
 
     // Release the locks held in all databases
@@ -68,7 +68,10 @@ void Client::AbortTransaction() {
 
     // Mark the transaction as gone
     transaction = Transaction::None;
+    return true;
   }
+
+  return false;
 }
 
 

@@ -40,6 +40,11 @@ public:
     return cachedBlob;
   }
 
+  /** Simply removes a cached blob location from the blob cache
+   */
+  void Delete(const BlobLocation& location) {
+    cache.erase(location);
+  }
 
 private:
   std::unordered_map<BlobLocation, CachedBlob> cache;
@@ -86,7 +91,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   TODO("Add synchronization: Only one thread may communicate with the database at any given time.");
 
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(true);
+  auto transaction = Transaction::Get(connectionId, true);
 
   BlobLocation location(segment, cluster, blob);
 
@@ -153,7 +158,7 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
   }
 
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(true);
+  auto transaction = Transaction::Get(connectionId, true);
   BlobLocation location(segment, cluster, blob);
 
 
@@ -172,7 +177,7 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
 
 void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) {
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(true);
+  auto transaction = Transaction::Get(connectionId, true);
   BlobLocation location(segment, cluster, blob);
 
   // Acquire a write lock for deletion of the blob if we don't already hold one.
@@ -180,9 +185,11 @@ void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) 
     WriteLockNoContent(location); // no need to fetch the blob content -> we delete the blob anyway
   }
 
-  TODO("Remove the blob from our local blob cache");
-
+  // Mark the blob for deletion upon transaction commit
   transaction->DeleteBlob(id, location);
+
+  // Remove the blob from our blob cache
+  cache->Delete(location);
 }
 
 
@@ -221,7 +228,7 @@ void Database::Close() {
 
 void Database::WriteLockNoContent(const BlobLocation& location) {
   // Create the request for this blob
-  auto transaction = Transaction::Get(true);
+  auto transaction = Transaction::Get(connectionId, true);
   auto& client = internal::Network::Get(connectionId);
   auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
   auto& address = *request->begin();
@@ -260,9 +267,17 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
       throw exception::LockTimeout();
 
     case network::message::BlobsReadResponse::Result::DEADLOCK:
-      Transaction::AbortDeadlock();
-      TODO("somehow add more detail to this error...")
-        throw exception::Deadlock();
+      if (auto transaction = Transaction::Get(connectionId, false)) {
+        // Delete the currently running transaction and if we are connected to other servers -> notify them about the transaction abort of this client
+        transaction->AbortDeadlock();
+      } else {
+        // I cannot reall imagine a valid scenario, where the client has no transaction for a connection and recieves a BlobsReadResponse.
+        // Because reads are performed in a strict serial order, it cannot be a timing issue of one server triggering a deadlock abort and
+        // the other server responding to a previous request not yet knowing about the abort.
+        assert(false);
+      }
+      TODO("somehow add more detail to this error...");
+      throw exception::Deadlock();
 
     default:
       throw Exception("Server sent unknown result code!");

@@ -36,8 +36,10 @@ public:
   database_id GetMaxDatabaseId() const;
 
   /** Aborts the client's current transaction and releases all held locks
+   *  
+   * @return true if there was actually a transaction running for that client
    */
-  void AbortTransaction();
+  bool AbortTransaction();
 
 
   /** Tries to acquire all locks specified in the message in the database specified in the message.

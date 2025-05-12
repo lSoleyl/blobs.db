@@ -17,7 +17,7 @@ public:
    */
   static connection_id Get(std::string_view connectionString);
 
-  /** When a connection retrieved through Get() is no longer needed, Release should be called to close it once
+  /** When a connection retrieved through Get(connectionString) is no longer needed, Release should be called to close it once
    *  the last user releases it.
    */
   static void Release(connection_id connectionId);

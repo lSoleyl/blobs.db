@@ -167,10 +167,13 @@ void Server::LogMessage(const network::message::Message& message) {
 
 void Server::AbortTransaction(client_id clientId) {
   auto& client = server::Client::Get(clientId);
-  client.AbortTransaction();
+  if (client.AbortTransaction()) {
+    // We actually aborted a running transaction.
 
-  // Now try to process any outstanding reads
-  ClientTransactionEnded(client);
+    // Now try to process any outstanding reads
+    ClientTransactionEnded(client);
+  }
+  // else simply ignore transaction abort if the client had no transaction running... malicious or confused client?
 }
 
 
