@@ -36,8 +36,6 @@ public:
     return std::vector<T>(static_cast<const T*>(data), static_cast<const T*>(data) + (size / sizeof(T)));
   }
 
-
-
   /** Read a blob with internal caching, which means that the client will ask the server to not resend the blob
    *  if the blob didn't change since the last transaction and if we are in the same transaction then the blob is simply
    *  returned without asking the server.
@@ -56,14 +54,18 @@ public:
    */
   BLOBS_EXPORT void WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
 
+  /** Creates a new blob in the specified cluster and writes the passed data into it and then returns the id of the newly created blob.
+   *  Only the first call to CreateBlob() for a given cluster inside a transaction will require server communication. All further 
+   *  calls will be processed on the client only.
+   * 
+   * @throws exception::BlobLimitReached if no more blobs can be created in the specified cluster
+   */
+  BLOBS_EXPORT blob_id CreateBlob(segment_id segment, cluster_id cluster, const void* blobData, size_t blobSize);
+
   /** This method deletes a blob from the database, which is not the same as overwriting it with an empty blob.
    *  After a blob has been deleted, it can never be read/written again.
    */
   BLOBS_EXPORT void DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob);
-
-  
-  TODO("Implement CreateBlob(seg,cluster) -> blob_id");
-
 
 
   /** Closes the connection to this database and deletes this object.
@@ -73,6 +75,13 @@ public:
   class BlobCache;
 
 private:
+  /** Just creates the new blob without writing data into. After creation the client will be considered holding a write lock on that blob.
+   *  This method can be called multiple times in a single transaction and only the first call (for this cluster) will actually require communication
+   *  with the database server to facilitate efficient creation of multiple blobs in a single transaction.
+   */
+  blob_id CreateBlobInternal(segment_id segment, cluster_id cluster);
+
+
   /** This internal helper method will acquire/upgrade to a write lock without requesting the blob's contents.
    */
   void WriteLockNoContent(const BlobLocation& location);

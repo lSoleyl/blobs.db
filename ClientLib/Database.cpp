@@ -174,6 +174,22 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
 }
 
 
+blob_id Database::CreateBlob(segment_id segment, cluster_id cluster, const void* blobData, size_t blobSize) {
+  // We perform this size check before actually creating the blob or else the exception is thrown after the blob 
+  // has already been logically created, so we sadly have to perform this size check twice, but the alternative would be worse.
+  if (blobSize > constants::MaxBlobSize) {
+    throw exception::BlobTooLarge(blobSize);
+  }
+
+  // Create the new blob and directly write the data into it
+  auto blobId = CreateBlobInternal(segment, cluster);
+  WriteBlobInternal(segment, cluster, blobId, blobData, blobSize);
+
+  // Finally return the blob id to the caller so he knows, which blob has been created.
+  return blobId;
+}
+
+
 
 void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) {
   // Get the currently running transaction or start a new one if no is running yet
@@ -223,7 +239,30 @@ void Database::Close() {
 
 
 
+blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
+  // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster and
+  // also tell us the next blob id to use.
+  auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, true);
+  assert(size == sizeof(blob_id)); // This blob only consists of the blob_id value
 
+  BlobLocation newLocation(segment, cluster, *static_cast<const blob_id*>(data));
+  if (newLocation.blob > constants::MaxBlobId) {
+    // Cluster is full, no more blobs an be created
+    throw exception::BlobLimitReached(segment, cluster);
+  }
+
+  // Update the NextFreeBlobId blob
+  blob_id nextBlobId = newLocation.blob + 1;
+  WriteBlobInternal(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
+
+  // The blob is now logically created, so we also implicitly hold a write lock to it
+  auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction if not already
+  transaction->AcquiredLock(id, newLocation, Transaction::LockMode::Write);
+
+  // Now we logically created the blob and we implicitly created the write lock, now the caller just has to actually write some
+  // blob data for this blob or else it won't actually be created on transaction commit.
+  return newLocation.blob;
+}
 
 
 void Database::WriteLockNoContent(const BlobLocation& location) {
@@ -253,6 +292,8 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
 
 void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResponse& response) {
   assert(response.result != network::message::BlobsReadResponse::Result::SUCCESS);
+
+  TODO("Define separate errors for SEGMENT_DOES_NOT_EXIST, CLUSTER_DOES_NOT_EXIST, BLOB_DOES_NOT_EXIST for better error handling");
 
   switch (response.result) {
     case network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST:

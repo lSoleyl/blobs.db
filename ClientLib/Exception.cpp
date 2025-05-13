@@ -34,7 +34,10 @@ BlobTooLarge::BlobTooLarge(size_t blobSize) : Exception(
 BlobDeleted::BlobDeleted() : Exception("Attempted to read/write a blob, which has been deleted in the current transaction", ExceptionCode::BlobDeleted) {}
 
 
-
+BlobLimitReached::BlobLimitReached(segment_id segment, cluster_id cluster) : Exception(
+  "Cannot create any more blobs in segment " + std::to_string(segment) + 
+  ", cluster " + std::to_string(cluster) + ". Blob limit reached."
+) {}
 
 
 
