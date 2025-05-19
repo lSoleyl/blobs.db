@@ -14,11 +14,19 @@ namespace network::message {
 
 class Database {
 public:
-  /** Opens a new database via the given connection string.
+  /** Opens a new database via the given connection string of the following form:
+   *  <host>[:<port>]/<dbName>
    */
-  BLOBS_EXPORT static Database* Open(const char* connectionString);
+  static Database* Open(std::string_view connectionString) {
+    return Open(connectionString.data(), connectionString.size());
+  }
 
-  
+  /** Opens a new database at the specified hostName with the given database name and optional port to use.
+   */
+  static Database* Open(std::string_view hostName, std::string_view databaseName, int port = 8108) {
+    return Open(hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), port);
+  }
+
 
   /** A convenience access method to blob data, which returns the blob as std::string.
    *  The method is implemented in the header and not exported to ensure the client can use any STL implementation he sees fit.
@@ -75,6 +83,17 @@ public:
   class BlobCache;
 
 private:
+  /** Private overload exported by the DLL and used by the std::string_view overload.
+   */
+  BLOBS_EXPORT static Database* Open(const char* connectionString, size_t connectionStringLen);
+
+
+  /** Private overload exported by the DLL and used by the std::string_view overload. 
+   *  We don't export string_view through the interface to avoid the risk of ABI incompatibilities
+   *  for classes like std::string and std::string_view
+   */
+  BLOBS_EXPORT static Database* Open(const char* hostName, size_t hostNameLen, const char* databaseName, size_t databaseNameLen, int port = 8108);
+
   /** Just creates the new blob without writing data into. After creation the client will be considered holding a write lock on that blob.
    *  This method can be called multiple times in a single transaction and only the first call (for this cluster) will actually require communication
    *  with the database server to facilitate efficient creation of multiple blobs in a single transaction.

@@ -13,9 +13,9 @@ namespace internal {
 class Network {
 public:
   /** Opens a new client connection and returns a client id, which can be used to reference this client or 
-   *  returns the id of an already existing connection if the connection string matches.
+   *  returns the id of an already existing connection if the connection parameters match.
    */
-  static connection_id Get(std::string_view connectionString);
+  static connection_id Get(std::string_view host, int port);
 
   /** When a connection retrieved through Get(connectionString) is no longer needed, Release should be called to close it once
    *  the last user releases it.
@@ -51,13 +51,10 @@ public:
 
 
 private:
-  /** Creates a new network client from the given connection string
-   */
-  static std::unique_ptr<network::Client> ClientFromConnectionString(std::string_view connectionString);
-
 
   struct Connection {
-    std::string connectionString;
+    std::string host;
+    int port;
     std::unique_ptr<network::Client> client;
     uint32_t useCount; // how many databases are using this connection right now
   };

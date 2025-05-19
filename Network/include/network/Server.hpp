@@ -19,7 +19,7 @@ class Server final : private IOCompletionHandler {
   public: 
     /** The constructor will immediately start listening
      */
-    Server(int listenPort);
+    Server(int listenPort = 8108);
     ~Server();
     // Server instance is not copyable
     Server(const Server&) = delete;

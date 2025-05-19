@@ -12,7 +12,7 @@ class Client;
 
 class Server {
 public:
-  Server(int port);
+  Server(int port = 8108);
 
   /** Main server network message processing loop.
    */

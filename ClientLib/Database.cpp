@@ -8,6 +8,8 @@
 #include <network/message/All.hpp>
 #include <common/BlobLocation.hpp>
 
+#include <charconv>
+
 namespace blobs {
 
 class Database::BlobCache {
@@ -18,7 +20,7 @@ public:
     uint64_t transactionId; // the id of the client transaction when this blobs was last written to the cache
     TODO("add some LRU counter to decache rarely used blobs and save memory?")
 
-    std::pair<const void*, blob_size> Data() const {
+      std::pair<const void*, blob_size> Data() const {
       return std::pair<const void*, blob_size>(data.data(), static_cast<blob_size>(data.size()));
     }
   };
@@ -59,12 +61,43 @@ Database::~Database() {
   delete cache;
 }
 
-Database* Database::Open(const char* connectionString) {
-  // Get the connection to the database server (open or reuse)
-  auto connectionId = internal::Network::Get(connectionString);
 
-  FIXME("the database name is obviously not the full connection string, but for now we can treat it like this")
-  std::string databaseName = connectionString;
+Database* Database::Open(const char* connectionStringBegin, size_t connectionStringLen) {
+  std::string_view connectionString(connectionStringBegin, connectionStringLen);
+
+  auto slashPos = connectionString.find('/');
+  if (slashPos == std::string_view::npos) {
+    // Database name is mandatory
+    throw Exception("No database name defined in connection string!");
+  }
+
+  auto hostName = connectionString.substr(0, slashPos); // everything up to but not including the '/'
+  auto databaseName = connectionString.substr(slashPos + 1); // everything following the '/'
+  int port = 8108; // default port (spells 'blob')
+
+  // Now look for a colon before the first slash (a colon following the slash will be ignored)
+  auto colonPos = hostName.find(':');
+  if (colonPos != std::string_view::npos) {
+    auto portString = hostName.substr(colonPos + 1); // everything following the ':'
+    hostName = hostName.substr(0, colonPos); // everything up to but not including the ':'
+    
+    auto result = std::from_chars(portString.data(), portString.data() + portString.size(), port);
+    if (result.ptr != portString.data() + portString.size()) {
+      throw Exception("Failed to parse '" + std::string(portString) + "' as port number!");
+    }
+  }
+
+  return Open(hostName, databaseName, port);
+}
+
+
+
+Database* Database::Open(const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, int port) {
+  std::string_view hostName(hostNameData, hostNameLen);
+  std::string_view databaseName(databaseNameData, databaseNameLen);
+
+  // Get the connection to the database server (open or reuse)
+  auto connectionId = internal::Network::Get(hostName, port);
 
   auto& client = internal::Network::Get(connectionId);
   client.SendDatabaseOpen(databaseName);
@@ -73,7 +106,7 @@ Database* Database::Open(const char* connectionString) {
   auto message = internal::Network::ExpectMessage<network::message::DatabaseOpenResponse>(client);
   
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
-    return new Database(databaseName, message->databaseId, connectionId);
+    return new Database(std::string(databaseName), message->databaseId, connectionId);
   } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_NOT_FOUND) {
     throw blobs::Exception("Database not found!");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {

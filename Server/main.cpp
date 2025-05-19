@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
   // But to do this, the server log would need to be stored separately from the databse
   // Alternatively process the transaction log when opening a database for the first time.
 
-  server::Server server(8888);
+  server::Server server;
   std::cout << "Server ready\n";
 
   server.ServerMain();
