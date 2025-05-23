@@ -103,4 +103,9 @@ bool Client::AcquireLocks(const network::message::BlobsRead& message) {
 }
 
 
+bool Client::CommitInProcess() const {
+  return !commitMessages.empty();
+}
+
+
 }}

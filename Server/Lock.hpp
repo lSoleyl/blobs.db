@@ -39,6 +39,10 @@ public:
    */
   bool Release(client_id client);
 
+
+  /** Returns true if the specified client holds a write lock
+   */
+  bool OwnsWriteLock(client_id client) const;
   
 private:
   const BlobLocation location;

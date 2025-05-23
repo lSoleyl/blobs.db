@@ -25,6 +25,7 @@ enum class Type : uint8_t {
   TransactionBegin,  // Only here for clients, which explcitily want to start a new transaction in a specific tranaction mode
   TransactionAbort,
   TransactionCommit, // Client transmits blobs in this message to the server (it has a continuation flag in case we need multiple messages)
+  TransactionCommitResponse, // Response sent by the server after processing a commit to notify about whether the commit was accepted or not
   TransactionSetMode, // Sets the default transaction mode (for a specified database) (regular/MVCC) for all implicitly started transactions
 
   ConnectionOpened, // internally used message to notify the server about a new client connection

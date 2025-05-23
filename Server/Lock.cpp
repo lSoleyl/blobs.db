@@ -75,6 +75,11 @@ bool Lock::Release(client_id client) {
   }
 }
 
+
+bool Lock::OwnsWriteLock(client_id client) const {
+  return write == client;
+}
+
 bool operator<(const BlobLocation& location, const Lock& lock) {
   return location < lock.location;
 }

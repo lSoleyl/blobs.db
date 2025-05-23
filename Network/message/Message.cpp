@@ -19,6 +19,7 @@ std::ostream& operator<<(std::ostream& out, Type type) {
     case Type::TransactionBegin: out << "TransactionBegin"; break;
     case Type::TransactionAbort: out << "TransactionAbort"; break;
     case Type::TransactionCommit: out << "TransactionCommit"; break;
+    case Type::TransactionCommitResponse: out << "TransactionCommitResponse"; break;
     case Type::TransactionSetMode: out << "TransactionSetMode"; break;
 
     case Type::ConnectionOpened: out << "ConnectionOpened"; break;
@@ -27,6 +28,7 @@ std::ostream& operator<<(std::ostream& out, Type type) {
 
     default: out << "???"; break;
   }
+
   return out;
 }
 
@@ -48,6 +50,8 @@ std::ostream& operator<<(std::ostream& out, const Message& message) {
     case Type::DatabaseClose: return out << static_cast<const DatabaseClose&>(message);
 
     case Type::BlobsRead: return out << static_cast<const BlobsRead&>(message);
+
+    case Type::TransactionCommitResponse: return out << static_cast<const TransactionCommitResponse&>(message);
 
     case Type::ConnectionOpened: return out << static_cast<const ConnectionOpened&>(message);
     case Type::NetworkException: return out << static_cast<const NetworkException&>(message);

@@ -17,6 +17,10 @@ void Server::ServerMain() {
     auto message = server.AwaitMessage();
     LogMessage(*message);
 
+    TODO("Determine the client of the message here already and unless it is ConnectionOpened, pass it to the Handle-Method");
+    TODO("Unless the message is ConnectionOpened, we can then check whether the client accepts the message.");
+    TODO("Alternatively we would have to implement that check in each Handle()-Method, which wouldn't be nice.");
+
     switch (message->type) {
       case network::message::Type::ConnectionOpened:
         HandleConnectionOpened(message.Cast<network::message::ConnectionOpened>());
@@ -41,6 +45,11 @@ void Server::ServerMain() {
       case network::message::Type::TransactionAbort:
         HandleTransactionAbort(message.Cast<network::message::TransactionAbort>());
         break;
+
+      case network::message::Type::TransactionCommit:
+        HandleTransactionCommit(message.Cast<network::message::TransactionCommit>());
+        break;
+
 
         //TODO: handle other messages
 
@@ -110,8 +119,119 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
 
 
 void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message) {
-  AbortTransaction(message->clientId);
+  AbortTransaction(server::Client::Get(message->clientId));
 }
+
+
+void Server::HandleTransactionCommit(network::MessagePointer_T<network::message::TransactionCommit> message) {
+  // For now only handle simple case with a single commit message
+  auto& client = server::Client::Get(message->clientId);
+
+  // To handle multi message commits we push the messages into a commit message vector, which will also
+  // make the server reject any other messages for this client.
+  client.commitMessages.push_back(std::move(message));
+
+  if (!client.commitMessages.back()->hasFollowMessage) {
+    // This is the final commit message in a list of commit messages -> validate the commit.
+    // We must only validate the commit messages AFTER we received every commit message of a multipart commit, because the client
+    // does not expect any response to partial commit messages, as this would only slow down the commit process when commiting to multiple
+    // databases at once.
+
+    auto result = ValidateCommitMessages(client);
+    if (result == network::message::TransactionCommitResponse::Result::SUCCESS) {
+      // Commit messages are valid
+      TODO("Post the commit messages into the transaction log");
+      TODO("Apply changes to the transient database state");
+      TODO("Update commitId members in all affected blobs... also the NextFreeBlobId blob!");
+
+
+      TODO("Determine the commit id (which is different per database... so we cannot just return one commit id in this message)");
+      commit_id commitId = 0;
+      server.SendMessageToClient(client.id, network::message::TransactionCommitResponse::Create(commitId));
+    } else {
+      // Commit not successful -> return error code to the client and abort its transaction commit (and active transaction)
+      server.SendMessageToClient(client.id, network::message::TransactionCommitResponse::CreateError(result));
+      AbortTransactionCommit(client);
+    }
+  }
+}
+
+namespace {
+  struct BlobLocationRange {
+    BlobLocation begin, end; // regular [begin;end) interval with exclusive end
+  };
+}
+
+
+
+network::message::TransactionCommitResponse::Result Server::ValidateCommitMessages(const blobs::server::Client& client) const {
+  using Result = network::message::TransactionCommitResponse::Result;
+
+  for (auto& messagePtr : client.commitMessages) {
+    auto& message = *messagePtr;
+    auto database = client.GetDatabase(message.databaseId);
+    if (!database) {
+      return Result::DATBASE_NOT_OPENED;
+    }
+
+    // In case the client created some blobs, this vector will be filled with ranges of created blobs
+    std::vector<BlobLocationRange> createdBlobs;
+
+    for (auto pos = message.begin(), end = message.end(); pos != end; ++pos) {
+      auto& location = *pos;
+      if (!database->ClientOwnsWriteLock(client.id, location)) {
+        // Client doesn't own a write lock for the committed blob. This is allowed if the client
+        // created the blob in this transaction by acquring a write lock to the NextFreeBlobId blob and
+        // updating the blob id there accordingly.
+
+        if (!std::any_of(createdBlobs.begin(), createdBlobs.end(), [&](const BlobLocationRange& range) { return range.begin <= location && location < range.end; })) {
+          // This blob has not been created in this transaction, which is not allowed.
+          // This is an illegal commit.
+          return Result::MISSING_WRITE_LOCK;
+        }
+      }
+
+
+      TODO("Check for NextFreeSegmentId and NextFreeClusterId first!");
+
+      if (location.blob == constants::NextFreeBlobId) {
+        // The client has created one or more new blobs in the specified cluster
+        if (auto segment = database->GetSegment(location.segment)) {
+          if (auto cluster = segment->GetCluster(location.cluster)) {
+            BlobLocationRange createRange;
+            createRange.begin = location; // slicing is expected here
+            createRange.begin.blob = cluster->GetNextFreeBlobId();
+
+            auto committedContent = pos.ReadData();
+
+            createRange.end = location; // slicing is expected here
+            
+            TODO("Validate that end.blob is not before begin.blob");
+            TODO("Validate that end.blob is a valid blob id <= MaxBlobId");
+
+            // Add the range to the list of created blobs to not fail our lock check for newly created blobs
+            createdBlobs.push_back(createRange);
+          } else {
+            // This should actually not happen, because the client cannot acquire a lock in a not existing cluster, right?
+            return Result::CLUSTER_DOES_NOT_EXIST;
+          }
+        } else {
+          // This should actually not happen, because the client cannot acquire a lock in a not existing segment, right?
+          return Result::SEGMENT_DOES_NOT_EXIST;
+        }
+      }
+    }
+  }
+
+
+  return Result::SUCCESS;
+}
+
+void Server::AbortTransactionCommit(blobs::server::Client& client) {
+  client.commitMessages.clear();
+  AbortTransaction(client);
+}
+
 
 
 bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
@@ -121,8 +241,6 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     server.SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED));
     return true;
   }
-
-  TODO("Handle special blob ids (blobId == constants::NextFreeBlobId)");
 
   if (message.nBlobsRequested == 1) {
     // Fast path: at most 1 blob needs to be sent to the client
@@ -148,7 +266,7 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
       }
       return true; // messages fully processed
     } else {
-      // We have conflicting lcoks
+      // We have conflicting locks
       return false;
     }
   } else {
@@ -165,8 +283,7 @@ void Server::LogMessage(const network::message::Message& message) {
 
 
 
-void Server::AbortTransaction(client_id clientId) {
-  auto& client = server::Client::Get(clientId);
+void Server::AbortTransaction(blobs::server::Client& client) {
   if (client.AbortTransaction()) {
     // We actually aborted a running transaction.
 

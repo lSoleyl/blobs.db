@@ -87,6 +87,9 @@
     <ClCompile Include="message\TransactionCommit.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
+    <ClCompile Include="message\TransactionCommitResponse.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -159,6 +162,9 @@
       <Filter>Headerdateien\common</Filter>
     </ClInclude>
     <ClInclude Include="include\network\message\TransactionCommit.hpp">
+      <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\TransactionCommitResponse.hpp">
       <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
   </ItemGroup>

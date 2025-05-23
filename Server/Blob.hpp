@@ -8,6 +8,27 @@ public:
   // Initialize an empty blob
   Blob(blob_id id, commit_id commitId = 1);
 
+  /** Sets the blobs content the specified (primitive value) by simply writing the value in memory representation into the data vector.
+   */
+  template<typename T>
+  void setContent(T value) {
+    auto begin = reinterpret_cast<uint8_t*>(&value);
+    auto end = begin + sizeof(value);
+    data.assign(begin, end);
+  }
+
+
+  template<typename T>
+  T readContent() const {
+    if (data.size() == sizeof(T)) {
+      return *reinterpret_cast<T*>(data.data());
+    } else {
+      // If the blob doesn't actually contain a valid T then we make no attempt at reading it
+      return T();
+    }
+  }
+
+
   const blob_id id;
   commit_id commitId; // id of commit/transaction when this blob was created/written
   std::vector<uint8_t> data;

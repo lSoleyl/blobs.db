@@ -53,6 +53,10 @@ bool TransactionCommit::BlobDataIterator::operator==(const BlobDataIterator& oth
   return header == other.header;
 }
 
+bool TransactionCommit::BlobDataIterator::operator!=(const BlobDataIterator& other) const {
+  return header != other.header;
+}
+
 std::string_view TransactionCommit::BlobDataIterator::ReadData() const {
   return std::string_view(dataPos, header->blobSize);
 }

@@ -17,9 +17,9 @@ public:
     "fetching is simply a memory lookup.We shouldn't block the server while watiting for the database to be fully loaded and ready."
   )
 
-    /** Fetch an already opened database or open the specified database
-     */
-    static Database& Get(std::string_view databaseName);
+  /** Fetch an already opened database or open the specified database
+    */
+  static Database& Get(std::string_view databaseName);
 
   /** Returns a blob from this database (if it exists)
    */
@@ -34,6 +34,11 @@ public:
    *             Therefore locks should always be acquired via Client::AcquireLocks(), which calls this method.
    */
   bool AcquireLocks(const network::message::BlobsRead& message);
+
+
+  /** Returns true if the specified client owns a write lock in this database for the specified location.
+   */
+  bool ClientOwnsWriteLock(client_id client, const BlobLocation& location) const;
 
 
   /** Queues a read operation for this database to be completed as soon as the conflicting locks are released.

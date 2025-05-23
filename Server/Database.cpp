@@ -33,6 +33,8 @@ Blob* Database::GetBlob(const BlobLocation& location) {
 
 
 Segment* Database::GetSegment(segment_id segment) {
+  TODO("Handle `NextFreeSegmentId` similar to Cluster");
+
   auto pos = segments.find(segment);
   return (pos != segments.end()) ? pos->second.get() : nullptr;
 }
@@ -55,6 +57,13 @@ bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   FIXME("what if the blobs we are trying to lock don't exist? This should be communicated back to the caller too!");
   return canAcquireLocks;
 }
+
+bool Database::ClientOwnsWriteLock(client_id client, const BlobLocation& location) const {
+  auto pos = locks.find(location);
+  return (pos != locks.end()) ? pos->OwnsWriteLock(client) : false;
+}
+
+
 
 bool Database::CanClientAcquireLock(client_id client, const BlobLocation& location, bool write) {
   TODO("Also handle special locking rules: When client attempts to lock cluster's blob table, no write locks on any blob may exist in that cluster!");

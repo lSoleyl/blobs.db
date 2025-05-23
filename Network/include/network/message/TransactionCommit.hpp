@@ -35,6 +35,7 @@ struct TransactionCommit : public Message {
     BlobData* operator->() const;
 
     bool operator==(const BlobDataIterator& other) const;
+    bool operator!=(const BlobDataIterator& other) const;
 
     std::string_view ReadData() const;
     void WriteData(std::string_view data);

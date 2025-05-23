@@ -30,6 +30,18 @@ private:
   void HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRead> message);
 
   void HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message);
+  void HandleTransactionCommit(network::MessagePointer_T<network::message::TransactionCommit> message);
+
+  /** Validates all commit message stored for that client and returns a result being either SUCCESS if the commit is
+   *  valid or holding the reason for why this commit failed.
+   */
+  network::message::TransactionCommitResponse::Result ValidateCommitMessages(const blobs::server::Client& client) const;
+
+  /** Abort a currently running transaction commit and the corresponding transaction. 
+   *  Either because the sent commit messages were invalid or because the client sent a wrong message during commit.
+   */
+  void AbortTransactionCommit(blobs::server::Client& client);
+  
 
   /** This method will attempt to acquire the locks for the requested pages and directly reply to the client upon success.
    *
@@ -37,8 +49,6 @@ private:
    *         false if the message couldn't be handled due to conflicting locks.
    */
   bool TryHandleBlobsRead(const network::message::BlobsRead& message);
-
-  
 
 
   /** Primitive logging of incoming messages.
@@ -48,7 +58,7 @@ private:
   /** Releases the client's locks from all opened databases and removes all queued read requests and
    *  checks whether any client can now satisfy his outstanding read requests.
    */
-  void AbortTransaction(client_id clientId);
+  void AbortTransaction(blobs::server::Client& clientId);
 
   /** Attempts to process as many queued read operations as possible for the specified database.
    */

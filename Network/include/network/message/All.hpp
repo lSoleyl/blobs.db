@@ -12,6 +12,7 @@
 
 #include "TransactionAbort.hpp"
 #include "TransactionCommit.hpp"
+#include "TransactionCommitResponse.hpp"
 
 #include "BlobsRead.hpp"
 #include "BlobsReadResponse.hpp"

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Database.hpp"
+#include <network/message/TransactionCommit.hpp>
 
 namespace blobs {
 namespace server {
@@ -50,7 +51,17 @@ public:
   bool AcquireLocks(const network::message::BlobsRead& message);
 
 
+  /** True if the client sent the first commit message, but not yet the final commit message.
+   */
+  bool CommitInProcess() const;
+
+
   const client_id id;
+
+  /** Commit messages for multi message commits are collected here, which also signifies a commit being in process and thus
+   *  the server will reject any non commit message.
+   */
+  std::vector<network::MessagePointer_T<network::message::TransactionCommit>> commitMessages;
 private:
   Client(client_id id);
 
