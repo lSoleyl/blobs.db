@@ -203,11 +203,23 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
             createRange.begin.blob = cluster->GetNextFreeBlobId();
 
             auto committedContent = pos.ReadData();
-
             createRange.end = location; // slicing is expected here
             
-            TODO("Validate that end.blob is not before begin.blob");
-            TODO("Validate that end.blob is a valid blob id <= MaxBlobId");
+            // Validate size of transmitted blob id blob
+            if (committedContent.size() != sizeof(blob_id)) {
+              // We expect exactly blob_id-bytes to be written, nothing more, nothing less!
+              return Result::ILLEGAL_NEXT_FREE_BLOB_ID;
+            }
+
+            // Validate range of transmitted blob id. It cannot be smaller than the previous value.
+            // An equal value is a bit weird, because the client decided to not create a new blob after all
+            // The maximum value is MaxBlobId+1, which is reached after the blob with id = MaxBlobId has been created to mark a full cluster.
+            auto newNextFreeId = *reinterpret_cast<const blob_id*>(committedContent.data());
+            if (newNextFreeId < cluster->GetNextFreeBlobId() || newNextFreeId > constants::MaxBlobId + 1) {
+              return Result::ILLEGAL_NEXT_FREE_BLOB_ID;
+            }
+
+            createRange.end.blob = newNextFreeId;
 
             // Add the range to the list of created blobs to not fail our lock check for newly created blobs
             createdBlobs.push_back(createRange);

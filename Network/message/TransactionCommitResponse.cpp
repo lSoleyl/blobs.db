@@ -19,13 +19,47 @@ MessagePointer TransactionCommitResponse::CreateError(Result result) {
 }
 
 std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& message) {
+  using Result = TransactionCommitResponse::Result;
   out << message.type << '(';
-  if (message.result == TransactionCommitResponse::Result::SUCCESS) {
-    out << "commitId=" << message.commitId;
-  } else if (message.result == TransactionCommitResponse::Result::DATBASE_NOT_OPENED) {
-    out << "DATBASE_NOT_OPENED";
-  } else {
-    assert(false); // missing stringification?
+  switch (message.result) {
+    case Result::SUCCESS:
+      out << "commitId=" << message.commitId;
+      break;
+
+    case Result::DATBASE_NOT_OPENED:
+      out << "DATBASE_NOT_OPENED";
+      break;
+
+    case Result::MISSING_WRITE_LOCK:
+      out << "MISSING_WRITE_LOCK";
+      break;
+
+    case Result::SEGMENT_DOES_NOT_EXIST:
+      out << "SEGMENT_DOES_NOT_EXIST";
+      break;
+
+    case Result::CLUSTER_DOES_NOT_EXIST:
+      out << "CLUSTER_DOES_NOT_EXIST";
+      break;
+
+    case Result::BLOB_DOES_NOT_EXIST:
+      out << "BLOB_DOES_NOT_EXIST";
+      break;
+
+    case Result::ILLEGAL_NEXT_FREE_BLOB_ID:
+      out << "ILLEGAL_NEXT_FREE_BLOB_ID";
+      break;
+
+    case Result::ILLEGAL_NEXT_FREE_CLUSTER_ID:
+      out << "ILLEGAL_NEXT_FREE_CLUSTER_ID";
+      break;
+
+    case Result::ILLEGAL_NEXT_FREE_SEGMENT_ID:
+      out << "ILLEGAL_NEXT_FREE_SEGMENT_ID";
+      break;
+
+    default:
+      assert(false);  // missing stringification?
   }
 
   return out << ')';

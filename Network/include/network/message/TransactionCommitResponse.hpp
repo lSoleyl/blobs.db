@@ -16,11 +16,14 @@ namespace message {
 struct TransactionCommitResponse : public Message {
   enum class Result : uint8_t {
     SUCCESS,
-    DATBASE_NOT_OPENED, // passed a database id, which the server doesn't recognize for this client
-    MISSING_WRITE_LOCK, // a blob has been committed without acquiring a write lock for it
-    SEGMENT_DOES_NOT_EXIST, // a segment specified in a blob commit does not exist
-    CLUSTER_DOES_NOT_EXIST, // a cluster specified in a blob commit does not exist
-    BLOB_DOES_NOT_EXIST     // a blob specified in a blob commit does not exist
+    DATBASE_NOT_OPENED,           // Passed a database id, which the server doesn't recognize for this client
+    MISSING_WRITE_LOCK,           // A blob has been committed without acquiring a write lock for it
+    SEGMENT_DOES_NOT_EXIST,       // A segment specified in a blob commit does not exist
+    CLUSTER_DOES_NOT_EXIST,       // A cluster specified in a blob commit does not exist
+    BLOB_DOES_NOT_EXIST,          // A blob specified in a blob commit does not exist
+    ILLEGAL_NEXT_FREE_BLOB_ID,    // An illegal value has been written into a nextFreeBlobId blob
+    ILLEGAL_NEXT_FREE_CLUSTER_ID, // An illegal value has been written into a nextFreeClusterId blob
+    ILLEGAL_NEXT_FREE_SEGMENT_ID, // An illegal value has been written into a nextFreeSegmentId blob
   };
 
   Result result;
@@ -46,5 +49,6 @@ private:
   TransactionCommitResponse(Result result, commit_id commitId);
 };
 
+std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& message);
 
 }}}
