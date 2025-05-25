@@ -26,8 +26,12 @@ std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& mes
       out << "commitId=" << message.commitId;
       break;
 
-    case Result::DATBASE_NOT_OPENED:
-      out << "DATBASE_NOT_OPENED";
+    case Result::DATABASE_NOT_OPENED:
+      out << "DATABASE_NOT_OPENED";
+      break;
+
+    case Result::DATABASE_ORDER_VIOLATED:
+      out << "DATABASE_ORDER_VIOLATED";
       break;
 
     case Result::MISSING_WRITE_LOCK:

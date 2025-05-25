@@ -2,6 +2,7 @@
 
 #include <common/BlobLocation.hpp>
 #include <network/message/BlobsRead.hpp>
+#include <network/message/TransactionCommit.hpp>
 
 #include "Segment.hpp"
 #include "Lock.hpp"
@@ -11,6 +12,7 @@ namespace blobs {
 namespace server {
 
 class Database {
+  class Snapshot;
 public:
   TODO(
     "Later we must separate these two paths as opening will mean reading and parsing a file, while "
@@ -53,6 +55,26 @@ public:
   void AbortClientTransaction(client_id client, const std::vector<BlobLocation>& locksToRelease);
 
 
+  class CommitResult {
+  public:
+    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot);
+
+    /** Applies the snapshot to the database and returns the commit id of that snapshot
+     */
+    commit_id ApplyToDatabase();
+
+  private:
+    Database& database;
+    std::unique_ptr<Snapshot> snapshot;
+  };
+
+
+  /** Applies a range of transaction commit messages to this database and returns the new resulting snapshot.
+   *  This snapshot can then be passed to SetSnapshot() commit the changest to the transient database state.
+   */
+  CommitResult CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitBegin, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd);
+
+
   TODO("Should the database keep an open count to efficiently perform the check whether any client still uses it?")
 
   /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to
@@ -60,23 +82,26 @@ public:
    */
   std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
 
+
+
+  //FIXME: I am not quite happy with having this class publicly available... It should be private to the database, but the database needs to return a snapshot
+  //       smart pointer and the caller needs to be able to hold it...
+
+  
+
 private:
   Database(std::string name);
 
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
    *  The transaction is committed by simply replacing the snapshot pointer with another snapshot pointer.
-   * 
-   *  All members are public as this class is only accessible from within the database class
    */
   class Snapshot {
   public:
     Snapshot(commit_id commitId = 1);
-
+    
     /** Creates a copy of the snapshot with an incremented commit id
      */
     Snapshot(const Snapshot& other);
-
-
 
     /** Returns the blob at the specified location or nullptr if it doesn't exist.
      */
@@ -88,6 +113,10 @@ private:
      */
     Segment* GetSegment(segment_id segment);
 
+    /** This method will apply the changes specified in the commit message to this snapshot.
+     *  Modified Segments/Clusters/Blobs will be copied if their commitId is smaller than this snaphot's commitId
+     */
+    void ApplyCommitMessage(const network::message::TransactionCommit& commitMessage);
 
     /** Global commit id counter of the last commited transaction for this database (snapshot).
      *  Initialized to 1 for a new database and is incremented with each transaction commit (and thus with each snapshot)
@@ -95,14 +124,12 @@ private:
      */
     const commit_id commitId;
 
+  private:
     segment_id nextFreeSegmentId;
     std::unordered_map<segment_id, std::shared_ptr<Segment>> segments;
 
     Blob nextFreeSegmentIdBlob;
   };
-
-
-
 
   /** Returns true if the client can acquire a lock at the specified location with the specified access.
    *  This will NOT acquire the lock itself.

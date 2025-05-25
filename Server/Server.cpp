@@ -124,6 +124,8 @@ void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::
 
 
 void Server::HandleTransactionCommit(network::MessagePointer_T<network::message::TransactionCommit> message) {
+  using TransactionCommitPtr = network::MessagePointer_T<network::message::TransactionCommit>;
+
   // For now only handle simple case with a single commit message
   auto& client = server::Client::Get(message->clientId);
 
@@ -140,13 +142,34 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
     auto result = ValidateCommitMessages(client);
     if (result == network::message::TransactionCommitResponse::Result::SUCCESS) {
       // Commit messages are valid
+      
+      // Calculate changes to transient database state
+      std::vector<Database::CommitResult> commitResults;
+      for (auto pos = client.commitMessages.data(), end = pos + client.commitMessages.size(); pos != end;) {
+        // Determine all messages, which apply to the same database
+        auto dbId = (*pos)->databaseId;
+        auto dbIdEnd = std::find_if(pos, end, [dbId](TransactionCommitPtr& message) { return message->databaseId != dbId; });
+
+        // The range [pos;dbIdEnd) contains all commit messages, which apply to the same database, now apply them all in a batch.
+        // ValidateCommitMessages() already ensures that the commit messages are grouped by database id
+        auto database = client.GetDatabase(dbId);
+        commitResults.emplace_back(database->CalculateCommitResult(pos, dbIdEnd));
+      }
+      
+      
       TODO("Post the commit messages into the transaction log");
-      TODO("Apply changes to the transient database state");
-      TODO("Update commitId members in all affected blobs... also the NextFreeBlobId blob!");
-
-
-      TODO("Determine the commit id (which is different per database... so we cannot just return one commit id in this message)");
+      TODO("This should also move ownership of the messages to the transaction log... for now we clear them here");
+      client.commitMessages.clear();
+      
+      
+      // Now we can apply all the database snapshots to the transient database state
       commit_id commitId = 0;
+      for (auto& commitResult : commitResults) {
+        TODO("We need one commit id per database not one for all! The current code will only work as long as the client commits to one database per transaction.");
+        commitId = commitResult.ApplyToDatabase();
+      }
+      
+      // Send reply to client      
       server.SendMessageToClient(client.id, network::message::TransactionCommitResponse::Create(commitId));
     } else {
       // Commit not successful -> return error code to the client and abort its transaction commit (and active transaction)
@@ -167,12 +190,31 @@ namespace {
 network::message::TransactionCommitResponse::Result Server::ValidateCommitMessages(const blobs::server::Client& client) const {
   using Result = network::message::TransactionCommitResponse::Result;
 
+  // This vector is used to ensure that the commit messages are ordered by databases
+  std::vector<Database*> touchedDatabases;
+
   for (auto& messagePtr : client.commitMessages) {
     auto& message = *messagePtr;
     auto database = client.GetDatabase(message.databaseId);
     if (!database) {
-      return Result::DATBASE_NOT_OPENED;
+      return Result::DATABASE_NOT_OPENED;
     }
+
+    // Ensure that databases are processed in order (i.e. first all messages for databaseA, then all messages for databaseB, not mixed)
+    // This grouping is necessary to perform an efficient database snapshot update by simply passing it a contiguous range of messages, which
+    // apply to the specified database.
+    auto pos = std::find(touchedDatabases.begin(), touchedDatabases.end(), database);
+    if (pos == touchedDatabases.end()) {
+      // This database has not yet been processed
+      touchedDatabases.push_back(database);
+    } else {
+      // If the database was already mentioned in a previous commit message, then it must be the last mentioned one
+      if (++pos != touchedDatabases.end()) {
+        return Result::DATABASE_ORDER_VIOLATED;
+      }
+    }
+
+
 
     // In case the client created some blobs, this vector will be filled with ranges of created blobs
     std::vector<BlobLocationRange> createdBlobs;

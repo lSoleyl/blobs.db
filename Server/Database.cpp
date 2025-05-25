@@ -101,6 +101,29 @@ void Database::AbortClientTransaction(client_id client, const std::vector<BlobLo
 
 }
 
+
+Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot) : database(database), snapshot(std::move(snapshot)) {}
+
+commit_id Database::CommitResult::ApplyToDatabase() {
+  // As inner class we can directly access the database snapshot
+  database.snapshot = std::move(snapshot);
+  return database.snapshot->commitId;
+}
+
+
+Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitPos, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd) {
+  // Create the new snapshot implicitly also setting the new commit id
+  auto newSnapshot = std::make_unique<Snapshot>(*snapshot);
+
+  // Now apply the commit messages one by one to the snapshot modifying it in the process
+  for (auto pos = commitPos, end = commitEnd; pos != end; ++pos) {
+    newSnapshot->ApplyCommitMessage(**pos);
+  }
+  
+  return CommitResult(*this, std::move(newSnapshot));
+}
+
+
 void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& locations) {
   for (auto& location : locations) {
     auto lock = locks.find(location);
@@ -149,7 +172,9 @@ Segment* Database::Snapshot::GetSegment(segment_id segment) {
 }
 
 
-
+void Database::Snapshot::ApplyCommitMessage(const network::message::TransactionCommit& commitMessage) {
+  TODO("Implement this!");
+}
 
 
 }}
