@@ -6,9 +6,7 @@ namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), lastSegmentId(0), commitId(1) {
-  segments.emplace(0, std::make_unique<Segment>(0));
-}
+Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot) {}
 
 Database& Database::Get(std::string_view databaseName) {
   auto pos = databases.find(databaseName);
@@ -21,23 +19,13 @@ Database& Database::Get(std::string_view databaseName) {
 }
 
 Blob* Database::GetBlob(const BlobLocation& location) {
-  if (auto segment = GetSegment(location.segment)) {
-    if (auto cluster = segment->GetCluster(location.cluster)) {
-      if (auto blob = cluster->GetBlob(location.blob)) {
-        return blob;
-      }
-    }
-  }
-  return nullptr;
+  return snapshot->GetBlob(location);
 }
-
 
 Segment* Database::GetSegment(segment_id segment) {
-  TODO("Handle `NextFreeSegmentId` similar to Cluster");
-
-  auto pos = segments.find(segment);
-  return (pos != segments.end()) ? pos->second.get() : nullptr;
+  return snapshot->GetSegment(segment);
 }
+
 
 bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   auto client = message.clientId;
@@ -122,6 +110,46 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
     // Should we delete this Lock object now or keep it in memory forever? What is worse performance wise?
   }
 }
+
+
+
+Database::Snapshot::Snapshot(commit_id commitId) : commitId(commitId), nextFreeSegmentId(1), nextFreeSegmentIdBlob(constants::NextFreeBlobId, commitId) {
+  TODO("Add proper loading from database file");
+  segments.emplace(0, std::make_shared<Segment>(0, commitId));
+  nextFreeSegmentIdBlob.setContent(nextFreeSegmentId);
+}
+
+/** Creates a copy of the snapshot with an incremented commit id
+ */
+Database::Snapshot::Snapshot(const Snapshot& other) : commitId(other.commitId+1), nextFreeSegmentId(other.nextFreeSegmentId), 
+                                                      nextFreeSegmentIdBlob(other.nextFreeSegmentIdBlob), segments(other.segments) {}
+
+
+
+
+Blob* Database::Snapshot::GetBlob(const BlobLocation& location) {
+  if (location.segment == constants::NextFreeSegmentId && location.cluster == constants::NextFreeClusterId && location.blob == constants::NextFreeBlobId) {
+    // Return special blob holding the next free segment id
+    return &nextFreeSegmentIdBlob;
+  }
+  
+  // Otherwise perform regular lookup
+  if (auto segment = GetSegment(location.segment)) {
+    // Use GetBlob() to support `NextFreeClusterId`
+    return segment->GetBlob(location.cluster, location.blob);
+  }
+  return nullptr;
+}
+
+
+Segment* Database::Snapshot::GetSegment(segment_id segment) {
+  // Here we cannot handle the `NextFreeSegmentId` constant, because we would need to return a whole segment
+  auto pos = segments.find(segment);
+  return (pos != segments.end()) ? pos->second.get() : nullptr;
+}
+
+
+
 
 
 }}

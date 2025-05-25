@@ -63,6 +63,47 @@ public:
 private:
   Database(std::string name);
 
+  /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
+   *  The transaction is committed by simply replacing the snapshot pointer with another snapshot pointer.
+   * 
+   *  All members are public as this class is only accessible from within the database class
+   */
+  class Snapshot {
+  public:
+    Snapshot(commit_id commitId = 1);
+
+    /** Creates a copy of the snapshot with an incremented commit id
+     */
+    Snapshot(const Snapshot& other);
+
+
+
+    /** Returns the blob at the specified location or nullptr if it doesn't exist.
+     */
+    Blob* GetBlob(const BlobLocation& location);
+
+
+    /** Returns the segment with the specified segment id or nullptr if the segment doesn't exist.
+     *  Beware: This method cannot handle `NextFreeSegmentId`!
+     */
+    Segment* GetSegment(segment_id segment);
+
+
+    /** Global commit id counter of the last commited transaction for this database (snapshot).
+     *  Initialized to 1 for a new database and is incremented with each transaction commit (and thus with each snapshot)
+     *  This field is const as it is never modified, but the snapshot is instead replaced by another snapshot
+     */
+    const commit_id commitId;
+
+    segment_id nextFreeSegmentId;
+    std::unordered_map<segment_id, std::shared_ptr<Segment>> segments;
+
+    Blob nextFreeSegmentIdBlob;
+  };
+
+
+
+
   /** Returns true if the client can acquire a lock at the specified location with the specified access.
    *  This will NOT acquire the lock itself.
    */
@@ -80,12 +121,9 @@ private:
 
   std::string name;
 
-  /** Global commit id counter of the last commited transaction for this database.
-   *  Initialized to 1 for a new database.
+  /** The database snapshot that is currently valid and updated each transaction
    */
-  commit_id commitId;
-  segment_id lastSegmentId;
-  std::unordered_map<segment_id, std::unique_ptr<Segment>> segments;
+  std::unique_ptr<Snapshot> snapshot;
 
   /** All currently active locks in this database
    */
