@@ -40,6 +40,15 @@ struct TransactionCommit : public Message {
     std::string_view ReadData() const;
     void WriteData(std::string_view data);
 
+
+    /** A helper to read blobs, which only contain an id like the nextFreeBlobId blob
+     *  No size/type check is performed here this must be validated before calling this method.
+     */
+    template<typename IdType>
+    IdType ReadId() const {
+      return reinterpret_cast<IdType*>(ReadData().data());
+    }
+
   private:
     BlobData* header;
     char* dataPos; // needed to keep track of the write position of the blob data

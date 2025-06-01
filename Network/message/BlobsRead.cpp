@@ -1,5 +1,7 @@
 #include <network/message/BlobsRead.hpp>
 
+#include <cassert>
+
 
 namespace blobs {
 namespace network {
@@ -37,6 +39,8 @@ std::ostream& operator<<(std::ostream& out, BlobsRead::LockMode mode) {
     case BlobsRead::LockMode::Write: return out << "write";
     case BlobsRead::LockMode::Delete: return out << "delete";
   }
+  assert(false);
+  return out;
 }
 
 

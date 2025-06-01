@@ -46,11 +46,12 @@ bool Transaction::Commit() {
   // 4. Update our local blob cache somehow
 
   TODO("Implement commit");
+  return true;
 }
 
 
 bool Transaction::Abort() {
-  if (!IsRunning) {
+  if (!IsRunning()) {
     return false;
   }
 

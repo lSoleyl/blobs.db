@@ -18,15 +18,30 @@ public:
    */
   Cluster* GetCluster(cluster_id cluster);
 
+  /** This method is used by the snapshot's ApplyCommitMessage method to fetch the cluster with the specified id
+   *  and copy it if it hasn't been modified in the same transaction as the segment yet or create the cluster if id doesn't exist yet.
+   */
+  Cluster* UpdateCluster(cluster_id cluster);
+
+  /** Deletes the specified cluster from this segment by removing it from the cluster map. If this was the last reference to that cluster
+   *  then it will be 'delete'd
+   */
+  void DeleteCluster(cluster_id cluster);
+
   /** Returns the specified cluster's blob or nullptr if it doesn't exist
    */
   Blob* GetBlob(cluster_id cluster, blob_id blob);
 
+  /** Updates the nextFreeClusterId and the contents of the blob holding the id
+   */
+  void SetNextFreeClusterId(cluster_id nextFreeId);
+
   const segment_id id;
-private:
+
   /** The commit id of the transaction when the cluster map has been modified last time
    */
-  commit_id commitId;
+  const commit_id commitId;
+private:
   cluster_id nextFreeClusterId;
   std::unordered_map<cluster_id, std::shared_ptr<Cluster>> clusters;
 

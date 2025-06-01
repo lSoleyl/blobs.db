@@ -113,10 +113,29 @@ private:
      */
     Segment* GetSegment(segment_id segment);
 
+    /** This method is internally by ApplyCommitMessage to fetch a segment for update in this transaction, which will
+     *  return either a copy of the segment (if it already exists, but hasn't been copied in this transaction yet) or
+     *  a new segment if it doesn't exist yet. Or the already copied segment.
+     */
+    Segment* UpdateSegment(segment_id segment);
+
+    /** Deletes the segment from this snapshot by removing it from the segment map. If this was the last reference to that
+     *  segment then it will also be actually 'delete'd
+     */
+    void DeleteSegment(segment_id segment);
+
     /** This method will apply the changes specified in the commit message to this snapshot.
      *  Modified Segments/Clusters/Blobs will be copied if their commitId is smaller than this snaphot's commitId
+     * 
+     *  The commitMessage is taken by non-const reference even though it isn't modified, because TransactionCommit at the moment
+     *  has no const iterator.
      */
-    void ApplyCommitMessage(const network::message::TransactionCommit& commitMessage);
+    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage);
+
+
+    /** Updates the nextFreeSegmentId field and the blob's content
+     */
+    void SetNextFreeSegmentId(segment_id nextFreeId);
 
     /** Global commit id counter of the last commited transaction for this database (snapshot).
      *  Initialized to 1 for a new database and is incremented with each transaction commit (and thus with each snapshot)

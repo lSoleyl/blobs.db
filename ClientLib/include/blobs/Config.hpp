@@ -63,7 +63,7 @@ namespace blobs {
     /** Special cluster id, which needs to be write locked by clients who want to delete the segment. Committing (segment, DeleteSegmentId, DeleteClusterId) will 
      *  delete the whole segment. If a write lock to this blob id is held, no other blobs in the segment can be locked by any other clients.
      */ 
-    constexpr cluster_id DeleteSegmentId = MaxClusterId + 2;
+    constexpr cluster_id SegmentDeleteId = MaxClusterId + 2;
 
 
     /** Highest valid segment id to use for storing segments. All others have special semantics or are reserved for future use

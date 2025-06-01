@@ -139,7 +139,7 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
 Database::Snapshot::Snapshot(commit_id commitId) : commitId(commitId), nextFreeSegmentId(1), nextFreeSegmentIdBlob(constants::NextFreeBlobId, commitId) {
   TODO("Add proper loading from database file");
   segments.emplace(0, std::make_shared<Segment>(0, commitId));
-  nextFreeSegmentIdBlob.setContent(nextFreeSegmentId);
+  nextFreeSegmentIdBlob.SetIdContent(nextFreeSegmentId);
 }
 
 /** Creates a copy of the snapshot with an incremented commit id
@@ -172,8 +172,78 @@ Segment* Database::Snapshot::GetSegment(segment_id segment) {
 }
 
 
-void Database::Snapshot::ApplyCommitMessage(const network::message::TransactionCommit& commitMessage) {
-  TODO("Implement this!");
+Segment* Database::Snapshot::UpdateSegment(segment_id segment) {
+  auto& segmentPtr = segments[segment];
+  if (!segmentPtr) {
+    // Create if not yet exist
+    segmentPtr = std::make_shared<Segment>(segment, commitId);
+  } else if (segmentPtr->commitId != commitId) {
+    // Segment hasn't been copied yet in this transaction -> do it now
+    segmentPtr = std::make_shared<Segment>(*segmentPtr, commitId);
+  }
+
+  return segmentPtr.get();
+}
+
+void Database::Snapshot::DeleteSegment(segment_id segment) {
+  segments.erase(segment);
+}
+
+
+void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage) {
+
+  // Apply each modification in sequence
+  for (auto pos = commitMessage.begin(), end = commitMessage.end(); pos != end; ++pos) {
+    auto& update = *pos;
+
+
+    // Validate commit message already verified that the nextFreeXXXId updates are correctly structured, but 
+    // we will validate them in debug mode using assertions anyway.
+    if (update.segment == constants::NextFreeSegmentId) {
+      // One or more segments have been created in this transaction -> update the next free segment id
+      assert(update.cluster == constants::NextFreeClusterId);
+      assert(update.blob == constants::NextFreeBlobId);
+      SetNextFreeSegmentId(pos.ReadId<segment_id>());
+    } else if (update.cluster == constants::SegmentDeleteId) {
+      // A segment is being deleted by writing to the SegmentDeleteId cluster
+      assert(update.blob == constants::ClusterDeleteId);
+      DeleteSegment(update.segment);
+    } else {
+      // Fetch a copy of the segment this update refers to and create it if necessary
+      auto segment = UpdateSegment(update.segment);
+
+      if (update.cluster == constants::NextFreeClusterId) {
+        // One or more clusters are being created in this segment -> update the next free cluster id of the segment
+        assert(update.blob == constants::NextFreeBlobId);
+        segment->SetNextFreeClusterId(pos.ReadId<cluster_id>());
+      } else if (update.blob == constants::ClusterDeleteId) {
+        // A cluster is being deleted by writing to ClusterDeleteId blob
+        segment->DeleteCluster(update.cluster);
+
+      } else {
+        // Fetch a copy of the cluster this update refers to and create it if necessary
+        auto cluster = segment->UpdateCluster(update.cluster);
+
+
+        if (update.blob == constants::NextFreeBlobId) {
+          // One or more blobs are being created in this cluster -> update the next free blob id of the cluster
+          cluster->SetNextFreeBlobId(pos.ReadId<blob_id>());
+        } else if (update.blobSize == constants::DeleteBlobSize) {
+          // The specified blob is being deleted
+          cluster->DeleteBlob(update.blob);
+        } else {
+          // Regular blob content update
+          cluster->UpdateBlob(update.blob)->SetIdContent(pos.ReadData());
+        }
+      }
+    }
+  }
+}
+
+
+void Database::Snapshot::SetNextFreeSegmentId(segment_id nextFreeId) {
+  nextFreeSegmentId = nextFreeId;
+  nextFreeSegmentIdBlob.SetIdContent(nextFreeSegmentId);
 }
 
 

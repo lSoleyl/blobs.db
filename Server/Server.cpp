@@ -235,6 +235,15 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
 
 
       TODO("Check for NextFreeSegmentId and NextFreeClusterId first!");
+      TODO("If it is NextFreeClusterId, then the blob must be NextFreeBlobId!");
+      TODO("If it is NextFreeSegmentId, then the cluster must be NextFreeClusterId");
+      TODO("If cluster is SegmentDeleteId, then blob must be ClusterDeleteId");
+      
+      TODO("If NextFreeSegmentId, then the implicit write lock spans all created segments");
+      TODO("If NextFreeClusterId, then the implicit write lcok spans all created clusters");
+
+      TODO("If cluster is SegmentDeleteId, then the whole segment must be write locked");
+      TODO("If blob is ClusterDeleteId, then the whole cluster must be write locked")
 
       if (location.blob == constants::NextFreeBlobId) {
         // The client has created one or more new blobs in the specified cluster
@@ -314,8 +323,9 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
         server.SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
       } else {
         // Client's blob is not up to date -> send the server's current version
-        auto response = network::message::BlobsReadResponse::Create(blob->data.size());
-        response->begin().SetBlob(requestedBlob, blob->commitId, blob->data.data(), static_cast<blob_size>(blob->data.size()));
+        auto blobContent = blob->ReadContent();
+        auto response = network::message::BlobsReadResponse::Create(blobContent.size());
+        response->begin().SetBlob(requestedBlob, blob->commitId, blobContent.data(), static_cast<blob_size>(blobContent.size()));
         server.SendMessageToClient(message.clientId, std::move(response));
       }
       return true; // messages fully processed

@@ -21,18 +21,38 @@ public:
   Blob* GetBlob(blob_id blob);
 
 
+  /** If the specified blob does not yet exist OR has not yet been modified in the same transaction as the clsuter 
+   *  then a new EMPTY(!!!) blob is returned, which is entered into the blob map. Otherwise the already modified blob  
+   *  is returned.
+   * 
+   *  We don't COPY the blob when modifying it during this transaction, because the only data to copy is the blob content 
+   *  and we are only interested in modifying that data, so why copy something that will be overwritten anyway?
+   */
+  Blob* UpdateBlob(blob_id blob);
+
+
+  /** Removes the specified blob from the blob map. This doesn't `delete` the blob itself.
+   *  This will be done by the std::shared_ptr if this cluster was the last one referencing it.
+   */
+  void DeleteBlob(blob_id blob);
+
   /** Returns the next free blob id for this cluster
    *  This is the value, which can be read from the `NextFreeBlobId` blob
    */
   blob_id GetNextFreeBlobId() const;
 
 
+  /** Sets the nextFreeBlobId member and updates the contents of the corresponding blob
+   */
+  void SetNextFreeBlobId(blob_id nextFreeId);
+
 
   const cluster_id id;
-private:
+
   /** The commit id of the transaction when this cluster's blob table has been last modified
    */
-  commit_id commitId;
+  const commit_id commitId;
+private:
   blob_id nextFreeBlobId;
 
   // We allow holes in blob numbering due to deletion, so we need a map to hold all blobs of a cluster
