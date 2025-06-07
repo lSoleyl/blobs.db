@@ -70,6 +70,16 @@ public:
    */
   void DeleteBlob(database_id dbId, const BlobLocation& location);
 
+  /** Marks a cluster for deletion on transaction commit. After calling this method no blob in that cluster can be read/written/created or deleted anymore
+   *  unless the transaction is aborted.
+   */
+  void DeleteCluster(database_id dbId, segment_id segment, cluster_id cluster);
+
+
+  /** Marks a segment for deletion on transaction commit. After calling this method no blob/cluster in that segment can be read/written/created or deleted anymore
+   */
+  void DeleteSegment(database_id dbId, segment_id segment);
+
 
   /** Reads the blob data from the transaction's write cache. If the blob has been written to in this transaction it will return 
    *  the blob's content. Returns an empty optional if the blob has not been written to in this transaction.

@@ -20,6 +20,8 @@ struct Transaction::State {
     HeldLocks heldLocks;
     std::map<BlobLocation, std::vector<uint8_t>> writtenBlobs;
     std::set<BlobLocation> deletedBlobs;
+    std::set<std::pair<segment_id, cluster_id>> deletedClusters;
+    std::set<segment_id> deletedSegments;
   };
 
   std::map<database_id, DatabaseState> forDatabase;
@@ -39,6 +41,22 @@ bool Transaction::Commit() {
   if (!IsRunning()) {
     return false;
   }
+
+  // First we need to transmit the created blobs
+
+
+
+
+
+
+  TODO("First process the writes into NextFreeSegmentId, then NextFreeClusterId, then NextFreeBlobIdall writes");
+  TODO("Then transmit all regular writes");
+  TODO("Finally all deletions");
+  TODO("Blob deletions are a bit complex to handle as they involve a special blob size value");
+
+
+
+  TODO("Split up the commit into multiple messages if necessary");
 
   // 1. Construct commit message(s) from the transaction state
   // 2. Send message(s) to the server
@@ -146,14 +164,87 @@ void Transaction::WriteBlob(database_id dbId, const BlobLocation& location, cons
 void Transaction::DeleteBlob(database_id dbId, const BlobLocation& location) {
   auto& dbState = state->forDatabase[dbId];
 
+  if (dbState.deletedSegments.find(location.segment) != dbState.deletedSegments.end()) {
+    // The segment has already been deleted in this transaction
+    throw exception::SegmentDeleted();
+  }
+
+  if (dbState.deletedClusters.find({ location.segment, location.cluster }) != dbState.deletedClusters.end()) {
+    // The cluster has already been deleted in this transaction
+    throw exception::ClusterDeleted();
+  }
+
+  if (dbState.deletedBlobs.find(location) != dbState.deletedBlobs.end()) {
+    // The blob itself has already been marked for deletion in this transaction
+    throw exception::BlobDeleted();
+  }
+
+
   // If we first called WriteBlob() and then in the same transaction DeleteBlob(),
   // then clear the write data and mark the blob as deleted.
   dbState.writtenBlobs.erase(location);
 
-  // We could check for double deletion, but what benefit would this added strictness have? 
-  // There is no harm to any side if we simply ignore such an error since there is no loss of data.
+  // Mark the blob as deleted
   dbState.deletedBlobs.insert(location);
 }
+
+
+void Transaction::DeleteCluster(database_id dbId, segment_id segment, cluster_id cluster) {
+  auto& dbState = state->forDatabase[dbId];
+
+  if (dbState.deletedSegments.find(segment) != dbState.deletedSegments.end()) {
+    throw exception::SegmentDeleted();
+  }
+
+  if (dbState.deletedClusters.find({ segment, cluster }) != dbState.deletedClusters.end()) {
+    // The same cluster has already been deleted in this transaction
+    throw exception::ClusterDeleted();
+  }
+
+  // Now discard all write/delete operations in that cluster as the whole cluster will be discarded anyway
+  auto writtenBlobsBegin = dbState.writtenBlobs.lower_bound(BlobLocation(segment, cluster, 0));
+  auto writtenBlobsEnd = dbState.writtenBlobs.upper_bound(BlobLocation(segment, cluster, std::numeric_limits<blob_id>::max()));
+  dbState.writtenBlobs.erase(writtenBlobsBegin, writtenBlobsEnd);
+
+
+  auto deletedBlobsBegin = dbState.deletedBlobs.lower_bound(BlobLocation(segment, cluster, 0));
+  auto deletedBlobsEnd = dbState.deletedBlobs.upper_bound(BlobLocation(segment, cluster, std::numeric_limits<blob_id>::max()));
+  dbState.deletedBlobs.erase(deletedBlobsBegin, deletedBlobsEnd);
+
+
+  // Finally note down that we deleted it (we don't construct a writtenBlob entry for ClusterDeleteId, that is handled in commit())
+  dbState.deletedClusters.insert({ segment, cluster });
+}
+
+
+void Transaction::DeleteSegment(database_id dbId, segment_id segment) {
+  auto& dbState = state->forDatabase[dbId];
+
+  if (dbState.deletedSegments.find(segment) != dbState.deletedSegments.end()) {
+    throw exception::SegmentDeleted();
+  }
+
+
+  // Now discard all write/delete operations in that segment as the whole segment will be discarded anyway
+  auto writtenBlobsBegin = dbState.writtenBlobs.lower_bound(BlobLocation(segment, 0, 0));
+  auto writtenBlobsEnd = dbState.writtenBlobs.upper_bound(BlobLocation(segment, std::numeric_limits<cluster_id>::max(), std::numeric_limits<blob_id>::max()));
+  dbState.writtenBlobs.erase(writtenBlobsBegin, writtenBlobsEnd);
+
+
+  auto deletedBlobsBegin = dbState.deletedBlobs.lower_bound(BlobLocation(segment, 0, 0));
+  auto deletedBlobsEnd = dbState.deletedBlobs.upper_bound(BlobLocation(segment, std::numeric_limits<cluster_id>::max(), std::numeric_limits<blob_id>::max()));
+  dbState.deletedBlobs.erase(deletedBlobsBegin, deletedBlobsEnd);
+
+  auto deletedClustersBegin = dbState.deletedClusters.lower_bound({ segment, 0 });
+  auto deletedClustersEnd = dbState.deletedClusters.upper_bound({ segment, std::numeric_limits<cluster_id>::max() });
+  dbState.deletedClusters.erase(deletedClustersBegin, deletedClustersEnd);
+
+
+  // Finally note down that we deleted it (we don't construct a writtenBlob entry for SegmentDeleteId, that is handled in commit())
+  dbState.deletedSegments.insert(segment);
+}
+
+
 
 std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(database_id dbId, const BlobLocation& location) const {
   auto dbPos = state->forDatabase.find(dbId);

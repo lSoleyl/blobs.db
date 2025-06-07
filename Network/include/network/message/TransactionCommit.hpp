@@ -46,7 +46,7 @@ struct TransactionCommit : public Message {
      */
     template<typename IdType>
     IdType ReadId() const {
-      return reinterpret_cast<IdType*>(ReadData().data());
+      return *reinterpret_cast<const IdType*>(ReadData().data());
     }
 
   private:

@@ -71,9 +71,17 @@ public:
   BLOBS_EXPORT blob_id CreateBlob(segment_id segment, cluster_id cluster, const void* blobData, size_t blobSize);
 
   /** This method deletes a blob from the database, which is not the same as overwriting it with an empty blob.
-   *  After a blob has been deleted, it can never be read/written again.
+   *  After a blob has been deleted, it can never be read/written again. Deleting a blob requires a write lock for that blob.
    */
   BLOBS_EXPORT void DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob);
+
+  /** Acquires the lock needed to delete the cluster and deletes it, which will delete all its blobs with it.
+   */
+  BLOBS_EXPORT void DeleteCluster(segment_id segment, cluster_id cluster);
+
+  /** Acquires the lock needed to delete the segment and deletes it, which will delete all its clusters and blobs with it.
+   */
+  BLOBS_EXPORT void DeleteSegment(segment_id segment);
 
 
   /** Closes the connection to this database and deletes this object.

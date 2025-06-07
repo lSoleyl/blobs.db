@@ -44,8 +44,48 @@ public:
 
   /** Simply removes a cached blob location from the blob cache
    */
-  void Delete(const BlobLocation& location) {
+  void RemoveBlob(const BlobLocation& location) {
     cache.erase(location);
+  }
+
+  /** Removes all cached blobs in the specified cluster (used during cluster deletion)
+   */
+  void RemoveCluster(segment_id segment, cluster_id cluster) {
+    // This operation is not very efficient due to us using an unordered map here, but switch to a regular map
+    // just to speed up this rather rare operation doesn't justify the cost.
+
+    // First collect all entries to be deleted
+    std::vector<BlobLocation> toDelete;
+    for (auto& [location, _] : cache) {
+      if (location.segment == segment && location.cluster == cluster) {
+        toDelete.push_back(location);
+      }
+    }
+
+    // Then erase them one by one
+    for (auto& location : toDelete) {
+      cache.erase(location);
+    }
+  }
+
+  /** Removes all cached blobs in the specified segment (used during segment deletion)
+   */
+  void RemoveSegment(segment_id segment) {
+    // This operation is not very efficient due to us using an unordered map here, but switch to a regular map
+    // just to speed up this rather rare operation doesn't justify the cost.
+
+    // First collect all entries to be deleted
+    std::vector<BlobLocation> toDelete;
+    for (auto& [location, _] : cache) {
+      if (location.segment == segment) {
+        toDelete.push_back(location);
+      }
+    }
+
+    // Then erase them one by one
+    for (auto& location : toDelete) {
+      cache.erase(location);
+    }
   }
 
 private:
@@ -234,17 +274,49 @@ void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) 
     WriteLockNoContent(location); // no need to fetch the blob content -> we delete the blob anyway
   }
 
-  // Mark the blob for deletion upon transaction commit
+  // Validate that the cluster isn't deleted yet and then mark the blob for deletion upon transaction commit
   transaction->DeleteBlob(id, location);
 
   // Remove the blob from our blob cache
-  cache->Delete(location);
+  cache->RemoveBlob(location);
 }
 
 
+void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
+  // Get the currently running transaction or start a new one if no is running yet
+  auto transaction = Transaction::Get(connectionId, true);
+  BlobLocation lockLocation(segment, cluster, constants::ClusterDeleteId);
+
+  // Acquire a write lock for deletion of the cluster if we don't already hold one (which is unlikely)
+  if (transaction->GetLockType(id, lockLocation) != Transaction::LockMode::Write) {
+    WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
+  }
+
+  // Validate that the segment isn't deleted yet and then mark the cluster with all its segments
+  // for deletion upon transaction commit
+  transaction->DeleteCluster(id, segment, cluster);
+
+  // Remove all cached blobs for that cluster
+  cache->RemoveCluster(segment, cluster);
+}
 
 
+void Database::DeleteSegment(segment_id segment) {
+  // Get the currently running transaction or start a new one if no is running yet
+  auto transaction = Transaction::Get(connectionId, true);
+  BlobLocation lockLocation(segment, constants::SegmentDeleteId, constants::ClusterDeleteId);
 
+  // Acquire a write lock for deletion of the segment if we don't already hold one (which is unlikely)
+  if (transaction->GetLockType(id, lockLocation) != Transaction::LockMode::Write) {
+    WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
+  }
+
+  // Mark the segment for deletion upon transaction commit
+  transaction->DeleteSegment(id, segment);
+
+  // Remove all cached blobs for that segment
+  cache->RemoveSegment(segment);
+}
 
 
 

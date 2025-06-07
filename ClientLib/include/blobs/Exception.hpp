@@ -13,6 +13,8 @@ enum class ExceptionCode {
   Deadlock,         // Deadlock while attempting to read/write a blob
   BlobTooLarge,     // Attempted to write a blob, which is too large to write into the database
   BlobDeleted,      // Attempted to read/write a blob, which has been deleted in the current transaction
+  ClusterDeleted,   // Attempt to read/write/create/delete a blob in a cluster, which has already been deleted
+  SegmentDeleted,   // Attempt to read/write/create/delete a blob/cluster in a segment, which has already been deleted
   BlobLimitReached, // Cannot create more blobs in the cluster
 };
 
@@ -62,11 +64,21 @@ public:
   BlobDeleted();
 };
 
+class ClusterDeleted : public Exception {
+public:
+  ClusterDeleted();
+};
+
+class SegmentDeleted : public Exception {
+public: 
+  SegmentDeleted();
+};
 
 class BlobLimitReached : public Exception {
 public:
   BlobLimitReached(segment_id segment, cluster_id cluster);
 };
+
 
 
 }
