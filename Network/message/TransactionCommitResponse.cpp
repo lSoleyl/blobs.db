@@ -5,18 +5,31 @@ namespace blobs {
 namespace network {
 namespace message {
 
-TransactionCommitResponse::TransactionCommitResponse(Result result, commit_id commitId) : 
-  Message(sizeof(TransactionCommitResponse), TransactionCommitResponse::type), result(result), commitId(commitId) {}
+TransactionCommitResponse::TransactionCommitResponse(Result result, message_size messageSize) : 
+  Message(messageSize, TransactionCommitResponse::type), result(result) {}
 
 
 
-MessagePointer TransactionCommitResponse::Create(commit_id commitId) {
-  return MessagePointer(new TransactionCommitResponse(Result::SUCCESS, commitId));
+
+TransactionCommitResponse::DatabaseCommit* TransactionCommitResponse::begin() {
+  return reinterpret_cast<DatabaseCommit*>(reinterpret_cast<uint8_t*>(this) + sizeof(TransactionCommitResponse));
+}
+
+TransactionCommitResponse::DatabaseCommit* TransactionCommitResponse::end() {
+  return reinterpret_cast<DatabaseCommit*>(reinterpret_cast<uint8_t*>(this) + size);
+}
+
+
+MessagePointer_T<TransactionCommitResponse> TransactionCommitResponse::Create(int nDatabases) {
+  assert(nDatabases - 1 <= std::numeric_limits<database_id>::max()); // 0 is a valid id, so the number of databases can be 1 larger than the maximum id
+  message_size messageSize = sizeof(TransactionCommitResponse) + sizeof(DatabaseCommit) * nDatabases;
+  return MessagePointer_T<TransactionCommitResponse>(new (new char[messageSize]) TransactionCommitResponse(Result::SUCCESS, messageSize));
 }
 
 MessagePointer TransactionCommitResponse::CreateError(Result result) {
-  return MessagePointer(new TransactionCommitResponse(result, 0));
+  return MessagePointer(new TransactionCommitResponse(result, sizeof(TransactionCommitResponse)));
 }
+
 
 std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& message) {
   using Result = TransactionCommitResponse::Result;

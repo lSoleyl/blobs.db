@@ -29,15 +29,31 @@ struct TransactionCommitResponse : public Message {
 
   Result result;
 
-  /** The commit id, which the server assigned to this transaction. All blobs written in this transaction will have this commit id 
-   *  assigned for this modification. This commit id may thus be used by the client to update the written blob's cache ids.
-   *  This is only valid if result == SUCCESS
+  /** If the commit was successful then for each database involved in the commit the newest commit id is 
+   *  written as a structure at the end of the TransactionCommitResponse message
    */
-  commit_id commitId;
+  struct DatabaseCommit {
+    /** Id of the database, which was affected by the commit and to which the commitId member belongs
+     */
+    database_id dbId;
+    
+    /** The commit id, which the server assigned to this transaction in this database. All blobs written in this transaction 
+     *  to this database will have this commit id assigned for this modification. 
+     *  This commit id may thus be used by the client to update the written blob's cache ids.
+     */
+    commit_id commitId;
+  };
+  
+  DatabaseCommit* begin();
+  DatabaseCommit* end();
 
+  
   /** Constructs a successful response
+   * 
+   * @param nDatabases the number of databases the commit involved. This will be used to allocate 
+   *                   enough memory at the end of the message for the `DatabaseCommit` entries.
    */
-  static MessagePointer Create(commit_id commitId);
+  static MessagePointer_T<TransactionCommitResponse> Create(int nDatabases);
 
   /** Constructs an error response
    */
@@ -47,7 +63,7 @@ struct TransactionCommitResponse : public Message {
 
   static constexpr Type type = Type::TransactionCommitResponse;
 private:
-  TransactionCommitResponse(Result result, commit_id commitId);
+  TransactionCommitResponse(Result result, message_size messageSize);
 };
 
 std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& message);

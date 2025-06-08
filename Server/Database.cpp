@@ -110,7 +110,6 @@ commit_id Database::CommitResult::ApplyToDatabase() {
   return database.snapshot->commitId;
 }
 
-
 Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitPos, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd) {
   // Create the new snapshot implicitly also setting the new commit id
   auto newSnapshot = std::make_unique<Snapshot>(*snapshot);

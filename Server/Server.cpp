@@ -144,7 +144,7 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
       // Commit messages are valid
       
       // Calculate changes to transient database state
-      std::vector<Database::CommitResult> commitResults;
+      std::vector<std::pair<database_id, Database::CommitResult>> commitResults;
       for (auto pos = client.commitMessages.data(), end = pos + client.commitMessages.size(); pos != end;) {
         // Determine all messages, which apply to the same database
         auto dbId = (*pos)->databaseId;
@@ -153,7 +153,7 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
         // The range [pos;dbIdEnd) contains all commit messages, which apply to the same database, now apply them all in a batch.
         // ValidateCommitMessages() already ensures that the commit messages are grouped by database id
         auto database = client.GetDatabase(dbId);
-        commitResults.emplace_back(database->CalculateCommitResult(pos, dbIdEnd));
+        commitResults.emplace_back(dbId, database->CalculateCommitResult(pos, dbIdEnd));
       }
       
       
@@ -162,15 +162,19 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
       client.commitMessages.clear();
       
       
+      // Allocate the response message with enough space to communicate all commit ids back to the client
+      auto commitResponse = network::message::TransactionCommitResponse::Create(commitResults.size());
+      auto writePos = commitResponse->begin();
+
       // Now we can apply all the database snapshots to the transient database state
-      commit_id commitId = 0;
-      for (auto& commitResult : commitResults) {
-        TODO("We need one commit id per database not one for all! The current code will only work as long as the client commits to one database per transaction.");
-        commitId = commitResult.ApplyToDatabase();
+      for (auto& [databaseId, commitResult] : commitResults) {
+        writePos->dbId = databaseId;
+        writePos->commitId = commitResult.ApplyToDatabase();
+        ++writePos;
       }
       
       // Send reply to client      
-      server.SendMessageToClient(client.id, network::message::TransactionCommitResponse::Create(commitId));
+      server.SendMessageToClient(client.id, std::move(commitResponse));
     } else {
       // Commit not successful -> return error code to the client and abort its transaction commit (and active transaction)
       server.SendMessageToClient(client.id, network::message::TransactionCommitResponse::CreateError(result));
