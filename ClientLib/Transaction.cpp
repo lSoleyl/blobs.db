@@ -1,5 +1,6 @@
 #include "pch.hpp"
 #include <blobs/Transaction.hpp>
+#include <blobs/Database.hpp>
 #include <blobs/Exception.hpp>
 #include <common/BlobLocation.hpp>
 #include <internal/Network.hpp>
@@ -12,8 +13,14 @@
 
 namespace blobs {
 
+/** The transaction state is a PIMPL structure holding all transaction relevant state while hiding the implementation from the client of the Transaction class.
+ *  The state holds one DatabaseState per database, which has been accessed during the transaction. The DatabaseState holds all locks and written data and upon commit
+ *  will be used to contruct the commit message.
+ */
 struct Transaction::State {
   struct DatabaseState {
+    DatabaseState(Database* database) : database(database) {}
+
     struct HeldLocks {
       std::set<BlobLocation> read, write;
     };
@@ -23,6 +30,7 @@ struct Transaction::State {
     std::set<BlobLocation> deletedBlobs;
     std::set<std::pair<segment_id, cluster_id>> deletedClusters;
     std::set<segment_id> deletedSegments;
+    Database* database;
 
 
     /** Throws an exception if the segment, cluster or blob has already been marked for deletion
@@ -216,7 +224,24 @@ struct Transaction::State {
     return commitMessages;
   }
 
+  /** Fetch or initialize the transaction state for the specified database, which will be used to keep track of
+   *  all writes during the transaction and will be used to construct the commit message from
+   */
+  DatabaseState& AccessDatabaseState(Database* database) {
+    auto pos = forDatabase.find(database->id);
+    if (pos == forDatabase.end()) {
+      pos = forDatabase.emplace(database->id, database).first;
+    }
+    return pos->second;
+  }
 
+  /** State getter, which will only return an existing transaction state, not instantiate a new one and it thus also doesn't need 
+   *  a full Database.
+   */
+  DatabaseState* GetDatabaseState(database_id dbId) {
+    auto pos = forDatabase.find(dbId);
+    return (pos != forDatabase.end()) ? &pos->second : nullptr;
+  }
 
 
   std::map<database_id, DatabaseState> forDatabase;
@@ -266,7 +291,10 @@ bool Transaction::Commit() {
       if (commitResponse->result == network::message::TransactionCommitResponse::Result::SUCCESS) {
         // Update the cached versions of all written blobs for all databases involved in the commit
         for (auto& commitEntry : *commitResponse) {
-          auto& dbState = transaction->state->forDatabase[commitEntry.dbId];
+          auto dbState = transaction->state->GetDatabaseState(commitEntry.dbId);
+          assert(dbState != nullptr); // Something is seriously wrong if we just committed data from a database state, which is now gone (or server messed up)
+
+          
           TODO("Now how do we access the database here!?");
           // There is no central database registry to ask... and it isn't stored in the dbState
           // We would have to remodel the whole interface of the Transaction class to accept Database* everywhere instead of database_id
@@ -349,11 +377,9 @@ Transaction* Transaction::Get(connection_id connectionId, bool startIfNotActive)
 }
 
 
-Transaction::LockMode Transaction::GetLockType(database_id dbId, const BlobLocation& location) const {
-  auto& dbState = state->forDatabase;
-  auto pos = dbState.find(dbId);
-  if (pos != dbState.end()) {
-    auto& locks = pos->second.heldLocks;
+Transaction::LockMode Transaction::GetLockType(Database* database, const BlobLocation& location) const {
+  if (auto dbState = state->GetDatabaseState(database->id)) {
+    auto& locks = dbState->heldLocks;
     if (locks.write.find(location) != locks.write.end()) {
       return LockMode::Write;
     } 
@@ -369,9 +395,9 @@ Transaction::LockMode Transaction::GetLockType(database_id dbId, const BlobLocat
   return LockMode::None;
 }
 
-void Transaction::AcquiredLock(database_id dbId, const BlobLocation& location, LockMode lock) {
+void Transaction::AcquiredLock(Database* database, const BlobLocation& location, LockMode lock) {
   assert(lock != LockMode::None); // Why would anyone call it like this!?
-  auto& dbLocks = state->forDatabase[dbId].heldLocks;
+  auto& dbLocks = state->AccessDatabaseState(database).heldLocks;
   
   // We simply insert without checking for any invariants. Having both a write and read lock will be recognized as simply
   // having a write lock by GetLockType() we thus don't have to worry about removing a read lock when upgrading to a write lock
@@ -384,8 +410,8 @@ void Transaction::AcquiredLock(database_id dbId, const BlobLocation& location, L
 
 
 
-void Transaction::WriteBlob(database_id dbId, const BlobLocation& location, const void* blobData, blob_size blobSize) {
-  auto& dbState = state->forDatabase[dbId];
+void Transaction::WriteBlob(Database* database, const BlobLocation& location, const void* blobData, blob_size blobSize) {
+  auto& dbState = state->AccessDatabaseState(database);
   
   // Make sure, the blob hasn't already been marked for deletion
   dbState.EnsureBlobNotDeleted(location);
@@ -397,8 +423,8 @@ void Transaction::WriteBlob(database_id dbId, const BlobLocation& location, cons
 }
 
 
-void Transaction::DeleteBlob(database_id dbId, const BlobLocation& location) {
-  auto& dbState = state->forDatabase[dbId];
+void Transaction::DeleteBlob(Database* database, const BlobLocation& location) {
+  auto& dbState = state->AccessDatabaseState(database);
 
   // Make sure, the blob hasn't already been marked for deletion
   dbState.EnsureBlobNotDeleted(location);
@@ -413,8 +439,8 @@ void Transaction::DeleteBlob(database_id dbId, const BlobLocation& location) {
 }
 
 
-void Transaction::DeleteCluster(database_id dbId, segment_id segment, cluster_id cluster) {
-  auto& dbState = state->forDatabase[dbId];
+void Transaction::DeleteCluster(Database* database, segment_id segment, cluster_id cluster) {
+  auto& dbState = state->AccessDatabaseState(database);
 
   // Make sure, the cluster hasn't already been marked for deletion
   dbState.EnsureClusterNotDeleted(segment, cluster);
@@ -435,8 +461,8 @@ void Transaction::DeleteCluster(database_id dbId, segment_id segment, cluster_id
 }
 
 
-void Transaction::DeleteSegment(database_id dbId, segment_id segment) {
-  auto& dbState = state->forDatabase[dbId];
+void Transaction::DeleteSegment(Database* database, segment_id segment) {
+  auto& dbState = state->AccessDatabaseState(database);
 
   // Make sure, the segment hasn't already been marked for deletion
   dbState.EnsureSegmentNotDeleted(segment);
@@ -463,24 +489,20 @@ void Transaction::DeleteSegment(database_id dbId, segment_id segment) {
 
 
 
-std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(database_id dbId, const BlobLocation& location) const {
-  auto dbPos = state->forDatabase.find(dbId);
-  if (dbPos == state->forDatabase.end()) {
-    return std::nullopt;
-  }
-
-  auto& dbState = dbPos->second;
+std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(Database* database, const BlobLocation& location) const {
+  if (auto dbState = state->GetDatabaseState(database->id)) {
   
-  // Make sure, we don't attempt to read from a blob marked for deletion
-  dbState.EnsureBlobNotDeleted(location);
+    // Make sure, we don't attempt to read from a blob marked for deletion
+    dbState->EnsureBlobNotDeleted(location);
 
-  auto writePos = dbState.writtenBlobs.find(location);
-  if (writePos != dbState.writtenBlobs.end()) {
-    // Blob has been written in this transaction -> return the written content
-    return std::make_pair(static_cast<const void*>(writePos->second.data()), static_cast<blob_size>(writePos->second.size()));
+    auto writePos = dbState->writtenBlobs.find(location);
+    if (writePos != dbState->writtenBlobs.end()) {
+      // Blob has been written in this transaction -> return the written content
+      return std::make_pair(static_cast<const void*>(writePos->second.data()), static_cast<blob_size>(writePos->second.size()));
+    }
   }
 
-  // Blob not written in this transaction yet
+  // Blob not written in this transaction yet (or database not touched yet during this transaction)
   return std::nullopt;
 }
 

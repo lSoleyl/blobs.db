@@ -178,7 +178,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
 
   // First check whether we have already written this blob in the current transaction and return the written data if so
   // This will also ensure that we don't read an already deleted blob and throw an exception if so
-  if (auto blobContent = transaction->ReadBlob(id, location)) {
+  if (auto blobContent = transaction->ReadBlob(this, location)) {
     return *blobContent;
   }
 
@@ -186,7 +186,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
 
   if (cachedBlob->transactionId == transaction->id) {
     // We already read this blob. Now if we also aready hold a compatible lock to the requested one, then we can simply return the cached blob
-    auto currentLock = transaction->GetLockType(id, location);
+    auto currentLock = transaction->GetLockType(this, location);
     if (currentLock >= (writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read)) {
       // Our current lock is already sufficient to fullfill the request -> return the cached blob content
       return cachedBlob->Data();
@@ -210,13 +210,13 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
     if (cachedBlob && response->nBlobs == 0) {
       // Our cached blob is up to date, but we still successfully acquired the lock -> notify the transaction of the lock
-      transaction->AcquiredLock(id, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
+      transaction->AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
       return cachedBlob->Data();
     } else if (response->nBlobs == 1) {
       // Server has responded with a newer version of the blob, or we don't have it in our cache yet
       auto& blobData = *response->begin();
       auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction->id);
-      transaction->AcquiredLock(id, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
+      transaction->AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
       return cachedBlob.Data();
     } else {
       assert(false); // server repsonsed with an illegal number of blobs!
@@ -243,7 +243,7 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
   BlobLocation location(segment, cluster, blob);
 
 
-  if (transaction->GetLockType(id, location) != Transaction::LockMode::Write) {
+  if (transaction->GetLockType(this, location) != Transaction::LockMode::Write) {
     // We don't have the write lock yet -> acquire it
     // Since we want to write the blob, we don't have to read the content, we just want the write lock
     WriteLockNoContent(location);
@@ -251,7 +251,7 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
 
   // Store the new blob data for the transaction commit in the transaction state.
   // The following call will throw an exception if we attempt to write a blob, which has been deleted in this transaction.
-  transaction->WriteBlob(id, location, blobData, static_cast<blob_size>(blobSize));
+  transaction->WriteBlob(this, location, blobData, static_cast<blob_size>(blobSize));
 }
 
 
@@ -278,12 +278,12 @@ void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) 
   BlobLocation location(segment, cluster, blob);
 
   // Acquire a write lock for deletion of the blob if we don't already hold one.
-  if (transaction->GetLockType(id, location) != Transaction::LockMode::Write) {
+  if (transaction->GetLockType(this, location) != Transaction::LockMode::Write) {
     WriteLockNoContent(location); // no need to fetch the blob content -> we delete the blob anyway
   }
 
   // Validate that the cluster isn't deleted yet and then mark the blob for deletion upon transaction commit
-  transaction->DeleteBlob(id, location);
+  transaction->DeleteBlob(this, location);
 
   // Remove the blob from our blob cache
   cache->RemoveBlob(location);
@@ -296,13 +296,13 @@ void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
   BlobLocation lockLocation(segment, cluster, constants::ClusterDeleteId);
 
   // Acquire a write lock for deletion of the cluster if we don't already hold one (which is unlikely)
-  if (transaction->GetLockType(id, lockLocation) != Transaction::LockMode::Write) {
+  if (transaction->GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
   }
 
   // Validate that the segment isn't deleted yet and then mark the cluster with all its segments
   // for deletion upon transaction commit
-  transaction->DeleteCluster(id, segment, cluster);
+  transaction->DeleteCluster(this, segment, cluster);
 
   // Remove all cached blobs for that cluster
   cache->RemoveCluster(segment, cluster);
@@ -315,12 +315,12 @@ void Database::DeleteSegment(segment_id segment) {
   BlobLocation lockLocation(segment, constants::SegmentDeleteId, constants::ClusterDeleteId);
 
   // Acquire a write lock for deletion of the segment if we don't already hold one (which is unlikely)
-  if (transaction->GetLockType(id, lockLocation) != Transaction::LockMode::Write) {
+  if (transaction->GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
   }
 
   // Mark the segment for deletion upon transaction commit
-  transaction->DeleteSegment(id, segment);
+  transaction->DeleteSegment(this, segment);
 
   // Remove all cached blobs for that segment
   cache->RemoveSegment(segment);
@@ -373,7 +373,7 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
 
   // The blob is now logically created, so we also implicitly hold a write lock to it
   auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction if not already
-  transaction->AcquiredLock(id, newLocation, Transaction::LockMode::Write);
+  transaction->AcquiredLock(this, newLocation, Transaction::LockMode::Write);
 
   // Now we logically created the blob and we implicitly created the write lock, now the caller just has to actually write some
   // blob data for this blob or else it won't actually be created on transaction commit.
@@ -397,7 +397,7 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
     assert(response->nBlobs == 0); // The server should never respond with a blob to a Delete request
     // Nothing to enter into the cache, but update the held lock type in the transaction
-    transaction->AcquiredLock(id, location, Transaction::LockMode::Write);
+    transaction->AcquiredLock(this, location, Transaction::LockMode::Write);
   } else {
     // Handle error response
     HandleReadBlobErrorResponse(*response);

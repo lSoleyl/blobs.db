@@ -96,9 +96,11 @@ public:
    */
   void UpdateCacheForCommittedBlob(const BlobLocation& location, std::vector<uint8_t> data, commit_id commitId, uint64_t transactionId);
 
+  
 
-  class BlobCache;
-
+  const std::string name;
+  const connection_id connectionId;
+  const database_id id;
 private:
   /** Private overload exported by the DLL and used by the std::string_view overload.
    */
@@ -132,10 +134,8 @@ private:
   ~Database();
   Database& operator=(const Database&) = delete;
 
-  std::string name;
+  class BlobCache;
   std::unique_ptr<BlobCache> cache;
-  connection_id connectionId;
-  database_id id;
 };
 
 
