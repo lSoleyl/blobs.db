@@ -237,7 +237,7 @@ bool Transaction::Commit() {
     return false;
   }
 
-  std::vector<network::Client*> waitForReplies;
+  std::vector<std::pair<network::Client*, Transaction*>> waitForReplies;
 
 
   // Construct the commit messages for each server connection
@@ -253,16 +253,51 @@ bool Transaction::Commit() {
       }
 
       // We sent a commit message so note down that we have to wait for a commit response
-      waitForReplies.push_back(&client);
+      waitForReplies.push_back({ &client, &transaction });
     }
   }
 
 
-  TODO("Wait for all commit replies");
-  TODO("Update the transaction ids in the local blob cache accordingly");
-  TODO("Clear the transaction state");
+  TODO("Collect errors into a single error message and throw the error at the end (after reseting all state)");
+  for (auto [client, transaction] : waitForReplies) {
+    auto response = client->AwaitMessage();
 
-  
+    if (auto commitResponse = response.Get<network::message::TransactionCommitResponse>()) {
+      if (commitResponse->result == network::message::TransactionCommitResponse::Result::SUCCESS) {
+        // Update the cached versions of all written blobs for all databases involved in the commit
+        for (auto& commitEntry : *commitResponse) {
+          auto& dbState = transaction->state->forDatabase[commitEntry.dbId];
+          TODO("Now how do we access the database here!?");
+          // There is no central database registry to ask... and it isn't stored in the dbState
+          // We would have to remodel the whole interface of the Transaction class to accept Database* everywhere instead of database_id
+          // Man I really liked the current design.
+          
+
+
+        }
+      } else {
+        TODO("Convert error code into some nice error message and include the database in there somehow");
+      }
+
+
+
+
+      TODO("Process all commit ids by database and update the local database blob cache accordingly");
+      TODO("But how!? Transaction cannot access the database's cache... Unless we add a special method for it")
+
+
+    }
+    TODO("It could also be a connection close message... handle it accordingly");
+    TODO("All other replies should return an unexpected server message exception");
+  }
+
+  TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
+
+  // Reset all transaction state for all connections
+  active.clear();
+
+  TODO("Throw error if any");
+
   return true;
 }
 

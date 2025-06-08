@@ -7,6 +7,7 @@
 
 namespace blobs {
 struct BlobLocation;
+class Database;
 
 /** Instances of this class represent a single global transaction.
  */

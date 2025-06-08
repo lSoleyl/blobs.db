@@ -32,6 +32,16 @@ public:
     return (pos != cache.end()) ? &pos->second : nullptr;
   }
 
+  /** Update stored blob with the specified data and commit id. This is used during transaction commit.
+   */
+  void Update(const BlobLocation& location, std::vector<uint8_t> data, commit_id lastUpdated, uint64_t transactionId) {
+    auto& cachedBlob = cache[location];
+    cachedBlob.data = std::move(data);
+    cachedBlob.lastUpdated = lastUpdated;
+    cachedBlob.transactionId = transactionId;
+  }
+
+
   /** Store/Update blob data in the cache and return a reference to the stored blob
    */
   CachedBlob& Set(const BlobLocation& location, const void* data, blob_size size, commit_id lastUpdated, uint64_t transactionId) {
@@ -97,9 +107,7 @@ private:
 
 Database::Database(std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache) {}
 
-Database::~Database() {
-  delete cache;
-}
+Database::~Database() {}
 
 
 Database* Database::Open(const char* connectionStringBegin, size_t connectionStringLen) {
@@ -342,6 +350,9 @@ void Database::Close() {
 }
 
 
+void Database::UpdateCacheForCommittedBlob(const BlobLocation& location, std::vector<uint8_t> data, commit_id commitId, uint64_t transactionId) {
+  cache->Update(location, std::move(data), commitId, transactionId);
+}
 
 
 blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {

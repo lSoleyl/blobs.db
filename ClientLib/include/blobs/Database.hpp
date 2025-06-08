@@ -4,6 +4,7 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace blobs {
 struct BlobLocation;
@@ -88,6 +89,14 @@ public:
    */
   BLOBS_EXPORT void Close();
 
+
+  /** This method is called upon transaction commit to update the cached version of the blob, which has just been written to with the
+   *  data committed to the database. That way the client will already have an up to date version of the blob and the server doesn't need to 
+   *  send any blob data in the next transaction unless another client changed the blob in between the next transaction.
+   */
+  void UpdateCacheForCommittedBlob(const BlobLocation& location, std::vector<uint8_t> data, commit_id commitId, uint64_t transactionId);
+
+
   class BlobCache;
 
 private:
@@ -124,7 +133,7 @@ private:
   Database& operator=(const Database&) = delete;
 
   std::string name;
-  BlobCache* cache;
+  std::unique_ptr<BlobCache> cache;
   connection_id connectionId;
   database_id id;
 };
