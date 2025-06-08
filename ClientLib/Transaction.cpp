@@ -293,33 +293,27 @@ bool Transaction::Commit() {
         for (auto& commitEntry : *commitResponse) {
           auto dbState = transaction->state->GetDatabaseState(commitEntry.dbId);
           assert(dbState != nullptr); // Something is seriously wrong if we just committed data from a database state, which is now gone (or server messed up)
+          auto database = dbState->database;
 
-          
-          TODO("Now how do we access the database here!?");
-          // There is no central database registry to ask... and it isn't stored in the dbState
-          // We would have to remodel the whole interface of the Transaction class to accept Database* everywhere instead of database_id
-          // Man I really liked the current design.
-          
+          // Update each written blob's data in the database cache now
+          // Since writtenBlobs does NOT contain the special deletion blobs, we don't have to perform any filtering for these ids
+          for (auto& [location, data] : dbState->writtenBlobs) {
+            // Since we don't need the data in the writtenBlobs anymore, we can safely just move it into the cache to 
+            // save some reallocations
+            database->UpdateCacheForCommittedBlob(location, std::move(data), commitEntry.commitId, transaction->id);
+          }
 
-
+          TODO("Maybe also delete all deleted blobs from the cache?");
+          TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
         }
       } else {
         TODO("Convert error code into some nice error message and include the database in there somehow");
       }
-
-
-
-
-      TODO("Process all commit ids by database and update the local database blob cache accordingly");
-      TODO("But how!? Transaction cannot access the database's cache... Unless we add a special method for it")
-
-
     }
     TODO("It could also be a connection close message... handle it accordingly");
     TODO("All other replies should return an unexpected server message exception");
   }
 
-  TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
 
   // Reset all transaction state for all connections
   active.clear();
