@@ -9,10 +9,25 @@ namespace message {
 TransactionCommit::TransactionCommit(database_id databaseId, message_size messageSize, uint16_t nBlobsCommitted, bool hasFollowMessage) : 
   Message(messageSize, TransactionCommit::type), databaseId(databaseId), nBlobsCommitted(nBlobsCommitted), hasFollowMessage(hasFollowMessage) {}
 
-MessagePointer_T<TransactionCommit> TransactionCommit::Create(database_id databaseId, size_t totalBlobsSize, uint16_t nBlobsCommitted, bool hasFollowMessage) {
+MessagePointer_T<TransactionCommit> TransactionCommit::Create(database_id databaseId, size_t totalBlobsSize, size_t nBlobsCommitted, bool hasFollowMessage) {
+  auto totalMessageSize = CalculateMessageSize(totalBlobsSize, nBlobsCommitted);
+  assert(totalMessageSize != 0); // Make sure the message is large enough to hold the blob data (0 is returned if the data is too large for the message)
+  return MessagePointer_T<TransactionCommit>(new (new char[totalMessageSize]) TransactionCommit(databaseId, totalMessageSize, nBlobsCommitted, hasFollowMessage));
+}
+
+
+message_size TransactionCommit::CalculateMessageSize(size_t totalBlobsSize, size_t nBlobsCommitted) {
+  if (nBlobsCommitted > std::numeric_limits<uint16_t>::max()) {
+    // We cannot transmit more than 65k blobs in one message
+    return 0;
+  }
+
   size_t totalMessageSize = sizeof(TransactionCommit) + nBlobsCommitted * sizeof(BlobData) + totalBlobsSize;
-  assert(totalMessageSize <= std::numeric_limits<message_size>::max()); // Make sure the message is large enough to hold the blob data
-  return MessagePointer_T<TransactionCommit>(new (new char[totalMessageSize]) TransactionCommit(databaseId, static_cast<message_size>(totalMessageSize), nBlobsCommitted, hasFollowMessage));
+  return (totalMessageSize <= std::numeric_limits<message_size>::max()) ? static_cast<message_size>(totalMessageSize) : 0;
+}
+
+bool TransactionCommit::IsValidMessageSize(size_t totalBlobsSize, size_t nBlobsCommitted) {
+  return CalculateMessageSize(totalBlobsSize, nBlobsCommitted) != 0;
 }
 
 

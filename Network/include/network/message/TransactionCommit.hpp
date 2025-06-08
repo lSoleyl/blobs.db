@@ -63,7 +63,16 @@ struct TransactionCommit : public Message {
   /** Constructs a new TransactionCommit message with sufficient size to hold the blobs to commit
    *  The caller is responsible for not requesting a message larger than the max message_size
    */
-  static MessagePointer_T<TransactionCommit> Create(database_id databaseId, size_t totalBlobsSize, uint16_t nBlobsCommitted, bool hasFollowMessage = false);
+  static MessagePointer_T<TransactionCommit> Create(database_id databaseId, size_t totalBlobsSize, size_t nBlobsCommitted, bool hasFollowMessage = false);
+
+  /** Returns the total message size for the specified total blob data size and number of commited blobs.
+   *  Returns 0 if the committed data doesn't fit into a single message
+   */
+  static message_size CalculateMessageSize(size_t totalBlobsSize, size_t nBlobsCommitted);
+
+  /** Returns true if the specified amount of blobs and blob data fit into one TransactionCommit message
+   */
+  static bool IsValidMessageSize(size_t totalBlobsSize, size_t nBlobsCommitted);
 
   static constexpr Type type = Type::TransactionCommit;
 private:

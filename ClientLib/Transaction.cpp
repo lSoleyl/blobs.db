@@ -8,6 +8,7 @@
 
 #include <set>
 #include <map>
+#include <algorithm>
 
 namespace blobs {
 
@@ -49,7 +50,174 @@ struct Transaction::State {
         throw exception::SegmentDeleted();
       }
     }
+
+    struct BlobToSend {
+      BlobLocation location;
+      const std::vector<uint8_t>* data;
+      blob_size blobSize;  // the blob size to transmit, which may differ from the actual size for blobs marked for deletion (see constants::DeleteBlobSize)
+
+      size_t DataSize() const { return data ? data->size() : 0; }
+    };
+
+
+
+    /** Constructs a sorted list of blob writes to transmit to correctly perform the commit.
+     *  This will process all written/deleted blobs/clusters/segments and create a write instruction for all of them and sort them
+     *  in the following order to ensure sane transaction processing on the server:
+     *   1. Segment creation
+     *   1.a Everything else sorted by segment id
+     *   2. Cluster creation
+     *   2.a Everything else sorted by cluster id
+     *   3. Blob creation
+     *   4. Blob writes sorted by blob id
+     *   5. Blob deletion (this is indicated by an empty blob data and constants::DeleteBlobSize as blobSize member)
+     *   6. Cluster deletion
+     *   7. Segment deletion
+     */
+    std::vector<BlobToSend> GetSortedWritesToTransmit() const {
+      std::vector<BlobToSend> writesToTransmit;
+
+      for (auto& [location, data] : writtenBlobs) {
+        // A regular write. We can simply cast the data size to blob_size as Database::WriteInternal() already validated the blob size is < constants::MaxBlobSize
+        writesToTransmit.push_back({ location, &data, static_cast<blob_size>(data.size()) });
+      }
+
+      // Now sort all the writes according to the first points of the order
+      std::stable_sort(writesToTransmit.begin(), writesToTransmit.end(), [](const BlobToSend& a, const BlobToSend& b) {
+        // Segment creation is ordered first (there can only be one such write per transaction)
+        if (a.location.segment == constants::NextFreeSegmentId) {
+          return true;
+        } else if (b.location.segment == constants::NextFreeSegmentId) {
+          return false;
+        }
+
+        // Then we can order everything by segment
+        if (a.location.segment != b.location.segment) {
+          return a.location.segment < b.location.segment;
+        }
+
+        // Within the segment we will order cluster creations first (only one such write can exist per segment per transaction)
+        if (a.location.cluster == constants::NextFreeClusterId) {
+          return true;
+        } else if (b.location.cluster == constants::NextFreeClusterId) {
+          return false;
+        }
+
+        // Then we can order everything by cluster
+        if (a.location.cluster != b.location.cluster) {
+          return a.location.cluster < b.location.cluster;
+        }
+
+        // Within a cluster we will order blob creations first (only one such write can exist per cluster per transaction)
+        if (a.location.blob == constants::NextFreeBlobId) {
+          return true;
+        } else if (b.location.blob == constants::NextFreeBlobId) {
+          return false;
+        }
+
+        // All blob writes within the cluster by blob id
+        return a.location.blob < b.location.blob;
+      });
+
+
+
+      for (auto& location : deletedBlobs) {
+        // Blob deletion is indicated by using a special DeleteBlobSize constant as size value while transmitting no data in the blob itself
+        writesToTransmit.push_back({ location, nullptr, constants::DeleteBlobSize });
+      }
+
+      for (auto [segment, cluster] : deletedClusters) {
+        // Cluster deletion is indicated by performing an empty write into the ClusterDeleteId blob of the cluster
+        writesToTransmit.push_back({ BlobLocation(segment, cluster, constants::ClusterDeleteId), nullptr, 0 });
+      }
+
+      for (auto segment : deletedSegments) {
+        // Segment deletion is indicated by perofrming an empty write into SegmentDeleteId cluster
+        writesToTransmit.push_back({ BlobLocation(segment, constants::SegmentDeleteId, constants::ClusterDeleteId), nullptr, 0 });
+      }
+
+      return writesToTransmit;
+    }
+
+
+    /** Constructs all the commit messages for this database
+     */
+    void ConstructCommitMessages(database_id dbId, std::vector<network::MessagePointer_T<network::message::TransactionCommit>>& result) const {
+      using namespace network::message;
+      
+      
+      // Fetch the sorted write operations to perform
+      auto writesToTransmit = GetSortedWritesToTransmit();      
+
+      // Now split up the write operations into TransactionCommit messages by 
+      // determining the maximum range of writes [transmitBegin;transmitEnd) that fit into a single TransactionCommit message until
+      // we processed all of them.
+      for (auto transmitBegin = writesToTransmit.begin(), end = writesToTransmit.end(); transmitBegin != end;) {
+        // Sum up the message size and number of blobs for the current message
+        size_t totalBlobSize = 0;
+        size_t nBlobs = 0;
+
+        // Determine the last blob we can still send in one message
+        auto transmitEnd = transmitBegin;
+        while (transmitEnd != end && TransactionCommit::IsValidMessageSize(totalBlobSize + transmitEnd->DataSize(), nBlobs + 1)) {
+          totalBlobSize += transmitEnd->DataSize();
+          ++nBlobs;
+          ++transmitEnd;
+        }
+        
+        // Now construct a message for the found range. The range should never be empty, because we already checked in the loop head
+        // that there is at least one blob to transmit and we ensure that the blobs are small enough so that each message can hold at least one blob
+        assert(transmitBegin != transmitEnd);
+        auto commitMessage = TransactionCommit::Create(dbId, totalBlobSize, nBlobs);
+        
+        // Now write the blobs into the transaction commit message
+        auto commitWritePos = commitMessage->begin();
+        for (auto transmitPos = transmitBegin; transmitPos != transmitEnd; ++transmitPos, ++commitWritePos) {
+          auto& writeEntry = *transmitPos;
+
+          // Set the blob header
+          *commitWritePos = writeEntry.location;
+          commitWritePos->blobSize = writeEntry.blobSize; // blobSize may be != data->size() for constants::DeleteBlobSize
+
+          // Write the blob data to transmit (if any)
+          if (writeEntry.DataSize() > 0) {
+            commitWritePos.WriteData(std::string_view(reinterpret_cast<const char*>(writeEntry.data->data()), writeEntry.data->size()));
+          }
+        }
+
+        assert(commitWritePos == commitMessage->end()); // Otherwise we have miscalculated something!
+        
+        // Add the completed commit message to the list of commit messages
+        result.push_back(std::move(commitMessage));
+
+                
+        // Continue after the just processed blob range
+        transmitBegin = transmitEnd;
+      }
+    }
   };
+
+  /** Constructs the commit messages for all databases in this transaction state.
+   */
+  std::vector<network::MessagePointer_T<network::message::TransactionCommit>> ConstructCommitMessages() const {
+    std::vector<network::MessagePointer_T<network::message::TransactionCommit>> commitMessages;
+
+    for (auto& [dbId, state] : forDatabase) {
+      state.ConstructCommitMessages(dbId, commitMessages);
+    }
+
+    if (!commitMessages.empty()) {
+      // Set the follow message property to all but the last commit message for that client
+      for (auto pos = commitMessages.begin(), end = commitMessages.end(); pos != end;) {
+        (*pos)->hasFollowMessage = (++pos != end);
+      }
+    }
+
+    return commitMessages;
+  }
+
+
+
 
   std::map<database_id, DatabaseState> forDatabase;
 };
@@ -69,28 +237,32 @@ bool Transaction::Commit() {
     return false;
   }
 
-  // First we need to transmit the created blobs
+  std::vector<network::Client*> waitForReplies;
 
 
+  // Construct the commit messages for each server connection
+  for (auto& [connectionId, transaction] : active) {
+    auto commitMessages = transaction.state->ConstructCommitMessages();
+    if (!commitMessages.empty()) {
+
+      // Send all commit messages to the client
+      auto& client = internal::Network::Get(connectionId);
+      for (auto& message : commitMessages) {
+        TODO("Implement a batch send to send a range of messages to the server to avoid synchronization overhead");
+        client.SendMessageToServer(std::move(message));
+      }
+
+      // We sent a commit message so note down that we have to wait for a commit response
+      waitForReplies.push_back(&client);
+    }
+  }
 
 
+  TODO("Wait for all commit replies");
+  TODO("Update the transaction ids in the local blob cache accordingly");
+  TODO("Clear the transaction state");
 
-
-  TODO("First process the writes into NextFreeSegmentId, then NextFreeClusterId, then NextFreeBlobIdall writes");
-  TODO("Then transmit all regular writes");
-  TODO("Finally all deletions");
-  TODO("Blob deletions are a bit complex to handle as they involve a special blob size value");
-
-
-
-  TODO("Split up the commit into multiple messages if necessary");
-
-  // 1. Construct commit message(s) from the transaction state
-  // 2. Send message(s) to the server
-  // 3. Await response
-  // 4. Update our local blob cache somehow
-
-  TODO("Implement commit");
+  
   return true;
 }
 
@@ -276,9 +448,6 @@ std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(database_
   // Blob not written in this transaction yet
   return std::nullopt;
 }
-
-
-
 
 
 
