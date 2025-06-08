@@ -22,6 +22,33 @@ struct Transaction::State {
     std::set<BlobLocation> deletedBlobs;
     std::set<std::pair<segment_id, cluster_id>> deletedClusters;
     std::set<segment_id> deletedSegments;
+
+
+    /** Throws an exception if the segment, cluster or blob has already been marked for deletion
+     */
+    void EnsureBlobNotDeleted(const BlobLocation& location) const {
+      EnsureClusterNotDeleted(location.segment, location.cluster);
+      if (deletedBlobs.find(location) != deletedBlobs.end()) {
+        throw exception::BlobDeleted();
+      }
+    }
+
+    /** Throws an exception if the segment or cluster has already been marked for deletion
+     */
+    void EnsureClusterNotDeleted(segment_id segment, cluster_id cluster) const {
+      EnsureSegmentNotDeleted(segment);
+      if (deletedClusters.find({ segment, cluster }) != deletedClusters.end()) {
+        throw exception::ClusterDeleted();
+      }
+    }
+
+    /** Throws an exception if the segment has already been marked for deletion
+     */
+    void EnsureSegmentNotDeleted(segment_id segment) const {
+      if (deletedSegments.find(segment) != deletedSegments.end()) {
+        throw exception::SegmentDeleted();
+      }
+    }
   };
 
   std::map<database_id, DatabaseState> forDatabase;
@@ -129,6 +156,9 @@ Transaction::LockMode Transaction::GetLockType(database_id dbId, const BlobLocat
     }
   }
 
+  TODO("Handle special lock values... If we hold a write lock on cluster creation, then we also have an implicit write lock on all created clusters");
+  TODO("Maybe we should instead hold lock ranges, instead of single granular locks?")
+
   return LockMode::None;
 }
 
@@ -149,11 +179,10 @@ void Transaction::AcquiredLock(database_id dbId, const BlobLocation& location, L
 
 void Transaction::WriteBlob(database_id dbId, const BlobLocation& location, const void* blobData, blob_size blobSize) {
   auto& dbState = state->forDatabase[dbId];
-  if (dbState.deletedBlobs.find(location) != dbState.deletedBlobs.end()) {
-    // Cannot write a blob after deleting it in the same transaction
-    throw exception::BlobDeleted();
-  }
-
+  
+  // Make sure, the blob hasn't already been marked for deletion
+  dbState.EnsureBlobNotDeleted(location);
+  
   // Store the new blob data in our transaction state
   auto& blobVector = dbState.writtenBlobs[location];
   blobVector.resize(blobSize);
@@ -164,20 +193,8 @@ void Transaction::WriteBlob(database_id dbId, const BlobLocation& location, cons
 void Transaction::DeleteBlob(database_id dbId, const BlobLocation& location) {
   auto& dbState = state->forDatabase[dbId];
 
-  if (dbState.deletedSegments.find(location.segment) != dbState.deletedSegments.end()) {
-    // The segment has already been deleted in this transaction
-    throw exception::SegmentDeleted();
-  }
-
-  if (dbState.deletedClusters.find({ location.segment, location.cluster }) != dbState.deletedClusters.end()) {
-    // The cluster has already been deleted in this transaction
-    throw exception::ClusterDeleted();
-  }
-
-  if (dbState.deletedBlobs.find(location) != dbState.deletedBlobs.end()) {
-    // The blob itself has already been marked for deletion in this transaction
-    throw exception::BlobDeleted();
-  }
+  // Make sure, the blob hasn't already been marked for deletion
+  dbState.EnsureBlobNotDeleted(location);
 
 
   // If we first called WriteBlob() and then in the same transaction DeleteBlob(),
@@ -192,14 +209,8 @@ void Transaction::DeleteBlob(database_id dbId, const BlobLocation& location) {
 void Transaction::DeleteCluster(database_id dbId, segment_id segment, cluster_id cluster) {
   auto& dbState = state->forDatabase[dbId];
 
-  if (dbState.deletedSegments.find(segment) != dbState.deletedSegments.end()) {
-    throw exception::SegmentDeleted();
-  }
-
-  if (dbState.deletedClusters.find({ segment, cluster }) != dbState.deletedClusters.end()) {
-    // The same cluster has already been deleted in this transaction
-    throw exception::ClusterDeleted();
-  }
+  // Make sure, the cluster hasn't already been marked for deletion
+  dbState.EnsureClusterNotDeleted(segment, cluster);
 
   // Now discard all write/delete operations in that cluster as the whole cluster will be discarded anyway
   auto writtenBlobsBegin = dbState.writtenBlobs.lower_bound(BlobLocation(segment, cluster, 0));
@@ -220,9 +231,8 @@ void Transaction::DeleteCluster(database_id dbId, segment_id segment, cluster_id
 void Transaction::DeleteSegment(database_id dbId, segment_id segment) {
   auto& dbState = state->forDatabase[dbId];
 
-  if (dbState.deletedSegments.find(segment) != dbState.deletedSegments.end()) {
-    throw exception::SegmentDeleted();
-  }
+  // Make sure, the segment hasn't already been marked for deletion
+  dbState.EnsureSegmentNotDeleted(segment);
 
 
   // Now discard all write/delete operations in that segment as the whole segment will be discarded anyway
@@ -253,10 +263,9 @@ std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(database_
   }
 
   auto& dbState = dbPos->second;
-  if (dbState.deletedBlobs.find(location) != dbState.deletedBlobs.end()) {
-    // Attempt to read an already deleted blob
-    throw exception::BlobDeleted();
-  }
+  
+  // Make sure, we don't attempt to read from a blob marked for deletion
+  dbState.EnsureBlobNotDeleted(location);
 
   auto writePos = dbState.writtenBlobs.find(location);
   if (writePos != dbState.writtenBlobs.end()) {
