@@ -10,15 +10,15 @@
 // Define all predefined type choices made to be able to easily recompile with other sizes if necessary
 namespace blobs {
 
-  using message_size = uint32_t; // limits the maximum size of a single network::Message
+  using message_size = uint32_t; // limits the maximum size of a single network::Message (and indirectly the maximum size of a single blob)
 
-  using client_id = uint16_t; // limits the number of concurrent server connections
-  using database_id = uint8_t; // limits the number of concurrently opened databases for one client (per server)
-  using segment_id = uint32_t; // limits the number of segments in the database
-  using cluster_id = uint32_t; // limits the number of clusters in a segment
-  using blob_id = uint32_t; // limits the number of blobs in a cluster
-  using blob_size = uint32_t; // limits the size of a blob
-  using commit_id = uint64_t; // limits the number of commits in the databse before the server needs to reboot to reorganize all commit ids
+  using client_id = uint16_t;   // limits the number of concurrent server connections
+  using database_id = uint8_t;  // limits the number of concurrently opened databases for one client (per server)
+  using segment_id = uint32_t;  // limits the number of segments in the database
+  using cluster_id = uint32_t;  // limits the number of clusters in a segment
+  using blob_id = uint32_t;     // limits the number of blobs in a cluster
+  using blob_size = uint32_t;   // limits the size of a blob (also limited by message_size)
+  using commit_id = uint64_t;   // limits the number of commits in the databse before the server needs to reboot to reorganize all commit ids
 
   using connection_id = uint16_t; // limits the number distinct server connections a single client can establish
 
@@ -31,7 +31,9 @@ namespace blobs {
 
     /** The maximum allowed blob size is chosen in a way to ensure that neither BlobsReadResponse or TransactionCommit need to be split for transmitting a single blob.
      */
-    constexpr blob_size MaxBlobSize = std::is_same_v<blob_size, message_size> ? std::numeric_limits<blob_size>::max() - _BlobMessageSize : std::numeric_limits<blob_size>::max() - 1;
+    constexpr blob_size MaxBlobSize = std::is_same_v<blob_size, message_size> ? std::numeric_limits<blob_size>::max() - _BlobMessageSize :
+                                   (sizeof(blob_size) < sizeof(message_size)) ? std::numeric_limits<blob_size>::max() - 1 :
+                                                                                std::numeric_limits<message_size>::max() - _BlobMessageSize;
 
     /** Special blob size value, which will be specified in a TransactionCommit message to delete a blob.
      */
