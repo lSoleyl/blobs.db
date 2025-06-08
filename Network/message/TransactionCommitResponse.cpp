@@ -19,6 +19,14 @@ TransactionCommitResponse::DatabaseCommit* TransactionCommitResponse::end() {
   return reinterpret_cast<DatabaseCommit*>(reinterpret_cast<uint8_t*>(this) + size);
 }
 
+const TransactionCommitResponse::DatabaseCommit* TransactionCommitResponse::begin() const {
+  return reinterpret_cast<const DatabaseCommit*>(reinterpret_cast<const uint8_t*>(this) + sizeof(TransactionCommitResponse));
+}
+
+const TransactionCommitResponse::DatabaseCommit* TransactionCommitResponse::end() const {
+  return reinterpret_cast<const DatabaseCommit*>(reinterpret_cast<const uint8_t*>(this) + size);
+}
+
 
 MessagePointer_T<TransactionCommitResponse> TransactionCommitResponse::Create(int nDatabases) {
   assert(nDatabases - 1 <= std::numeric_limits<database_id>::max()); // 0 is a valid id, so the number of databases can be 1 larger than the maximum id
@@ -36,7 +44,7 @@ std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& mes
   out << message.type << '(';
   switch (message.result) {
     case Result::SUCCESS:
-      out << "commitId=" << message.commitId;
+      out << "dbId=" << message.begin()->dbId << ", commitId=" << message.begin()->commitId;
       break;
 
     case Result::DATABASE_NOT_OPENED:

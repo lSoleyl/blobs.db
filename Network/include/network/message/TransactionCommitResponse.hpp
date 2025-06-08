@@ -47,6 +47,9 @@ struct TransactionCommitResponse : public Message {
   DatabaseCommit* begin();
   DatabaseCommit* end();
 
+  const DatabaseCommit* begin() const;
+  const DatabaseCommit* end() const;
+
   
   /** Constructs a successful response
    * 
