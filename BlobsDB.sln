@@ -13,6 +13,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestClient", "TestClient\Te
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestVectorClock", "TestVectorClock\TestVectorClock.vcxproj", "{A5B475D8-3109-4CE3-9F50-C2D369CCAA61}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{B5B9C05A-52C4-45AB-8C0C-B9D627ABCC42}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -42,6 +44,10 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{72244BDC-3B20-4056-8393-67CA45E201EB} = {B5B9C05A-52C4-45AB-8C0C-B9D627ABCC42}
+		{A5B475D8-3109-4CE3-9F50-C2D369CCAA61} = {B5B9C05A-52C4-45AB-8C0C-B9D627ABCC42}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {A8D2CE0B-EC12-43E1-8FE7-C186EACEFDC2}

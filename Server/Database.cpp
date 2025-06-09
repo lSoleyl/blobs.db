@@ -232,7 +232,7 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
           cluster->DeleteBlob(update.blob);
         } else {
           // Regular blob content update
-          cluster->UpdateBlob(update.blob)->SetIdContent(pos.ReadData());
+          cluster->UpdateBlob(update.blob)->SetContent(pos.ReadData());
         }
       }
     }

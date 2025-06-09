@@ -178,9 +178,15 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
       
       // Send reply to client      
       server.SendMessageToClient(client.id, std::move(commitResponse));
+
+      // We committed all changes for this transaction and replied to the client,
+      // Reset the transaction state and all locks held by the client, which may in turn trigger processing of outstanding reads
+      AbortTransaction(client);
     } else {
       // Commit not successful -> return error code to the client and abort its transaction commit (and active transaction)
       server.SendMessageToClient(client.id, network::message::TransactionCommitResponse::CreateError(result));
+
+      // Abort transaction and release all locks, which may in turn trigger processing of outstanding reads
       AbortTransactionCommit(client);
     }
   }
