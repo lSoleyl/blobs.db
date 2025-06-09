@@ -2,7 +2,11 @@
 
 #include <iostream>
 #include <iomanip>
+#include <thread>
+#include <chrono>
 
+
+constexpr int sleepMs = 0;
 
 struct VectorClock {
   VectorClock(const std::vector<int>& clock, size_t index) : data(clock), index(index) {}
@@ -60,15 +64,32 @@ int main() {
     initialClock.push_back(0);
 
     std::cout << "\n\nClient's clock index is: " << index << "\n";
-    std::cout << "Initial Clock: " << VectorClock(initialClock, index);
+    std::cout << "Initial Clock: " << VectorClock(initialClock, index) << '\n';
+
+    db->WriteVector(0, 0, 0, initialClock);
+    blobs::Transaction::Commit();
 
 
-    TODO("Commit this blob and update the vector blob in each transaction... maybe with a small time delay?");
+    while (true) {
+      std::cout << "Waiting to write lock...\n";
+      auto currentClock = db->ReadVector<int>(0, 0, 0, true);
+      std::cout << "Read Clock:    " << VectorClock(currentClock, index) << '\n';
+      if (sleepMs) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
+      }
+      ++currentClock[index];
+      std::cout << "Write Clock:   " << VectorClock(currentClock, index) << '\n';
+      db->WriteVector(0, 0, 0, currentClock);
+      blobs::Transaction::Commit();
+      if (currentClock[index] == 100) {
+        break;
+      }
+    }
 
-
-
+    std::cout << "Vector clock completed counting. Closing database...\n";
     db->Close();
-    std::cout << "Exiting client\n";
+    std::cout << "Waiting for input to exit\n";
+    system("PAUSE");
   } catch (blobs::Exception& ex) {
     std::cerr << "[ERR] Exiting client with exception: " << ex.what() << "\n";
   }
