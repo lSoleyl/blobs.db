@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ClientLib", "ClientLib\Clie
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestClient", "TestClient\TestClient.vcxproj", "{72244BDC-3B20-4056-8393-67CA45E201EB}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestVectorClock", "TestVectorClock\TestVectorClock.vcxproj", "{A5B475D8-3109-4CE3-9F50-C2D369CCAA61}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -33,6 +35,10 @@ Global
 		{72244BDC-3B20-4056-8393-67CA45E201EB}.Debug|x64.Build.0 = Debug|x64
 		{72244BDC-3B20-4056-8393-67CA45E201EB}.Release|x64.ActiveCfg = Release|x64
 		{72244BDC-3B20-4056-8393-67CA45E201EB}.Release|x64.Build.0 = Release|x64
+		{A5B475D8-3109-4CE3-9F50-C2D369CCAA61}.Debug|x64.ActiveCfg = Debug|x64
+		{A5B475D8-3109-4CE3-9F50-C2D369CCAA61}.Debug|x64.Build.0 = Debug|x64
+		{A5B475D8-3109-4CE3-9F50-C2D369CCAA61}.Release|x64.ActiveCfg = Release|x64
+		{A5B475D8-3109-4CE3-9F50-C2D369CCAA61}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
