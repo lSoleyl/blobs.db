@@ -46,7 +46,7 @@ std::ostream& operator<<(std::ostream& out, BlobsRead::LockMode mode) {
 
 std::ostream& operator<<(std::ostream& out, const BlobsRead& message) {
   out
-    << message.type << "(db=" << message.databaseId << ", n=" << message.nBlobsRequested
+    << message.type << "(db=" << static_cast<int>(message.databaseId) << ", n=" << static_cast<int>(message.nBlobsRequested)
     << ", blob[0]=" << *message.begin() << '@' << message.begin()->ifCommitIdHigher
     << ", write=" << message.lockMode << ')';
 

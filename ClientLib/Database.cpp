@@ -184,7 +184,7 @@ std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster
 
   auto cachedBlob = cache->Get(location);
 
-  if (cachedBlob->transactionId == transaction->id) {
+  if (cachedBlob && cachedBlob->transactionId == transaction->id) {
     // We already read this blob. Now if we also aready hold a compatible lock to the requested one, then we can simply return the cached blob
     auto currentLock = transaction->GetLockType(this, location);
     if (currentLock >= (writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read)) {
