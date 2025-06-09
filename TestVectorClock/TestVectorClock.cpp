@@ -69,7 +69,7 @@ int main() {
     db->WriteVector(0, 0, 0, initialClock);
     blobs::Transaction::Commit();
 
-    // If synchronization worky correctly, then after 100 increment steps the vector clock will be at 100 for this client
+    // If synchronization works correctly, then after 100 increment steps the vector clock will be at 100 for this client
     for (int i = 0; i < 100; ++i) {
       std::cout << "Waiting for write lock...\n";
       auto currentClock = db->ReadVector<int>(0, 0, 0, true);
