@@ -154,6 +154,9 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
         // ValidateCommitMessages() already ensures that the commit messages are grouped by database id
         auto database = client.GetDatabase(dbId);
         commitResults.emplace_back(dbId, database->CalculateCommitResult(pos, dbIdEnd));
+
+        // Continue with messages for next database
+        pos = dbIdEnd;
       }
       
       
