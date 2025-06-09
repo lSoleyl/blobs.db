@@ -5,7 +5,7 @@
 #include <thread>
 #include <chrono>
 
-
+// You can add a delay to see the server's round robin lock scheduling in effect
 constexpr int sleepMs = 0;
 
 struct VectorClock {
@@ -26,7 +26,7 @@ std::ostream& operator<<(std::ostream& out, const VectorClock& clock) {
 
     if (i == clock.index) {
       // Mark this client's clock value
-      out << '>' << std::setw(3) << clock.data[i] << '<';
+      out << '[' << std::setw(3) << clock.data[i] << ']';
     } else {
       out << ' ' << std::setw(3) << clock.data[i] << ' ';
     }
@@ -69,22 +69,21 @@ int main() {
     db->WriteVector(0, 0, 0, initialClock);
     blobs::Transaction::Commit();
 
-
-    while (true) {
-      std::cout << "Waiting to write lock...\n";
+    // If synchronization worky correctly, then after 100 increment steps the vector clock will be at 100 for this client
+    for (int i = 0; i < 100; ++i) {
+      std::cout << "Waiting for write lock...\n";
       auto currentClock = db->ReadVector<int>(0, 0, 0, true);
-      std::cout << "Read Clock:    " << VectorClock(currentClock, index) << '\n';
+      std::cout << "Reading Clock: " << VectorClock(currentClock, index) << '\n';
       if (sleepMs) {
         std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
       }
       ++currentClock[index];
-      std::cout << "Write Clock:   " << VectorClock(currentClock, index) << '\n';
+      std::cout << "Writing Clock: " << VectorClock(currentClock, index) << '\n';
       db->WriteVector(0, 0, 0, currentClock);
       blobs::Transaction::Commit();
-      if (currentClock[index] == 100) {
-        break;
-      }
     }
+
+    TODO("Convert this into a doctest which can automatically check correct increment of the clock across all clients if run with --test");
 
     std::cout << "Vector clock completed counting. Closing database...\n";
     db->Close();
