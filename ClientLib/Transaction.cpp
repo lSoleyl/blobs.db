@@ -217,7 +217,8 @@ struct Transaction::State {
     if (!commitMessages.empty()) {
       // Set the follow message property to all but the last commit message for that client
       for (auto pos = commitMessages.begin(), end = commitMessages.end(); pos != end;) {
-        (*pos)->hasFollowMessage = (++pos != end);
+        auto& commitMessage = *pos;
+        commitMessage->hasFollowMessage = (++pos != end);
       }
     }
 
