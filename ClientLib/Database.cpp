@@ -168,7 +168,7 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
 
 
 
-std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
+std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
   TODO("Add synchronization: Only one thread may communicate with the database at any given time.");
 
   // Get the currently running transaction or start a new one if no is running yet
@@ -232,7 +232,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
 
 
 
-void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
+void Database::WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
   if (blobSize > constants::MaxBlobSize) {
     // Make sure, the client cannot write blobs, which are larger than the supported maximum
     throw exception::BlobTooLarge(blobSize);
@@ -264,7 +264,7 @@ blob_id Database::CreateBlob(segment_id segment, cluster_id cluster, const void*
 
   // Create the new blob and directly write the data into it
   auto blobId = CreateBlobInternal(segment, cluster);
-  WriteBlobInternal(segment, cluster, blobId, blobData, blobSize);
+  WriteBlob(segment, cluster, blobId, blobData, blobSize);
 
   // Finally return the blob id to the caller so he knows, which blob has been created.
   return blobId;
@@ -358,7 +358,7 @@ void Database::UpdateCacheForCommittedBlob(const BlobLocation& location, std::ve
 blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster and
   // also tell us the next blob id to use.
-  auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, true);
+  auto [data, size] = ReadBlob(segment, cluster, constants::NextFreeBlobId, true);
   assert(size == sizeof(blob_id)); // This blob only consists of the blob_id value
 
   BlobLocation newLocation(segment, cluster, *static_cast<const blob_id*>(data));
@@ -369,7 +369,7 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
 
   // Update the NextFreeBlobId blob
   blob_id nextBlobId = newLocation.blob + 1;
-  WriteBlobInternal(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
+  WriteBlob(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
 
   // The blob is now logically created, so we also implicitly hold a write lock to it
   auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction if not already

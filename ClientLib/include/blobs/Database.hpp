@@ -29,19 +29,20 @@ public:
   }
 
 
-  /** A convenience access method to blob data, which returns the blob as std::string.
+  /** A convenience access method to blob data, which returns the blob as std::string (or std::wstring).
    *  The method is implemented in the header and not exported to ensure the client can use any STL implementation he sees fit.
    */
-  std::string ReadString(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false) {
-    auto [data, size] = ReadBlobInternal(segment, cluster, blob, writeLock);
-    return std::string(static_cast<const char*>(data), size);
+  template<typename CharT = char>
+  std::basic_string<CharT> ReadString(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false) {
+    auto [data, size] = ReadBlob(segment, cluster, blob, writeLock);
+    return std::basic_string<CharT>(static_cast<const CharT*>(data), size / sizeof(CharT));
   }
 
   /** Similar to ReadString() this method reads a blob as vector of T.
    */
   template<typename T = uint8_t>
   std::vector<T> ReadVector(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false) {
-    auto [data, size] = ReadBlobInternal(segment, cluster, blob, writeLock);
+    auto [data, size] = ReadBlob(segment, cluster, blob, writeLock);
     return std::vector<T>(static_cast<const T*>(data), static_cast<const T*>(data) + (size / sizeof(T)));
   }
 
@@ -53,15 +54,29 @@ public:
    * 
    * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
-  BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false);
+  BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false);
 
+
+  /** Convenience method to store string typed content in a blob
+   */
+  template<typename CharT = char>
+  void WriteString(segment_id segment, cluster_id cluster, blob_id blob, std::basic_string_view<CharT> string) {
+    WriteBlob(segment, cluster, blob, string.data(), string.size() * sizeof(CharT));
+  }
+
+  /** Convenience method to store a std::vector<T> in a blob
+   */
+  template<typename T>
+  void WriteVector(segment_id segment, cluster_id cluster, blob_id blob, const std::vector<T>& data) {
+    WriteBlob(segment, cluster, blob, data.data(), data.size() * sizeof(T));
+  }
 
   /** This method starts a transaction if not already started, acquires a write lock for the specified location (if not already done) and
    *  stores the data to write into the transaction's commit cache.
    * 
    * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
-  BLOBS_EXPORT void WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
+  BLOBS_EXPORT void WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
 
   /** Creates a new blob in the specified cluster and writes the passed data into it and then returns the id of the newly created blob.
    *  Only the first call to CreateBlob() for a given cluster inside a transaction will require server communication. All further 

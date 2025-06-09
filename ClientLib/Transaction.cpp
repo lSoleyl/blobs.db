@@ -307,11 +307,14 @@ bool Transaction::Commit() {
           TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
         }
       } else {
+        assert(false);
         TODO("Convert error code into some nice error message and include the database in there somehow");
       }
+    } else {
+      assert(false);
+      TODO("It could also be a connection close message... handle it accordingly");
+      TODO("All other replies should return an unexpected server message exception");
     }
-    TODO("It could also be a connection close message... handle it accordingly");
-    TODO("All other replies should return an unexpected server message exception");
   }
 
 
