@@ -28,20 +28,6 @@ network::Client::~Client() {
   network::Shutdown();
 }
 
-
-
-void network::Client::SendDatabaseOpen(std::string_view databaseName) {
-  // Acquire the access to the send queue and encode the message
-  AccessSendQueue() << message::DatabaseOpen::Create(databaseName);
-
-  // The network thread is automatically notified upon the access token falling out of scope (if necessary)
-}
-
-void network::Client::SendDatabaseClose(database_id databaseId) {
-  // Acquire the access to the send queue and encode the message
-  AccessSendQueue() << message::DatabaseClose::Create(databaseId);
-}
-
 void network::Client::SendMessageToServer(MessagePointer&& message) {
   AccessSendQueue() << std::move(message);
 }

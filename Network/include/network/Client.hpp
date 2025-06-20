@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ClientInterface.hpp"
 #include "DuplexMessageSocket.hpp"
 #include "ReceiveMessageQueue.hpp"
 #include "..\win_include.hpp"
@@ -9,21 +10,18 @@
 namespace blobs {
 namespace network {
 
-class Client final : private DuplexMessageSocket {
+class Client final : private DuplexMessageSocket, public ClientInterface {
 public:
   Client(std::string serverAddress, std::string serverPort);
-  ~Client();
-
-  void SendDatabaseOpen(std::string_view databaseName);
-  void SendDatabaseClose(database_id databaseId);
+  virtual ~Client() override;
 
   /** Used to send already allocated messages to the server (SendMessage() is sadly already in use by WinAPI)
    */
-  void SendMessageToServer(MessagePointer&& message);
+  virtual void SendMessageToServer(MessagePointer&& message) override;
 
   /** Wait for the next sever message without a timeout
    */
-  MessagePointer AwaitMessage();
+  virtual MessagePointer AwaitMessage() override;
 
 
 private:

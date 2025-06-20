@@ -116,6 +116,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\common\BlobLocation.hpp" />
+    <ClInclude Include="include\network\ClientInterface.hpp" />
     <ClInclude Include="include\network\IOCompletionHandler.hpp" />
     <ClInclude Include="include\network\DuplexMessageSocket.hpp" />
     <ClInclude Include="include\network\IOCompletionPort.hpp" />

@@ -148,7 +148,7 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
   auto connectionId = internal::Network::Get(hostName, port);
 
   auto& client = internal::Network::Get(connectionId);
-  client.SendDatabaseOpen(databaseName);
+  client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName));
 
   // Await the DatabaseOpenResponse
   auto message = internal::Network::ExpectMessage<network::message::DatabaseOpenResponse>(client);
@@ -334,7 +334,7 @@ void Database::Close() {
   }
 
   auto& client = internal::Network::Get(connectionId);
-  client.SendDatabaseClose(id);
+  client.SendMessageToServer(network::message::DatabaseClose::Create(id));
   auto message = internal::Network::AwaitMessage(client);
   if (auto confirmation = message.Get<network::message::DatabaseClose>()) {
     // Server confirmed closing of this database -> release connection and delete this database instance

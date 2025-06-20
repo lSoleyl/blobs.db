@@ -170,5 +170,8 @@
     <ClInclude Include="include\network\ServerInterface.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
+    <ClInclude Include="include\network\ClientInterface.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
