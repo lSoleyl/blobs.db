@@ -90,6 +90,12 @@
     <ClCompile Include="message\TransactionCommitResponse.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
+    <ClCompile Include="Factory.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="SocketFactory.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -171,6 +177,12 @@
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
     <ClInclude Include="include\network\ClientInterface.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\Factory.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\SocketFactory.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
   </ItemGroup>
