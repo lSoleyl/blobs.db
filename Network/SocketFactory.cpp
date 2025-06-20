@@ -15,8 +15,8 @@ void SocketFactory::Use() {
 }
 
 
-std::unique_ptr<ClientInterface> SocketFactory::CreateClient(std::string serverAddress, std::string serverPort) {
-  return std::make_unique<Client>(std::move(serverAddress), std::move(serverPort));
+std::unique_ptr<ClientInterface> SocketFactory::CreateClient(std::string serverAddress, int serverPort) {
+  return std::make_unique<Client>(std::move(serverAddress), std::to_string(serverPort));
 }
 
 std::unique_ptr<ServerInterface> SocketFactory::CreateServer(int listenPort) {

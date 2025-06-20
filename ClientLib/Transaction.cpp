@@ -5,7 +5,7 @@
 #include <common/BlobLocation.hpp>
 #include <internal/Network.hpp>
 #include <network/message/All.hpp>
-#include <network/Client.hpp>
+#include <network/ClientInterface.hpp>
 
 #include <set>
 #include <map>
@@ -263,7 +263,7 @@ bool Transaction::Commit() {
     return false;
   }
 
-  std::vector<std::pair<network::Client*, Transaction*>> waitForReplies;
+  std::vector<std::pair<network::ClientInterface*, Transaction*>> waitForReplies;
 
 
   // Construct the commit messages for each server connection

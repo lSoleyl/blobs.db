@@ -1,6 +1,6 @@
 #include "pch.hpp"
 #include <internal/Network.hpp>
-#include <network/Client.hpp>
+#include <network/Factory.hpp>
 #include <network/message/NetworkException.hpp>
 #include <blobs/Exception.hpp>
 
@@ -21,7 +21,7 @@ connection_id Network::Get(std::string_view host, int port) {
     if (entry.host == host && entry.port == port) {
       if (!entry.client) {
         // Connection has been closed -> reopen it
-        entry.client = std::make_unique<network::Client>(std::string(host), std::to_string(port));
+        entry.client = network::Factory::Instance().CreateClient(std::string(host), port);
       }
 
       // Return the index into the vector as the client id
@@ -37,7 +37,7 @@ connection_id Network::Get(std::string_view host, int port) {
 
 
   // No connection to that server made yet -> create a new entry
-  connections.push_back({ std::string(host), port, std::make_unique<network::Client>(std::string(host), std::to_string(port)), 1 });
+  connections.push_back({ std::string(host), port, network::Factory::Instance().CreateClient(std::string(host), port), 1 });
   return static_cast<connection_id>(connections.size() - 1);
 }
 
@@ -59,7 +59,7 @@ void Network::ServerClosedConnection(connection_id connectionId) {
 
 
 
-network::Client& Network::Get(connection_id connectionId) {
+network::ClientInterface& Network::Get(connection_id connectionId) {
   assert(connectionId < connections.size());
   if (!connections[connectionId].client) {
     // Database attempting to access an already closed connection
@@ -68,7 +68,7 @@ network::Client& Network::Get(connection_id connectionId) {
   return *connections[connectionId].client;
 }
 
-network::MessagePointer Network::AwaitMessage(network::Client& connection) {
+network::MessagePointer Network::AwaitMessage(network::ClientInterface& connection) {
   auto message = connection.AwaitMessage();
   if (auto ex = message.Get<network::message::NetworkException>()) {
     // Translate any network exception into a blobs::Exception

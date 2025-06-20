@@ -12,7 +12,7 @@ public:
 
 private:
   SocketFactory();
-  virtual std::unique_ptr<ClientInterface> CreateClient(std::string serverAddress, std::string serverPort) override;
+  virtual std::unique_ptr<ClientInterface> CreateClient(std::string serverAddress, int serverPort = 8108) override;
   virtual std::unique_ptr<ServerInterface> CreateServer(int listenPort = 8108) override;
 };
 

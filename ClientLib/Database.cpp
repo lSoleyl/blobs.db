@@ -3,7 +3,7 @@
 #include <blobs/Exception.hpp>
 #include <blobs/Transaction.hpp>
 #include <internal/Network.hpp>
-#include <network/Client.hpp>
+#include <network/ClientInterface.hpp>
 
 #include <network/message/All.hpp>
 #include <common/BlobLocation.hpp>

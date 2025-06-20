@@ -6,7 +6,7 @@
 #include <sstream>
 
 namespace blobs {
-namespace network { class Client; }
+namespace network { class ClientInterface; }
 
 namespace internal {
 
@@ -28,18 +28,18 @@ public:
 
   /** Returns the previously initialized client connection instance
    */
-  static network::Client& Get(connection_id connectionId);
+  static network::ClientInterface& Get(connection_id connectionId);
 
 
   /** A wrapper around Client::AwaitMessage, which will automatically translate a NetworkException message into a thrown blobs::Exception
    */
-  static network::MessagePointer AwaitMessage(network::Client& connection);
+  static network::MessagePointer AwaitMessage(network::ClientInterface& connection);
 
   /** A wrapper around AwaitMessage, which ensures that the returned message is of the correct type and casts it into the given message pointer.
    *  T should obviously be a type derived from network::Message
    */
   template<typename T>
-  static network::MessagePointer_T<T> ExpectMessage(network::Client& connection) {
+  static network::MessagePointer_T<T> ExpectMessage(network::ClientInterface& connection) {
     auto message = AwaitMessage(connection);
     if (!message.Is<T>()) {
       std::ostringstream errorMsg;
@@ -55,7 +55,7 @@ private:
   struct Connection {
     std::string host;
     int port;
-    std::unique_ptr<network::Client> client;
+    std::unique_ptr<network::ClientInterface> client;
     uint32_t useCount; // how many databases are using this connection right now
   };
 

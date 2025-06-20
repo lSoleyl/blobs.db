@@ -11,7 +11,7 @@ namespace blobs::network {
  */
 class Factory {
 public:
-  virtual std::unique_ptr<ClientInterface> CreateClient(std::string serverAddress, std::string serverPort) = 0;
+  virtual std::unique_ptr<ClientInterface> CreateClient(std::string serverAddress, int serverPort = 8108) = 0;
   virtual std::unique_ptr<ServerInterface> CreateServer(int listenPort = 8108) = 0;
 
 
