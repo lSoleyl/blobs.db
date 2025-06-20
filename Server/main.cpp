@@ -1,7 +1,7 @@
-#define DOCTEST_CONFIG_IMPLEMENT // we cannot use precompiled headers here becuase of this define
-#include "pch.hpp"
+#define DOCTEST_CONFIG_IMPLEMENT
+#include <doctest/doctest.h>
 
-#include "Server.hpp"
+#include <server/Server.hpp>
 #include <network/SocketFactory.hpp>
 
 #include <iostream>
@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
   // But to do this, the server log would need to be stored separately from the databse
   // Alternatively process the transaction log when opening a database for the first time.
 
-  TODO("Maybe find a better way to initialize the factory? Maybe socket can be the default one?");
+  // Use the regular network socket factory for the server.
   network::SocketFactory::Use();
 
   server::Server server;

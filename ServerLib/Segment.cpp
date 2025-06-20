@@ -1,5 +1,5 @@
 #include "pch.hpp"
-#include "Segment.hpp"
+#include "include/server/Segment.hpp"
 
 
 namespace blobs {

@@ -26,4 +26,4 @@
 
 // Include latest doctest version as our unit testing framework (https://github.com/doctest/doctest/blob/master/doc/markdown/readme.md)
 // If we need to use TEST_CASE_CLASS/TEST_SCENARIO_CLASS, we can still sync back to 06af20b9bbbceea87e2769bfcd9077051d1ce167
-#include "doctest/doctest.h"
+#include <doctest/doctest.h>

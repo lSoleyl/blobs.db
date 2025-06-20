@@ -1,6 +1,6 @@
 #include "pch.hpp"
-#include "Server.hpp"
-#include "Client.hpp"
+#include "include/server/Server.hpp"
+#include "include/server/Client.hpp"
 #include <network/Factory.hpp>
 
 #include <iostream>

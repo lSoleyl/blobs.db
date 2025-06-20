@@ -1,5 +1,5 @@
 #include "pch.hpp"
-#include "Cluster.hpp"
+#include "include/server/Cluster.hpp"
 
 namespace blobs {
 namespace server {

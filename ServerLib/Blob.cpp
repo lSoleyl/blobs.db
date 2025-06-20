@@ -1,5 +1,5 @@
 #include "pch.hpp"
-#include "Blob.hpp"
+#include "include/server/Blob.hpp"
 
 namespace blobs {
 namespace server {
