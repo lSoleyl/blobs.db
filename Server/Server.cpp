@@ -81,9 +81,9 @@ void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::Data
   auto& client = server::Client::Get(message->clientId);
 
   try {
-    server.SendDatabaseOpenResponse(client.id, network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(db));
+    server.SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(db)));
   } catch (std::exception&) {
-    server.SendDatabaseOpenResponse(client.id, network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN, 0);
+    server.SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN, 0));
   }
 }
 

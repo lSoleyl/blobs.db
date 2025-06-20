@@ -138,6 +138,7 @@
     <ClInclude Include="include\network\Client.hpp" />
     <ClInclude Include="include\network\Network.hpp" />
     <ClInclude Include="include\network\Server.hpp" />
+    <ClInclude Include="include\network\ServerInterface.hpp" />
     <ClInclude Include="include\win_include.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -33,12 +33,6 @@ network::MessagePointer network::Server::AwaitMessage() {
   return receiveQueue.AwaitMessage();
 }
 
-
-void network::Server::SendDatabaseOpenResponse(client_id client, message::DatabaseOpenResponse::Result result, database_id dbId) {
-  // QueueClientMessage() will handle the necessary synchronization
-  clients.QueueClientMessage(client, message::DatabaseOpenResponse::Create(result, dbId));
-}
-
 void network::Server::SendMessageToClient(client_id client, MessagePointer message) {
   clients.QueueClientMessage(client, std::move(message));
 }

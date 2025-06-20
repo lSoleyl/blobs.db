@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MessagePointer.hpp"
+#include "ServerInterface.hpp"
 #include "DuplexMessageSocket.hpp"
 #include "ReceiveMessageQueue.hpp"
 #include "..\win_include.hpp"
@@ -15,12 +15,12 @@
 namespace blobs {
 namespace network {
   
-class Server final : private IOCompletionHandler {
+class Server final : private IOCompletionHandler, public ServerInterface {
   public: 
     /** The constructor will immediately start listening
      */
     Server(int listenPort = 8108);
-    ~Server();
+    virtual ~Server() override;
     // Server instance is not copyable
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;
@@ -28,14 +28,11 @@ class Server final : private IOCompletionHandler {
 
     /** Wait for the next sever message without a timeout
      */
-    MessagePointer AwaitMessage();
-
-
-    void SendDatabaseOpenResponse(client_id client, message::DatabaseOpenResponse::Result result, database_id dbId = 0);
+    virtual MessagePointer AwaitMessage() override;
 
     /** Send an already allocated message to the specified client
      */
-    void SendMessageToClient(client_id client, MessagePointer message);
+    virtual void SendMessageToClient(client_id client, MessagePointer message) override;
     
     
 
