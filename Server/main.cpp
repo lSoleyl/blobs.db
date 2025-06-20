@@ -2,7 +2,7 @@
 #include "pch.hpp"
 
 #include "Server.hpp"
-#include "Client.hpp"
+#include <network/SocketFactory.hpp>
 
 #include <iostream>
 
@@ -30,6 +30,9 @@ int main(int argc, char** argv) {
   TODO("process outstanding transactions from the server log if any"); 
   // But to do this, the server log would need to be stored separately from the databse
   // Alternatively process the transaction log when opening a database for the first time.
+
+  TODO("Maybe find a better way to initialize the factory? Maybe socket can be the default one?");
+  network::SocketFactory::Use();
 
   server::Server server;
   std::cout << "Server ready\n";

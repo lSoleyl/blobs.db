@@ -6,6 +6,9 @@
 
 namespace blobs::network {
 
+
+SocketFactory::SocketFactory() {}
+
 void SocketFactory::Use() {
   static SocketFactory socketFactoryInstance;
   SetInstance(&socketFactoryInstance);

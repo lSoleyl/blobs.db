@@ -1,7 +1,7 @@
 #pragma once
 
 
-#include <network/Server.hpp>
+#include <network/ServerInterface.hpp>
 #include <network/message/All.hpp>
 
 namespace blobs {
@@ -69,7 +69,7 @@ private:
    */
   void ClientTransactionEnded(const blobs::server::Client& client);
 
-  network::Server server;
+  std::unique_ptr<network::ServerInterface> server;
 };
 
 }}
