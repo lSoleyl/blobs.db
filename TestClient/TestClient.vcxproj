@@ -87,8 +87,8 @@
     <ClCompile Include="TestClient.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ClientLib\ClientLib.vcxproj">
-      <Project>{91c125bc-416d-46cf-974c-e7ddd245a6ed}</Project>
+    <ProjectReference Include="..\ClientDLL\ClientDLL.vcxproj">
+      <Project>{c6271061-2e8a-425e-b9e8-a0ff4ec8a420}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

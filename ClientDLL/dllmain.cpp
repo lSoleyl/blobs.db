@@ -1,7 +1,11 @@
-#include "pch.hpp"
+#define BLOBS_EXPORT __declspec(dllexport)
 #include <network/SocketFactory.hpp>
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
   switch (ul_reason_for_call)
   {
