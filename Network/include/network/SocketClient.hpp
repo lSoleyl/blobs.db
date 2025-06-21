@@ -10,10 +10,10 @@
 namespace blobs {
 namespace network {
 
-class Client final : private DuplexMessageSocket, public ClientInterface {
+class SocketClient final : private DuplexMessageSocket, public ClientInterface {
 public:
-  Client(std::string serverAddress, std::string serverPort);
-  virtual ~Client() override;
+  SocketClient(std::string serverAddress, std::string serverPort);
+  virtual ~SocketClient() override;
 
   /** Used to send already allocated messages to the server (SendMessage() is sadly already in use by WinAPI)
    */

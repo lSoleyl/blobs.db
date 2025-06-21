@@ -1,3 +1,4 @@
+#include <network/SocketServer.hpp>
 #include <network/Network.hpp>
 #include <network/message/All.hpp>
 
@@ -8,15 +9,15 @@
 
 namespace blobs {
 
-network::Server::Server(int listenPort) : listenPort(listenPort), running(true) {
+network::SocketServer::SocketServer(int listenPort) : listenPort(listenPort), running(true) {
   network::Initialize();
   networkThread = std::thread([this]() { ListenThreadMain(); });
 }
 
-network::Server::~Server() {
+network::SocketServer::~SocketServer() {
   // Simply schedule an IO completion packet, which will set the running state to false to exit the network thread.
   ioCompletionPort.PostSimpleTask([this]() { running = false; });
-  
+
   // Wait for thread to exit
   networkThread.join();
 
@@ -29,15 +30,15 @@ network::Server::~Server() {
 }
 
 
-network::MessagePointer network::Server::AwaitMessage() {
+network::MessagePointer network::SocketServer::AwaitMessage() {
   return receiveQueue.AwaitMessage();
 }
 
-void network::Server::SendMessageToClient(client_id client, MessagePointer message) {
+void network::SocketServer::SendMessageToClient(client_id client, MessagePointer message) {
   clients.QueueClientMessage(client, std::move(message));
 }
 
-void network::Server::ListenThreadMain() {
+void network::SocketServer::ListenThreadMain() {
   SetThreadDescription(GetCurrentThread(), L"Network thread");
 
   try {
@@ -55,14 +56,14 @@ void network::Server::ListenThreadMain() {
     if (listen(*listenSocket, SOMAXCONN) == SOCKET_ERROR) {
       throw network::exception("listen() failed with: ");
     }
-    
+
     // Create the completion port to use for all async operations in this server thread
     ioCompletionPort.Create(); // or restrict to 1 thread here?
-    
+
 
     // Now associate the listen socket with this completion port (we will actually associate all our sockets with this single completion port)
     ioCompletionPort.AssociateSocket(*listenSocket, this);
-    
+
     // Start accepting new connections
     AcceptNewConnection();
 
@@ -78,7 +79,7 @@ void network::Server::ListenThreadMain() {
 }
 
 
-network::Resource<SOCKET> network::Server::CreateDualStackSocket() const {
+network::Resource<SOCKET> network::SocketServer::CreateDualStackSocket() const {
   Resource<SOCKET> newSocket = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
   if (!newSocket) {
     throw network::exception("socket() failed with: ");
@@ -102,7 +103,7 @@ network::Resource<SOCKET> network::Server::CreateDualStackSocket() const {
 }
 
 
-network::Resource<addrinfo*> network::Server::GetListenAddress() const {
+network::Resource<addrinfo*> network::SocketServer::GetListenAddress() const {
   // Now get the listen sockaddr
   addrinfo* bindAddress;
   addrinfo hints = { 0 };
@@ -121,7 +122,7 @@ network::Resource<addrinfo*> network::Server::GetListenAddress() const {
 
 LPFN_ACCEPTEX AcceptExFn = nullptr;
 
-void network::Server::AcceptNewConnection() {
+void network::SocketServer::AcceptNewConnection() {
   if (!AcceptExFn) {
     // Load the function pointer on the first call
     GUID GuidAcceptEx = WSAID_ACCEPTEX;
@@ -159,14 +160,14 @@ void network::Server::AcceptNewConnection() {
 LPFN_GETACCEPTEXSOCKADDRS GetAcceptExSockaddrsFn = nullptr;
 
 
-void network::Server::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
+void network::SocketServer::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
   auto& client = ProcessAcceptedConnection();
   // Notify the main thread about the new client connection.
   // We also include the remote ip in this message as requesting it would require additional synchronization
   receiveQueue.MessageReceived(message::ConnectionOpened::Create(client.id, client.remoteIp));
 }
 
-network::Server::Client& network::Server::ProcessAcceptedConnection() {
+network::SocketServer::Client& network::SocketServer::ProcessAcceptedConnection() {
   auto& client = clients.Add(*this, std::move(accept.socket));
 
   // Load the GetAcceptExSockaddrs function on first call
@@ -202,7 +203,7 @@ network::Server::Client& network::Server::ProcessAcceptedConnection() {
   return client;
 }
 
-void network::Server::ProcessReceivedMessage(Client& client, MessagePointer message) {
+void network::SocketServer::ProcessReceivedMessage(Client& client, MessagePointer message) {
   TODO("Filter out illegal messages, which the client is not allowed to send over the network.");
 
   // Set the client id and put the message into the receive queue
@@ -210,12 +211,12 @@ void network::Server::ProcessReceivedMessage(Client& client, MessagePointer mess
   receiveQueue.MessageReceived(std::move(message));
 }
 
-network::Server::Client::Client(Server& server, client_id id, Resource<SOCKET>&& socket) : 
+network::SocketServer::Client::Client(SocketServer& server, client_id id, Resource<SOCKET>&& socket) :
   DuplexMessageSocket(std::move(socket), server.ioCompletionPort), server(server), id(id) {}
 
 
 
-void network::Server::Client::HandleSocketClosed() {
+void network::SocketServer::Client::HandleSocketClosed() {
   // Post a connection closed message to notify the server main thread
   server.receiveQueue.MessageReceived(message::ConnectionClosed::Create(id));
 
@@ -223,13 +224,13 @@ void network::Server::Client::HandleSocketClosed() {
   server.clients.Remove(*this);
 }
 
-void network::Server::Client::HandleMessageReceived(MessagePointer message) {
+void network::SocketServer::Client::HandleMessageReceived(MessagePointer message) {
   server.ProcessReceivedMessage(*this, std::move(message));
 }
 
 
 
-network::Server::Client& network::Server::Clients::Add(Server& server, Resource<SOCKET>&& socket) {
+network::SocketServer::Client& network::SocketServer::Clients::Add(SocketServer& server, Resource<SOCKET>&& socket) {
   TODO("If we have the maximum number of clients connected, we must simply reject new connections");
   assert(map.size() < std::numeric_limits<client_id>::max());
 
@@ -250,14 +251,14 @@ network::Server::Client& network::Server::Clients::Add(Server& server, Resource<
 }
 
 
-void network::Server::Clients::Remove(Client& client) {
+void network::SocketServer::Clients::Remove(Client& client) {
   // Synchronize with reads from the main thread
   std::unique_lock<std::mutex> lock(mutex);
   map.erase(client.id);
   list.erase(std::find_if(list.begin(), list.end(), [&client](Client& listClient) { return &client == &listClient; }));
 }
 
-void network::Server::Clients::Clear() {
+void network::SocketServer::Clients::Clear() {
   // Synchronize with reads from the main thread
   std::unique_lock<std::mutex> lock(mutex);
   list.clear();
@@ -265,7 +266,7 @@ void network::Server::Clients::Clear() {
 }
 
 
-bool network::Server::Clients::QueueClientMessage(client_id clientId, MessagePointer message) {
+bool network::SocketServer::Clients::QueueClientMessage(client_id clientId, MessagePointer message) {
   // We must always acquire the mutex to ensure the list of clients isn't modified while we enqueue a message
   std::unique_lock<std::mutex> lock(mutex);
   auto pos = map.find(clientId);

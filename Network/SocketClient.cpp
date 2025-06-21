@@ -1,3 +1,4 @@
+#include <network/SocketClient.hpp>
 #include <network/Network.hpp>
 #include <network/message/All.hpp>
 
@@ -6,7 +7,7 @@
 
 namespace blobs {
   
-network::Client::Client(std::string serverAddress, std::string serverPort) : serverAddress(serverAddress), serverPort(serverPort) {
+network::SocketClient::SocketClient(std::string serverAddress, std::string serverPort) : serverAddress(serverAddress), serverPort(serverPort) {
   network::Initialize();
 
   // We must create the ioCompletionPort before actually starting the network thread as we may want to immediately
@@ -18,7 +19,7 @@ network::Client::Client(std::string serverAddress, std::string serverPort) : ser
 }
 
 
-network::Client::~Client() {
+network::SocketClient::~SocketClient() {
   ioCompletionPort.StopProcessing();
   networkThread.join();
 
@@ -28,17 +29,17 @@ network::Client::~Client() {
   network::Shutdown();
 }
 
-void network::Client::SendMessageToServer(MessagePointer&& message) {
+void network::SocketClient::SendMessageToServer(MessagePointer&& message) {
   AccessSendQueue() << std::move(message);
 }
 
 
 
-network::MessagePointer network::Client::AwaitMessage() {
+network::MessagePointer network::SocketClient::AwaitMessage() {
   return receiveQueue.AwaitMessage();
 }
 
-network::Resource<addrinfo*> network::Client::GetServerAddress() const {
+network::Resource<addrinfo*> network::SocketClient::GetServerAddress() const {
   addrinfo* serverAddr = nullptr;
   addrinfo hints = { 0 };
 
@@ -54,7 +55,7 @@ network::Resource<addrinfo*> network::Client::GetServerAddress() const {
 }
 
 
-network::Resource<SOCKET> network::Client::ConnectToServer() const {
+network::Resource<SOCKET> network::SocketClient::ConnectToServer() const {
   // First translate the server address
   auto serverAddr = GetServerAddress();
 
@@ -79,7 +80,7 @@ network::Resource<SOCKET> network::Client::ConnectToServer() const {
   return socket;
 }
 
-void network::Client::NetworkThreadMain() {
+void network::SocketClient::NetworkThreadMain() {
 
   try {
     InitializeMessageSocket(ConnectToServer(), ioCompletionPort);
@@ -102,12 +103,12 @@ void network::Client::NetworkThreadMain() {
 
 
 
-void network::Client::HandleSocketClosed() {
+void network::SocketClient::HandleSocketClosed() {
   // Notify the client's main thread about this by simply posting a connection closed message into the message receive queue
   receiveQueue.MessageReceived(message::ConnectionClosed::Create());
 }
 
-void network::Client::HandleMessageReceived(MessagePointer message) {
+void network::SocketClient::HandleMessageReceived(MessagePointer message) {
   // Simply put the message into the client's receive queue for the main thread to handle it
   receiveQueue.MessageReceived(std::move(message));
 }

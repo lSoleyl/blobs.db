@@ -15,15 +15,15 @@
 namespace blobs {
 namespace network {
   
-class Server final : private IOCompletionHandler, public ServerInterface {
+class SocketServer final : private IOCompletionHandler, public ServerInterface {
   public: 
     /** The constructor will immediately start listening
      */
-    Server(int listenPort = 8108);
-    virtual ~Server() override;
-    // Server instance is not copyable
-    Server(const Server&) = delete;
-    Server& operator=(const Server&) = delete;
+    SocketServer(int listenPort = 8108);
+    virtual ~SocketServer() override;
+    // SocketServer instance is not copyable
+    SocketServer(const SocketServer&) = delete;
+    SocketServer& operator=(const SocketServer&) = delete;
 
 
     /** Wait for the next sever message without a timeout
@@ -54,7 +54,7 @@ class Server final : private IOCompletionHandler, public ServerInterface {
 
 
     struct Client : public DuplexMessageSocket {
-      Client(Server& server, client_id id, Resource<SOCKET>&& socket);
+      Client(SocketServer& server, client_id id, Resource<SOCKET>&& socket);
 
       /** Connection to client closed
        */
@@ -64,7 +64,7 @@ class Server final : private IOCompletionHandler, public ServerInterface {
        */
       virtual void HandleMessageReceived(MessagePointer message) override;
 
-      Server& server;
+      SocketServer& server;
 
       /** client id is only 16 bit (see message::Message), which restricts the server to handle 65k Clients at a time, which is a reasonable limit.
        *  client ids will be reused once the counter loops (but we make sure to not reassing an id, which is currently in use).
@@ -95,7 +95,7 @@ class Server final : private IOCompletionHandler, public ServerInterface {
       /** Adds a new client to the list and map and returns a reference to it.
        *  This method must only be called from by the network thread.
        */
-      Client& Add(Server& server, Resource<SOCKET>&& socket);
+      Client& Add(SocketServer& server, Resource<SOCKET>&& socket);
       
       /** Removes the client instance from the client list.
        *  This method must only be called from by the network thread.

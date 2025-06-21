@@ -33,13 +33,13 @@
     <ClCompile Include="Network.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="Server.cpp">
+    <ClCompile Include="SocketServer.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="Resource.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="Client.cpp">
+    <ClCompile Include="SocketClient.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="DuplexMessageSocket.cpp">
@@ -110,10 +110,10 @@
     <ClInclude Include="include\win_include.hpp">
       <Filter>Headerdateien</Filter>
     </ClInclude>
-    <ClInclude Include="include\network\Server.hpp">
+    <ClInclude Include="include\network\SocketServer.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
-    <ClInclude Include="include\network\Client.hpp">
+    <ClInclude Include="include\network\SocketClient.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
     <ClInclude Include="include\network\message\Message.hpp">

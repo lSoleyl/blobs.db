@@ -90,7 +90,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Client.cpp" />
+    <ClCompile Include="SocketClient.cpp" />
     <ClCompile Include="common\BlobLocation.cpp" />
     <ClCompile Include="Factory.cpp" />
     <ClCompile Include="IOCompletionPort.cpp" />
@@ -110,7 +110,7 @@
     <ClCompile Include="DuplexMessageSocket.cpp" />
     <ClCompile Include="ReceiveMessageQueue.cpp" />
     <ClCompile Include="Resource.cpp" />
-    <ClCompile Include="Server.cpp" />
+    <ClCompile Include="SocketServer.cpp" />
     <ClCompile Include="SocketFactory.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -139,9 +139,9 @@
     <ClInclude Include="include\network\message\TransactionCommitResponse.hpp" />
     <ClInclude Include="include\network\ReceiveMessageQueue.hpp" />
     <ClInclude Include="include\network\Resource.hpp" />
-    <ClInclude Include="include\network\Client.hpp" />
+    <ClInclude Include="include\network\SocketClient.hpp" />
     <ClInclude Include="include\network\Network.hpp" />
-    <ClInclude Include="include\network\Server.hpp" />
+    <ClInclude Include="include\network\SocketServer.hpp" />
     <ClInclude Include="include\network\ServerInterface.hpp" />
     <ClInclude Include="include\network\SocketFactory.hpp" />
     <ClInclude Include="include\win_include.hpp" />

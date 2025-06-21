@@ -1,8 +1,6 @@
 #pragma once
 
 #include "..\win_include.hpp"
-#include "Server.hpp"
-#include "Client.hpp"
 
 #include <string>
 

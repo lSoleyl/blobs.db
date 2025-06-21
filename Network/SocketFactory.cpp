@@ -1,7 +1,7 @@
 
 #include <network/SocketFactory.hpp>
-#include <network/Client.hpp>
-#include <network/Server.hpp>
+#include <network/SocketClient.hpp>
+#include <network/SocketServer.hpp>
 
 
 namespace blobs::network {
@@ -16,11 +16,11 @@ void SocketFactory::Use() {
 
 
 std::unique_ptr<ClientInterface> SocketFactory::CreateClient(std::string serverAddress, int serverPort) {
-  return std::make_unique<Client>(std::move(serverAddress), std::to_string(serverPort));
+  return std::make_unique<SocketClient>(std::move(serverAddress), std::to_string(serverPort));
 }
 
 std::unique_ptr<ServerInterface> SocketFactory::CreateServer(int listenPort) {
-  return std::make_unique<Server>(listenPort);
+  return std::make_unique<SocketServer>(listenPort);
 }
 
 
