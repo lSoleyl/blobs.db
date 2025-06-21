@@ -62,5 +62,8 @@
     <ClInclude Include="include\blobs\Transaction.hpp">
       <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
+    <ClInclude Include="include\blobs\Initialization.hpp">
+      <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

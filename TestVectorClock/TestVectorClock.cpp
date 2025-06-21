@@ -39,6 +39,8 @@ std::ostream& operator<<(std::ostream& out, const VectorClock& clock) {
 
 int main() {
   try {
+    blobs::Initialize();
+
     std::cout << "Opening database...\n";
     auto db = blobs::Database::Open("127.0.0.1", "vector-clock.db");
     std::cout << "Database opened.\n";
@@ -87,6 +89,9 @@ int main() {
 
     std::cout << "Vector clock completed counting. Closing database...\n";
     db->Close();
+
+    blobs::Shutdown();
+
     std::cout << "Waiting for input to exit\n";
     system("PAUSE");
   } catch (blobs::Exception& ex) {

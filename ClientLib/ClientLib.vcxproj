@@ -122,6 +122,7 @@
     <ClInclude Include="include\blobs\Database.hpp" />
     <ClInclude Include="include\blobs\Exception.hpp" />
     <ClInclude Include="include\blobs\Blobs.hpp" />
+    <ClInclude Include="include\blobs\Initialization.hpp" />
     <ClInclude Include="include\blobs\Transaction.hpp" />
     <ClInclude Include="include\internal\Network.hpp" />
     <ClInclude Include="pch.hpp" />

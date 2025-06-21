@@ -5,6 +5,8 @@
 int main()
 {
   try {
+    blobs::Initialize();
+
     std::cout << "Starting client\n";
     auto db = blobs::Database::Open("127.0.0.1", "test.db");
 
@@ -15,6 +17,8 @@ int main()
     );
 
     db->Close();
+    blobs::Shutdown();
+
     std::cout << "Exiting client\n";
   } catch (blobs::Exception& ex) {
     std::cerr << "[ERR] Exiting client with exception: " << ex.what() << "\n";

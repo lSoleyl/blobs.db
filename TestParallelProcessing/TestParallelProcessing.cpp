@@ -6,6 +6,8 @@
 
 int main() {
   try {
+    blobs::Initialize();
+
     std::cout << "Opening database...\n";
     auto db = blobs::Database::Open("127.0.0.1", "parallel-processing.db");
     std::cout << "Database opened.\n";
@@ -56,6 +58,9 @@ int main() {
 
     std::cout << "Completed parallel counting. Closing database...\n";
     db->Close();
+
+    blobs::Shutdown();
+
     std::cout << "Waiting for input to exit\n";
     system("PAUSE");
   } catch (blobs::Exception& ex) {
