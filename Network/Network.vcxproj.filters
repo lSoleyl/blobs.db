@@ -96,6 +96,9 @@
     <ClCompile Include="SocketFactory.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="StandaloneFactory.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -183,6 +186,9 @@
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
     <ClInclude Include="include\network\SocketFactory.hpp">
+      <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\StandaloneFactory.hpp">
       <Filter>Headerdateien\network</Filter>
     </ClInclude>
   </ItemGroup>

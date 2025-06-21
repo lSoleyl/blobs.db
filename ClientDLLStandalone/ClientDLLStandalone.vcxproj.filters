@@ -20,6 +20,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ClientDLL.md" />
+    <None Include="ClientDLLStandalone.md" />
   </ItemGroup>
 </Project>

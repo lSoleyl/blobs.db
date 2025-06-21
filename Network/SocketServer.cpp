@@ -39,7 +39,7 @@ void network::SocketServer::SendMessageToClient(client_id client, MessagePointer
 }
 
 void network::SocketServer::ListenThreadMain() {
-  SetThreadDescription(GetCurrentThread(), L"Network thread");
+  SetThreadDescription(GetCurrentThread(), L"Server Network thread");
 
   try {
 

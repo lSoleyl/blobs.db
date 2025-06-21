@@ -81,6 +81,7 @@ network::Resource<SOCKET> network::SocketClient::ConnectToServer() const {
 }
 
 void network::SocketClient::NetworkThreadMain() {
+  SetThreadDescription(GetCurrentThread(), L"Client Network thread");
 
   try {
     InitializeMessageSocket(ConnectToServer(), ioCompletionPort);

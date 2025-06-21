@@ -112,6 +112,7 @@
     <ClCompile Include="Resource.cpp" />
     <ClCompile Include="SocketServer.cpp" />
     <ClCompile Include="SocketFactory.cpp" />
+    <ClCompile Include="StandaloneFactory.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -144,6 +145,7 @@
     <ClInclude Include="include\network\SocketServer.hpp" />
     <ClInclude Include="include\network\ServerInterface.hpp" />
     <ClInclude Include="include\network\SocketFactory.hpp" />
+    <ClInclude Include="include\network\StandaloneFactory.hpp" />
     <ClInclude Include="include\win_include.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

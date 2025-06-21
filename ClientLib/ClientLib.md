@@ -1,7 +1,7 @@
 # Client lib
 
-This will be the DLL to link into the client programm to be able to connect to blobs.db and actually talk to the database server.
-It will provide some needed abstractions to avoid writing much boilerplate.
+This static library holds the client logic and implementation of client datastructures. 
+This library is used to reuse the client logic between ClientDLL and CLientDLLStandalone.
 
 
 ## The client needs to know the commit id of each blob

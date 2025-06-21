@@ -21,6 +21,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ServerLib", "ServerLib\Serv
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ClientDLL", "ClientDLL\ClientDLL.vcxproj", "{C6271061-2E8A-425E-B9E8-A0FF4EC8A420}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ClientDLLStandalone", "ClientDLLStandalone\ClientDLLStandalone.vcxproj", "{4D23D728-EA63-4221-A44F-F58237A12F55}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -87,6 +89,12 @@ Global
 		{C6271061-2E8A-425E-B9E8-A0FF4EC8A420}.Release|x64.ActiveCfg = Release|x64
 		{C6271061-2E8A-425E-B9E8-A0FF4EC8A420}.Release|x64.Build.0 = Release|x64
 		{C6271061-2E8A-425E-B9E8-A0FF4EC8A420}.Release|x86.ActiveCfg = Release|x64
+		{4D23D728-EA63-4221-A44F-F58237A12F55}.Debug|x64.ActiveCfg = Debug|x64
+		{4D23D728-EA63-4221-A44F-F58237A12F55}.Debug|x64.Build.0 = Debug|x64
+		{4D23D728-EA63-4221-A44F-F58237A12F55}.Debug|x86.ActiveCfg = Debug|x64
+		{4D23D728-EA63-4221-A44F-F58237A12F55}.Release|x64.ActiveCfg = Release|x64
+		{4D23D728-EA63-4221-A44F-F58237A12F55}.Release|x64.Build.0 = Release|x64
+		{4D23D728-EA63-4221-A44F-F58237A12F55}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
