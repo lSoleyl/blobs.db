@@ -34,7 +34,9 @@ class SocketServer final : private IOCompletionHandler, public ServerInterface {
      */
     virtual void SendMessageToClient(client_id client, MessagePointer message) override;
     
-    
+    /** Posts a null message into the server's receive queue to indicate the server shutdown
+     */
+    virtual void Stop() override;
 
   private:
     void ListenThreadMain();

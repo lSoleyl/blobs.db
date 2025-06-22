@@ -23,7 +23,7 @@ public:
   }
 
   ~StandaloneServer() {
-    TODO("Signal server to close all connections and shutdown somehow...");
+    serverInstance.BeginShutdown();
     serverThread.join();
   }
 

@@ -16,6 +16,12 @@ void Server::ServerMain() {
 
   while (true) {
     auto message = server->AwaitMessage();
+    if (!message) {
+      // A null message is used as indication to initiate a server shutdown
+      std::cout << "Shutdown signal received, exiting Server::ServerMain()\n";
+      return;
+    }
+
     LogMessage(*message);
 
     TODO("Determine the client of the message here already and unless it is ConnectionOpened, pass it to the Handle-Method");
@@ -62,6 +68,10 @@ void Server::ServerMain() {
 }
 
 
+void Server::BeginShutdown() {
+  // This will post the empty message into the message queue, which will exit the ServerMain()
+  server->Stop();
+}
 
 void Server::HandleConnectionOpened(network::MessagePointer_T<network::message::ConnectionOpened> message) {
   // New client connected (initialize logical client data)

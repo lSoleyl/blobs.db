@@ -38,6 +38,10 @@ void network::SocketServer::SendMessageToClient(client_id client, MessagePointer
   clients.QueueClientMessage(client, std::move(message));
 }
 
+void network::SocketServer::Stop() {
+  receiveQueue.MessageReceived(MessagePointer());
+}
+
 void network::SocketServer::ListenThreadMain() {
   SetThreadDescription(GetCurrentThread(), L"Server Network thread");
 

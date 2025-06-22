@@ -18,6 +18,10 @@ public:
    */
   void ServerMain();
 
+  /** This method will trigger the shutdown of the server, which will lead to the server exiting the ServerMain() loop
+   *  This method does not wait for the ServerMain() to be exited.
+   */
+  void BeginShutdown();
 
 private:
 

@@ -57,6 +57,13 @@ public:
     }
   }
 
+  /** Simply post a null message to the server's message queue to indicate the shutdown
+   */
+  virtual void Stop() override {
+    messageQueue.MessageReceived(MessagePointer());
+  }
+
+
   /** Used to construct a new standalone client instance connected to this server
    */
   std::unique_ptr<Client> ClientConnected() {
