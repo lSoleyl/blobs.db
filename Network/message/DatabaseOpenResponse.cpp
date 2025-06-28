@@ -16,14 +16,26 @@ MessagePointer DatabaseOpenResponse::Create(Result result, database_id dbId) {
 
 std::ostream& operator<<(std::ostream& out, const DatabaseOpenResponse& message) {
   out << message.type << '(';
-  if (message.result == DatabaseOpenResponse::Result::SUCCESS) {
-    out << "dbId=" << message.databaseId;
-  } else if (message.result == DatabaseOpenResponse::Result::DATABASE_NOT_FOUND) {
-    out << "DATABASE_NOT_FOUND";
-  } else if (message.result == DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {
-    out << "TOO_MANY_DATABASES_OPEN";
-  } else {
-    assert(false); // missing stringification?
+
+  switch (message.result) {
+    case DatabaseOpenResponse::Result::SUCCESS:
+      out << "dbId=" << message.databaseId;
+      break;
+
+    case DatabaseOpenResponse::Result::DATABASE_NOT_FOUND:
+      out << "DATABASE_NOT_FOUND";
+      break;
+
+    case DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN:
+      out << "DATABASE_ALREADY_OPEN";
+      break;
+
+    case DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN:
+      out << "TOO_MANY_DATABASES_OPEN";
+      break;
+
+    default:
+      assert(false); // missing stringification?
   }
 
   return out << ')';

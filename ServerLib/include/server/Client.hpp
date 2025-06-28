@@ -22,10 +22,16 @@ public:
   
   static Client& Get(client_id id);
 
+  /** Returns true if the given database is already opened by this client. This check is used to prevent duplicate opens
+   *  of a database by a client.
+   */
+  bool HasDatabaseOpened(Database& db) const;
+
   /** Marks the specified database as opened by this client and returns the client local database id for it.
    *  Throws an exception if the client already opened 256 databases.
    */
   database_id OpenDatabase(Database& db);
+
 
   /** Returns the open database or nullptr if the specified id doesn't correspond to an open database
    */

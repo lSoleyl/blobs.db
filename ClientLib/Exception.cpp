@@ -19,6 +19,9 @@ DbCloseDuringTxn::DbCloseDuringTxn(const std::string& dbName) :
   Exception("Attempted to close database: '" + dbName + "' while a transaction is still in progress", ExceptionCode::DbCloseDuringTxn) {}
 
 
+DbAlreadyOpen::DbAlreadyOpen(const std::string& dbName) : 
+  Exception("Attempted to open database: '" + dbName + "' a second time before closing it first", ExceptionCode::DbAlreadyOpen) {}
+
 LockTimeout::LockTimeout() : Exception("Waiting for a lock timed out", ExceptionCode::LockTimeout) {}
 
 Deadlock::Deadlock() : Exception("Deadlock situation occurred while attemting to lock a blob", ExceptionCode::Deadlock) {}

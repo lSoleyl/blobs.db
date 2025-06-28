@@ -159,6 +159,8 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
     throw blobs::Exception("Database not found!");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {
     throw blobs::Exception("Too many databases already open. Close unused databases and retry.");
+  } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN) {
+    throw blobs::exception::DbAlreadyOpen(std::string(databaseName));
   }
   
   assert(false); // unhandled result type

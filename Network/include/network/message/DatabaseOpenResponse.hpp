@@ -14,6 +14,7 @@ struct DatabaseOpenResponse : public Message {
   enum class Result : uint8_t {
     SUCCESS,
     DATABASE_NOT_FOUND,
+    DATABASE_ALREADY_OPEN,
     TOO_MANY_DATABASES_OPEN
   };
 

@@ -23,12 +23,15 @@ Client& Client::Get(client_id id) {
   return pos->second;
 }
 
+bool Client::HasDatabaseOpened(Database& db) const {
+  return std::any_of(openDatabases.begin(), openDatabases.end(), [&](const DatabaseLocks& entry) { return entry.database == &db; });
+}
 
 
 database_id Client::OpenDatabase(Database& db) {
 
   // First find a nullptr to use inside 
-  auto pos = std::find_if(openDatabases.begin(), openDatabases.end(), [](auto& entry) { return entry.database == nullptr; });
+  auto pos = std::find_if(openDatabases.begin(), openDatabases.end(), [](const DatabaseLocks& entry) { return entry.database == nullptr; });
   if (pos != openDatabases.end()) {
     // simply reuse the free slot
     pos->database = &db;
