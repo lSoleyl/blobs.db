@@ -90,6 +90,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="message\DatabaseCloseResponse.cpp" />
     <ClCompile Include="SocketClient.cpp" />
     <ClCompile Include="common\BlobLocation.cpp" />
     <ClCompile Include="Factory.cpp" />
@@ -130,6 +131,7 @@
     <ClInclude Include="include\network\message\ConnectionClosed.hpp" />
     <ClInclude Include="include\network\message\ConnectionOpened.hpp" />
     <ClInclude Include="include\network\message\DatabaseClose.hpp" />
+    <ClInclude Include="include\network\message\DatabaseCloseResponse.hpp" />
     <ClInclude Include="include\network\message\Message.hpp" />
     <ClInclude Include="include\network\message\DatabaseOpen.hpp" />
     <ClInclude Include="include\network\message\DatabaseOpenResponse.hpp" />

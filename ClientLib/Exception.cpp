@@ -15,12 +15,14 @@ const char* Exception::what() const {
 
 namespace exception {
 
+DbAlreadyOpen::DbAlreadyOpen(const std::string& dbName) :
+  Exception("Attempted to open database: '" + dbName + "' a second time before closing it first", ExceptionCode::DbAlreadyOpen) {}
+
 DbCloseDuringTxn::DbCloseDuringTxn(const std::string& dbName) : 
   Exception("Attempted to close database: '" + dbName + "' while a transaction is still in progress", ExceptionCode::DbCloseDuringTxn) {}
 
-
-DbAlreadyOpen::DbAlreadyOpen(const std::string& dbName) : 
-  Exception("Attempted to open database: '" + dbName + "' a second time before closing it first", ExceptionCode::DbAlreadyOpen) {}
+DbNotOpen::DbNotOpen(const std::string& dbName) :
+  Exception("Attempted to close database: '" + dbName + "', but it was not opened or has already been closed", ExceptionCode::DbNotOpen) {}
 
 LockTimeout::LockTimeout() : Exception("Waiting for a lock timed out", ExceptionCode::LockTimeout) {}
 

@@ -14,7 +14,7 @@ template<typename T = message::Message>
 class MessagePointer_T {
 public:
   MessagePointer_T() : ptr(nullptr) {}
-  MessagePointer_T(T* ptr) : ptr(ptr) {}
+  explicit MessagePointer_T(T* ptr) : ptr(ptr) {}
 
   
   // We need access to the internal pointer of other typed message pointers for efficient implementation

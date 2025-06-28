@@ -99,6 +99,9 @@
     <ClCompile Include="StandaloneFactory.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="message\DatabaseCloseResponse.cpp">
+      <Filter>Quelldateien\message</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -190,6 +193,9 @@
     </ClInclude>
     <ClInclude Include="include\network\StandaloneFactory.hpp">
       <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\message\DatabaseCloseResponse.hpp">
+      <Filter>Headerdateien\network\message</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

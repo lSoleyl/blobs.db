@@ -5,6 +5,7 @@
 #include "DatabaseOpen.hpp"
 #include "DatabaseOpenResponse.hpp"
 #include "DatabaseClose.hpp"
+#include "DatabaseCloseResponse.hpp"
 
 #include "ConnectionOpened.hpp"
 #include "ConnectionClosed.hpp"

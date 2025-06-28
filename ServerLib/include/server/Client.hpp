@@ -33,6 +33,12 @@ public:
   database_id OpenDatabase(Database& db);
 
 
+  /** Closes the database opened by the client (must not be called if the client is running a transaction) and 
+   *  returns true if the database was in fact opened, false otherwise.
+   */
+  bool CloseDatabase(database_id id);
+
+
   /** Returns the open database or nullptr if the specified id doesn't correspond to an open database
    */
   Database* GetDatabase(database_id id) const;
@@ -48,6 +54,9 @@ public:
    */
   bool AbortTransaction();
 
+  /** Return true if the client has an active transaction
+   */
+  bool IsInsideTransaction() const;
 
   /** Tries to acquire all locks specified in the message in the database specified in the message.
    *  If any of the locks cannot be acquired, no lock will be acquired and the method returns false.

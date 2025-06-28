@@ -106,14 +106,23 @@ void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::Data
 
 
 void Server::HandleDatabaseClose(network::MessagePointer_T<network::message::DatabaseClose> message) {
-  TODO("Get the database to close");
-  // Confirm closing the database to the client by replying with the same DatabaseClose message.
-  // Here we simply post the same message object into the client send buffer to avoid the unnecessary reallocation
-  auto clientId = message->clientId; // assign to local variable here, because we will move the message as a whole
-  server->SendMessageToClient(clientId, std::move(message));
+  auto& client = server::Client::Get(message->clientId);
+  if (client.IsInsideTransaction()) {
+    // This is actually being prevented by the client lib, but just in case client transaction is out of sync -> check it here to be safe
+    server->SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::TRANSACTION_IN_PROGRESS));
+    return;
+  }
 
-  TODO("Don't allow db close if there is a transaction running")
-  TODO("If this was the last database, then we can also just close the connection")
+  if (client.CloseDatabase(message->databaseId)) {
+    // Successfully closed database
+    server->SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::SUCCESS));
+  } else {
+    // Client didn't open this database or already closed it
+    server->SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::DATABASE_NOT_OPEN));
+  }
+
+  
+  TODO("If this was the last database, then we can also just close the connection");
 }
 
 

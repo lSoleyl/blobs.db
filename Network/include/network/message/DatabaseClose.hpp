@@ -1,8 +1,6 @@
 #pragma once
 
 #include "..\MessagePointer.hpp"
-#include <string_view>
-#include <vector>
 
 namespace blobs {
 namespace network {

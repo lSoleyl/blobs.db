@@ -338,7 +338,19 @@ void Database::Close() {
   auto& client = internal::Network::Get(connectionId);
   client.SendMessageToServer(network::message::DatabaseClose::Create(id));
   auto message = internal::Network::AwaitMessage(client);
-  if (auto confirmation = message.Get<network::message::DatabaseClose>()) {
+  if (auto closeResponse = message.Get<network::message::DatabaseCloseResponse>()) {
+    if (closeResponse->result == network::message::DatabaseCloseResponse::Result::TRANSACTION_IN_PROGRESS) {
+      assert(false); // Apparently the server believes that this client a transaction running, while the client thinks he doesn't
+      throw exception::DbCloseDuringTxn(name);
+    }
+
+    if (closeResponse->result == network::message::DatabaseCloseResponse::Result::DATABASE_NOT_OPEN) {
+      // This should also never happen unless the client somehow manages to call Close() twice without crashing 
+      // after calling it on the already deleted Database object the second time.
+      throw exception::DbNotOpen(name);
+    }
+
+
     // Server confirmed closing of this database -> release connection and delete this database instance
     internal::Network::Release(connectionId);  
   } else if (auto closed = message.Get<network::message::ConnectionClosed>()) {

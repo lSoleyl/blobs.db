@@ -8,8 +8,9 @@ namespace blobs {
 
 enum class ExceptionCode {
   Generic,          // Generic error
-  DbCloseDuringTxn, // Attempt to close a databse while a transaction is active
   DbAlreadyOpen,    // Attempt to open a already opened database a second time without closing it first
+  DbCloseDuringTxn, // Attempt to close a databse while a transaction is active
+  DbNotOpen,        // Attempt to close a database, which wasn't opened or was already closed
   LockTimeout,      // Lock timeout while waiting for attempting to read/write lock a blob
   Deadlock,         // Deadlock while attempting to read/write a blob
   BlobTooLarge,     // Attempted to write a blob, which is too large to write into the database
@@ -38,15 +39,21 @@ private:
  */
 namespace exception {
 
+class DbAlreadyOpen : public Exception {
+public:
+  DbAlreadyOpen(const std::string& dbName);
+};
+
 class DbCloseDuringTxn : public Exception {
 public:
   DbCloseDuringTxn(const std::string& dbName);
 };
 
-class DbAlreadyOpen : public Exception {
-public: 
-  DbAlreadyOpen(const std::string& dbName);
+class DbNotOpen : public Exception {
+public:
+  DbNotOpen(const std::string& dbName);
 };
+
 
 
 class LockTimeout : public Exception {

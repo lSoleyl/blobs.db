@@ -29,6 +29,7 @@ bool Client::HasDatabaseOpened(Database& db) const {
 
 
 database_id Client::OpenDatabase(Database& db) {
+  TODO("Increment database use count");
 
   // First find a nullptr to use inside 
   auto pos = std::find_if(openDatabases.begin(), openDatabases.end(), [](const DatabaseLocks& entry) { return entry.database == nullptr; });
@@ -46,6 +47,20 @@ database_id Client::OpenDatabase(Database& db) {
 
   openDatabases.push_back({ &db });
   return static_cast<database_id>(openDatabases.size() - 1);
+}
+
+
+bool Client::CloseDatabase(database_id id) {
+  if (GetDatabase(id)) {
+    // database is actually opened
+    assert(openDatabases[id].locks.empty()); // since no transaction should be running
+    openDatabases[id].database = nullptr;
+    TODO("decrement databse use count to cleanup the transiently held data structures if the database isn't needed anymore (maybe with a delay)");
+
+    return true; // database actually closed
+  }
+
+  return false;
 }
 
 
@@ -77,6 +92,9 @@ bool Client::AbortTransaction() {
   return false;
 }
 
+bool Client::IsInsideTransaction() const {
+  return transaction != Transaction::None;
+}
 
 
 bool Client::AcquireLocks(const network::message::BlobsRead& message) {
