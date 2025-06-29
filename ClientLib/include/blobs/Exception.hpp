@@ -14,6 +14,7 @@ enum class ExceptionCode {
   LockTimeout,      // Lock timeout while waiting for attempting to read/write lock a blob
   Deadlock,         // Deadlock while attempting to read/write a blob
   BlobTooLarge,     // Attempted to write a blob, which is too large to write into the database
+  BlobDoesNotExist, // Attempt to read/write a blob, which doesn't exist in the database
   BlobDeleted,      // Attempted to read/write a blob, which has been deleted in the current transaction
   ClusterDeleted,   // Attempt to read/write/create/delete a blob in a cluster, which has already been deleted
   SegmentDeleted,   // Attempt to read/write/create/delete a blob/cluster in a segment, which has already been deleted
@@ -71,6 +72,11 @@ public:
   BlobTooLarge(size_t blobSize);
 };
 
+
+class BlobDoesNotExist : public Exception {
+public:
+  BlobDoesNotExist();
+};
 
 class BlobDeleted : public Exception {
 public:

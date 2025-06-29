@@ -427,7 +427,7 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
 
   switch (response.result) {
     case network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST:
-      throw Exception("Requested blob does not exist!");
+      throw exception::BlobDoesNotExist();
 
     case network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED:
       // This should never happen unless the client lib doesn't track database open/closes correctly

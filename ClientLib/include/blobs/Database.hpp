@@ -64,6 +64,13 @@ public:
     WriteBlob(segment, cluster, blob, string.data(), string.size() * sizeof(CharT));
   }
 
+  /** Convenience overload to allow the compiler to determine the template type from the argument
+   */
+  template<typename CharT = char>
+  void WriteString(segment_id segment, cluster_id cluster, blob_id blob, const CharT* string) {
+    WriteString(segment, cluster, blob, std::basic_string_view<CharT>(string));
+  }
+
   /** Convenience method to store a std::vector<T> in a blob
    */
   template<typename T>
@@ -77,6 +84,21 @@ public:
    * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
   BLOBS_EXPORT void WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
+
+
+  /** Convenience method to create a blob from the given string content
+   */
+  template<typename CharT = char>
+  blob_id CreateString(segment_id segment, cluster_id cluster, std::basic_string_view<CharT> string) {
+    return CreateBlob(segment, cluster, string.data(), string.size() * sizeof(CharT));
+  }
+
+  /** Convenience overload to allow the compiler to determine the template type from the argument
+   */
+  template<typename CharT = char>
+  blob_id CreateString(segment_id segment, cluster_id cluster, const CharT* string) {
+    return CreateString(segment, cluster, std::basic_string_view<CharT>(string));
+  }
 
   /** Creates a new blob in the specified cluster and writes the passed data into it and then returns the id of the newly created blob.
    *  Only the first call to CreateBlob() for a given cluster inside a transaction will require server communication. All further 

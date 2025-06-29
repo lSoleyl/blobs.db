@@ -50,7 +50,33 @@ bool BlobLocation::operator>=(const BlobLocation& other) const {
 
 
 std::ostream& operator<<(std::ostream& out, const BlobLocation& location) {
-  return out << '(' << location.segment << ',' << location.cluster << ',' << location.blob << ')';
+  out << '(';
+  
+  // Translate special segment ids
+  if (location.segment == constants::NextFreeSegmentId) {
+    out << "NextFreeSegmentId,";
+  } else {
+    out << location.segment << ',';
+  }
+
+  // Translate special cluster ids
+  if (location.cluster == constants::NextFreeClusterId) {
+    out << "NextFreeClusterId,";
+  } else if (location.cluster == constants::SegmentDeleteId) {
+    out << "SegmentDeleteId,";
+  } else {
+    out << location.cluster << ',';
+  }
+
+  // Translate special blob ids
+  if (location.blob == constants::NextFreeBlobId) {
+    out << "NextFreeBlobId";
+  } else if (location.blob == constants::ClusterDeleteId) {
+    out << "ClusterDeleteId";
+  } else {
+    out << location.blob;
+  }
+  return out << ')';
 }
 
 }

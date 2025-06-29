@@ -47,10 +47,15 @@ std::ostream& operator<<(std::ostream& out, BlobsRead::LockMode mode) {
 std::ostream& operator<<(std::ostream& out, const BlobsRead& message) {
   out
     << message.type << "(db=" << static_cast<int>(message.databaseId) << ", n=" << static_cast<int>(message.nBlobsRequested)
-    << ", blob[0]=" << *message.begin() << '@' << message.begin()->ifCommitIdHigher
-    << ", write=" << message.lockMode << ')';
+    << ", blob[0]=" << *message.begin()
+  ;
 
-  return out;
+  if (message.lockMode != BlobsRead::LockMode::Delete) {
+    // Delete messages don't initialize this field as they aren't interested in the content of the blob anyway
+    out << '@' << message.begin()->ifCommitIdHigher;
+  }
+  
+  return out << ", access=" << message.lockMode << ')';
 }
 
 

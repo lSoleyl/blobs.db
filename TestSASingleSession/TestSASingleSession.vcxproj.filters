@@ -21,10 +21,10 @@
     <ClCompile Include="pch.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="testSimpleBlobRW.cpp">
+    <ClCompile Include="testDatabaseMultiOpen.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="testDatabaseMultiOpen.cpp">
+    <ClCompile Include="testEmptyDatabase.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>

@@ -35,6 +35,7 @@ BlobTooLarge::BlobTooLarge(size_t blobSize) : Exception(
   ExceptionCode::BlobTooLarge) {}
 
 
+BlobDoesNotExist::BlobDoesNotExist() : Exception("Attempted to read/write a blob, which does not exist", ExceptionCode::BlobDoesNotExist) {}
 
 BlobDeleted::BlobDeleted() : Exception("Attempted to read/write a blob, which has been deleted in the current transaction", ExceptionCode::BlobDeleted) {}
 
