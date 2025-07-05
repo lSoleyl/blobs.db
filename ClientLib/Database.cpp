@@ -339,6 +339,7 @@ cluster_id Database::CreateCluster(segment_id segment) {
   TODO("Can we somehow specify a lock range?");
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, 0), Transaction::LockMode::Write);
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
+  transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::ClusterDeleteId), Transaction::LockMode::Write);
 
   // Write an empty blob into the 0 blob of the newly created cluster to allow the client to immediately read the content of that blob
   // after calling CreateCluster()
