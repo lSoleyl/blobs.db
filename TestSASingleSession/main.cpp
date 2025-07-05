@@ -2,6 +2,13 @@
 #include <doctest/doctest.h>
 #include <blobs/Blobs.hpp>
 
+
+REGISTER_EXCEPTION_TRANSLATOR(blobs::Exception& ex) {
+  return doctest::String(ex.what());
+}
+
+
+
 int main(int argc, char** argv) {
   blobs::Initialize();
 
