@@ -156,11 +156,11 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
     return new Database(std::string(databaseName), message->databaseId, connectionId);
   } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_NOT_FOUND) {
-    throw blobs::Exception("Database not found!");
+    throw Exception("Database not found!");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {
-    throw blobs::Exception("Too many databases already open. Close unused databases and retry.");
+    throw Exception("Too many databases already open. Close unused databases and retry.");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN) {
-    throw blobs::exception::DbAlreadyOpen(std::string(databaseName));
+    throw exception::DbAlreadyOpen(std::string(databaseName));
   }
   
   assert(false); // unhandled result type
@@ -169,8 +169,24 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
 }
 
 
-
 std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
+  if (segment > constants::MaxSegmentId) {
+    throw Exception("Invalid segment id");
+  }
+
+  if (cluster > constants::MaxClusterId) {
+    throw Exception("Invalid cluster id");
+  }
+
+  if (blob > constants::MaxBlobId) {
+    throw Exception("Invalid blob id");
+  }
+
+  return ReadBlobInternal(segment, cluster, blob, writeLock);
+}
+
+
+std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
   TODO("Add synchronization: Only one thread may communicate with the database at any given time.");
 
   // Get the currently running transaction or start a new one if no is running yet
@@ -232,9 +248,24 @@ std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster
   return std::make_pair(nullptr, 0);
 }
 
-
-
 void Database::WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
+  if (segment > constants::MaxSegmentId) {
+    throw Exception("Invalid segment id");
+  }
+
+  if (cluster > constants::MaxClusterId) {
+    throw Exception("Invalid cluster id");
+  }
+
+  if (blob > constants::MaxBlobId) {
+    throw Exception("Invalid blob id");
+  }
+
+  WriteBlobInternal(segment, cluster, blob, blobData, blobSize);
+}
+
+
+void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
   if (blobSize > constants::MaxBlobSize) {
     // Make sure, the client cannot write blobs, which are larger than the supported maximum
     throw exception::BlobTooLarge(blobSize);
@@ -264,15 +295,36 @@ blob_id Database::CreateBlob(segment_id segment, cluster_id cluster, const void*
     throw exception::BlobTooLarge(blobSize);
   }
 
+  if (segment > constants::MaxSegmentId) {
+    throw Exception("Invalid segment id");
+  }
+
+  if (cluster > constants::MaxClusterId) {
+    throw Exception("Invalid cluster id");
+  }
+
   // Create the new blob and directly write the data into it
   auto blobId = CreateBlobInternal(segment, cluster);
-  WriteBlob(segment, cluster, blobId, blobData, blobSize);
+  WriteBlobInternal(segment, cluster, blobId, blobData, blobSize);
 
   // Finally return the blob id to the caller so he knows, which blob has been created.
   return blobId;
 }
 
 
+
+cluster_id Database::CreateCluster(segment_id segment) {
+  TODO("Implement this");
+  throw blobs::Exception("Database::CreateCluster() not implemented yet!");
+  return 0;
+}
+
+
+cluster_id Database::CreateSegment() {
+  TODO("Implement this");
+  throw blobs::Exception("Database::CreateSegment() not implemented yet!");
+  return 0;
+}
 
 void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) {
   // Get the currently running transaction or start a new one if no is running yet
@@ -372,18 +424,18 @@ void Database::UpdateCacheForCommittedBlob(const BlobLocation& location, std::ve
 blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster and
   // also tell us the next blob id to use.
-  auto [data, size] = ReadBlob(segment, cluster, constants::NextFreeBlobId, true);
+  auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, true);
   assert(size == sizeof(blob_id)); // This blob only consists of the blob_id value
 
   BlobLocation newLocation(segment, cluster, *static_cast<const blob_id*>(data));
   if (newLocation.blob > constants::MaxBlobId) {
-    // Cluster is full, no more blobs an be created
+    // Cluster is full, no more blobs can be created
     throw exception::BlobLimitReached(segment, cluster);
   }
 
   // Update the NextFreeBlobId blob
   blob_id nextBlobId = newLocation.blob + 1;
-  WriteBlob(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
+  WriteBlobInternal(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
 
   // The blob is now logically created, so we also implicitly hold a write lock to it
   auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction if not already

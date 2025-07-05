@@ -74,6 +74,27 @@ SCENARIO("Empty database") {
     }
   }
 
+
+  GIVEN("The test database") {
+    auto db = testDb();
+    THEN("The regular client API should not allow reads to NextFreeBlobId") {
+      CHECK_THROWS_AS(db->ReadBlob(0, 0, constants::NextFreeBlobId), blobs::Exception);
+    }
+
+    THEN("The regular client API should not allow writes to NextFreeBlobId") {
+      CHECK_THROWS_AS(db->WriteString(0, 0, constants::NextFreeBlobId, "bla"), blobs::Exception);
+    }
+
+    THEN("The regular client API should not allow reads to ClusterDeleteId") {
+      CHECK_THROWS_AS(db->ReadBlob(0, 0, constants::ClusterDeleteId), blobs::Exception);
+    }
+
+    THEN("The regular client API should not allow writes to ClusterDeleteId") {
+      CHECK_THROWS_AS(db->WriteString(0, 0, constants::ClusterDeleteId, "bla"), blobs::Exception);
+    }
+  }
+
+
   GIVEN("The test database") {
     auto db = testDb();
     THEN("Closing it while the transaction is still open should fail") {

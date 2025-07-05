@@ -108,6 +108,14 @@ public:
    */
   BLOBS_EXPORT blob_id CreateBlob(segment_id segment, cluster_id cluster, const void* blobData, size_t blobSize);
 
+  /** Creates a new cluster in the specified segment. The cluster will be initialized with an empty blob 0, which can be written to afterwards.
+   */
+  BLOBS_EXPORT cluster_id CreateCluster(segment_id segment);
+
+  /** Creates a new segment in this database. The segment will be initialized with an empty cluster 0 containing an empty blob 0, which can be written to afterwards.
+   */
+  BLOBS_EXPORT cluster_id CreateSegment();
+
   /** This method deletes a blob from the database, which is not the same as overwriting it with an empty blob.
    *  After a blob has been deleted, it can never be read/written again. Deleting a blob requires a write lock for that blob.
    */
@@ -139,6 +147,26 @@ public:
   const connection_id connectionId;
   const database_id id;
 private:
+  /** This method performs the actual read operation of ReadBlob() without checking for restricted ids.
+   *  Read a blob with internal caching, which means that the client will ask the server to not resend the blob
+   *  if the blob didn't change since the last transaction and if we are in the same transaction then the blob is simply
+   *  returned without asking the server.
+   *  The returned memory is pointing to the client's blob cache. To reference it safely, it should be copied out of the cache as soon as the
+   *  call returns and it should never be written to. Use ReadString()/ReadVector() instead for more convenient data access.
+   *
+   * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
+   */
+  std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock);
+
+  /** This method performs the actual write operation of WriteBlob() without checking for restricted ids.
+   *  This method starts a transaction if not already started, acquires a write lock for the specified location (if not already done) and
+   *  stores the data to write into the transaction's commit cache.
+   *
+   * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
+   */
+  void WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
+
+
   /** Private overload exported by the DLL and used by the std::string_view overload.
    */
   BLOBS_EXPORT static Database* Open(const char* connectionString, size_t connectionStringLen);
