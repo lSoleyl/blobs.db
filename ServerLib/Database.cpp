@@ -26,6 +26,10 @@ Segment* Database::GetSegment(segment_id segment) {
   return snapshot->GetSegment(segment);
 }
 
+segment_id Database::GetNextFreeSegmentId() const {
+  return snapshot->GetNextFreeSegmentId();
+}
+
 
 bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   auto client = message.clientId;
@@ -239,6 +243,10 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
   }
 }
 
+
+segment_id Database::Snapshot::GetNextFreeSegmentId() const {
+  return nextFreeSegmentId;
+}
 
 void Database::Snapshot::SetNextFreeSegmentId(segment_id nextFreeId) {
   nextFreeSegmentId = nextFreeId;

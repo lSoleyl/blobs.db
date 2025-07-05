@@ -97,6 +97,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="testCreateBlob.cpp" />
+    <ClCompile Include="testCreateCluster.cpp" />
     <ClCompile Include="testDatabaseMultiOpen.cpp" />
     <ClCompile Include="testEmptyDatabase.cpp" />
   </ItemGroup>

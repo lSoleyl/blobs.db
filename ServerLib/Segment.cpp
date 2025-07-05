@@ -54,6 +54,10 @@ Blob* Segment::GetBlob(cluster_id cluster, blob_id blob) {
   return nullptr;
 }
 
+cluster_id Segment::GetNextFreeClusterId() const {
+  return nextFreeClusterId;
+}
+
 void Segment::SetNextFreeClusterId(cluster_id nextFreeId) {
   nextFreeClusterId = nextFreeId;
   nextFreeClusterIdBlob.SetIdContent(nextFreeClusterId);

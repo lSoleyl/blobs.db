@@ -51,7 +51,10 @@ BlobLimitReached::BlobLimitReached(segment_id segment, cluster_id cluster) : Exc
   ", cluster " + std::to_string(cluster) + ". Blob limit reached."
 ) {}
 
-
+ClusterLimitReached::ClusterLimitReached(segment_id segment) : Exception(
+  "Cannot create any more clusters in segment " + std::to_string(segment) +
+  ". Cluster limit reached."
+) {}
 
 
 

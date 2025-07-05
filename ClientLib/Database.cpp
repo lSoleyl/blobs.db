@@ -314,9 +314,43 @@ blob_id Database::CreateBlob(segment_id segment, cluster_id cluster, const void*
 
 
 cluster_id Database::CreateCluster(segment_id segment) {
-  TODO("Implement this");
-  throw blobs::Exception("Database::CreateCluster() not implemented yet!");
-  return 0;
+  if (segment > constants::MaxSegmentId) {
+    throw Exception("Invalid segment id");
+  }
+
+  // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
+  // also tell us the next cluster id to use
+  auto [data, size] = ReadBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
+  assert(size == sizeof(cluster_id)); // This blob only consists of the cluster_id value
+
+  cluster_id newClusterId = *static_cast<const cluster_id*>(data);
+  if (newClusterId > constants::MaxClusterId) {
+    // Segment is full, no more clusters can be created
+    throw exception::ClusterLimitReached(segment);
+  }
+
+  // Update the NextFreeClusterId blob
+  cluster_id nextFreeClusterId = newClusterId + 1;
+  WriteBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, &nextFreeClusterId, sizeof(nextFreeClusterId));
+
+  // The cluster is now logically created, so we also implicitly hold a write lock to it
+  auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction
+
+  TODO("Can we somehow specify a lock range?");
+  transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, 0), Transaction::LockMode::Write);
+  transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
+
+  // Write an empty blob into the 0 blob of the newly created cluster to allow the client to immediately read the content of that blob
+  // after calling CreateCluster()
+  WriteBlobInternal(segment, newClusterId, 0, nullptr, 0);
+
+  // Write the nextFreeBlobId in the newly created cluster into our client cache to be able to create blobs in that cluster without 
+  // querying the server (which doesn't know anything about this cluster anyway).
+  blob_id nextFreeBlob = 1;
+  WriteBlobInternal(segment, newClusterId, constants::NextFreeBlobId, &nextFreeBlob, sizeof(nextFreeBlob));
+
+  // The cluster and the first blob are now logically created and the client holds write locks to both of them
+  return newClusterId;
 }
 
 

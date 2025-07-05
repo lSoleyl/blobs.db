@@ -32,6 +32,11 @@ public:
    */
   Blob* GetBlob(cluster_id cluster, blob_id blob);
 
+  /** Returns the next free cluster id for this segment
+   *  This is the value, which can be read from the (`NextFreeClusterId`, `NextFreeBlobId`) blob
+   */
+  cluster_id GetNextFreeClusterId() const;
+
   /** Updates the nextFreeClusterId and the contents of the blob holding the id
    */
   void SetNextFreeClusterId(cluster_id nextFreeId);

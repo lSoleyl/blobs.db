@@ -31,6 +31,10 @@ public:
    */
   Segment* GetSegment(segment_id segment);
 
+  /** Returns the next free segment id, which can also be retrieved form the blob (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`)
+   */
+  segment_id GetNextFreeSegmentId() const;
+
   /** Acquires the locks specified in the blobs read message and returns true if successful, false if not
    *  IMPORTANT: This only sets the locks in the database... For proper bookeeping the client also needs to know, which locks it holds
    *             Therefore locks should always be acquired via Client::AcquireLocks(), which calls this method.
@@ -131,6 +135,11 @@ private:
      *  has no const iterator.
      */
     void ApplyCommitMessage(network::message::TransactionCommit& commitMessage);
+
+    /** Returns the next free segment id for this database
+     *  This is the value, which can be read from the (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`) blob
+     */
+    segment_id GetNextFreeSegmentId() const;
 
 
     /** Updates the nextFreeSegmentId field and the blob's content
