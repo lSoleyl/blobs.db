@@ -20,6 +20,7 @@ enum class ExceptionCode {
   SegmentDeleted,       // Attempt to read/write/create/delete a blob/cluster in a segment, which has already been deleted
   BlobLimitReached,     // Cannot create more blobs in the cluster
   ClusterLimitReached,  // Cannot create more clusters in the segment
+  SegmentLimitReached,  // Cannot create more segments in the database
 };
 
 
@@ -102,6 +103,12 @@ public:
 class ClusterLimitReached : public Exception {
 public:
   ClusterLimitReached(segment_id segment);
+};
+
+
+class SegmentLimitReached : public Exception {
+public:
+  SegmentLimitReached();
 };
 
 }

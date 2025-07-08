@@ -56,7 +56,7 @@ ClusterLimitReached::ClusterLimitReached(segment_id segment) : Exception(
   ". Cluster limit reached."
 ) {}
 
-
+SegmentLimitReached::SegmentLimitReached() : Exception("Cannot create any more segments in this database. Segment limit reahced.") {}
 
 
 

@@ -82,4 +82,6 @@ SCENARIO("Create cluster") {
       REQUIRE_NOTHROW(db->Close());
     }
   }
+
+  FIXME("Make sure, DeleteCluster/DeleteBlob behave correctly for Clusters created in the same transaction and for clusters created in different transactions");
 }

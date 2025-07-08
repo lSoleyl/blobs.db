@@ -336,29 +336,63 @@ cluster_id Database::CreateCluster(segment_id segment) {
   // The cluster is now logically created, so we also implicitly hold a write lock to it
   auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction
 
-  TODO("Can we somehow specify a lock range?");
-  transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, 0), Transaction::LockMode::Write);
+  // Through creation we implicitly hold write locks to the cluster's special blobs
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::ClusterDeleteId), Transaction::LockMode::Write);
 
-  // Write an empty blob into the 0 blob of the newly created cluster to allow the client to immediately read the content of that blob
-  // after calling CreateCluster()
-  WriteBlobInternal(segment, newClusterId, 0, nullptr, 0);
-
   // Write the nextFreeBlobId in the newly created cluster into our client cache to be able to create blobs in that cluster without 
   // querying the server (which doesn't know anything about this cluster anyway).
-  blob_id nextFreeBlob = 1;
+  blob_id nextFreeBlob = 0;
   WriteBlobInternal(segment, newClusterId, constants::NextFreeBlobId, &nextFreeBlob, sizeof(nextFreeBlob));
+
+
+  // Create an empty blob 0 in the created cluster to allow the client to immediately read the content of that blob
+  // after calling CreateCluster()
+  CreateBlob(segment, newClusterId, nullptr, 0);
+  
 
   // The cluster and the first blob are now logically created and the client holds write locks to both of them
   return newClusterId;
 }
 
 
-cluster_id Database::CreateSegment() {
-  TODO("Implement this");
-  throw blobs::Exception("Database::CreateSegment() not implemented yet!");
-  return 0;
+segment_id Database::CreateSegment() {
+  // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
+  // also tell us the next cluster id to use
+  auto [data, size] = ReadBlobInternal(constants::NextFreeSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
+  assert(size == sizeof(segment_id)); // This blob only consists of the cluster_id value
+
+  segment_id newSegmentId = *static_cast<const segment_id*>(data);
+  if (newSegmentId > constants::MaxSegmentId) {
+    // Segment is full, no more clusters can be created
+    throw exception::SegmentLimitReached();
+  }
+
+  // Update the NextFreeSegmentId blob
+  segment_id nextFreeSegmentId = newSegmentId + 1;
+  WriteBlobInternal(constants::NextFreeSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId, &nextFreeSegmentId, sizeof(nextFreeSegmentId));
+
+
+  // The segment is now logically created, so we also implicitly hold a write lock to it
+  auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction
+
+  // Through creation we implicitly hold write locks to the segment's special blobs
+  transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
+  transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::SegmentDeleteId, constants::ClusterDeleteId), Transaction::LockMode::Write);
+
+  // Write the next free cluster id for the newly created segment into our client cache to be able to create clusters in that segment
+  // without querying the server (which doesn't know anything about this segment anyway).
+  cluster_id nextFreeClusterId = 0;
+  WriteBlobInternal(newSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId, &nextFreeClusterId, sizeof(nextFreeClusterId));
+
+
+  // Create the 0 cluster and with it the 0 blob in this segment
+  CreateCluster(newSegmentId);
+  
+
+  // The segment, the first cluster and the first blob are now logically created and the client holds write locks to both of them
+  return newSegmentId;
+
 }
 
 void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) {

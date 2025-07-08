@@ -114,7 +114,7 @@ public:
 
   /** Creates a new segment in this database. The segment will be initialized with an empty cluster 0 containing an empty blob 0, which can be written to afterwards.
    */
-  BLOBS_EXPORT cluster_id CreateSegment();
+  BLOBS_EXPORT segment_id CreateSegment();
 
   /** This method deletes a blob from the database, which is not the same as overwriting it with an empty blob.
    *  After a blob has been deleted, it can never be read/written again. Deleting a blob requires a write lock for that blob.

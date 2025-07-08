@@ -98,6 +98,7 @@
     </ClCompile>
     <ClCompile Include="testCreateBlob.cpp" />
     <ClCompile Include="testCreateCluster.cpp" />
+    <ClCompile Include="testCreateSegment.cpp" />
     <ClCompile Include="testDatabaseMultiOpen.cpp" />
     <ClCompile Include="testEmptyDatabase.cpp" />
   </ItemGroup>
