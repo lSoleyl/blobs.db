@@ -1,5 +1,9 @@
-#include "pch.hpp"
-#include <blobs/Exception.hpp>
+// We must mark blobs::Exception for dllexport for it to be exported in the ClientLib
+#define BLOBS_EXPORT __declspec(dllexport)
+
+#include <common/Exception.hpp>
+
+#include <string>
 
 namespace blobs {
 

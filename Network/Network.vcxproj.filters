@@ -102,6 +102,9 @@
     <ClCompile Include="message\DatabaseCloseResponse.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
+    <ClCompile Include="common\Exception.cpp">
+      <Filter>Quelldateien\common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -196,6 +199,9 @@
     </ClInclude>
     <ClInclude Include="include\network\message\DatabaseCloseResponse.hpp">
       <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Exception.hpp">
+      <Filter>Headerdateien\common</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

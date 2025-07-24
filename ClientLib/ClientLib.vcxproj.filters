@@ -30,9 +30,6 @@
     <ClCompile Include="Network.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
-    <ClCompile Include="Exception.cpp">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
     <ClCompile Include="Transaction.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>

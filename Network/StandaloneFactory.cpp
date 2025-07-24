@@ -2,6 +2,8 @@
 #include <network/ReceiveMessageQueue.hpp>
 #include <network/message/All.hpp>
 
+#include <common/Exception.hpp>
+
 #include <vector>
 #include <mutex>
 
@@ -125,8 +127,7 @@ void StandaloneFactory::Use() {
 
 std::unique_ptr<ClientInterface> StandaloneFactory::CreateClient(std::string serverAddress, int serverPort) {
   if (!server) {
-    std::cerr << "blobs::Initialize() not called or blobs::Shutdown() already called!";
-    throw std::exception("blobs::Initialize() not called or blobs::Shutdown() already called!");
+    throw blobs::Exception("blobs::Initialize() not called or blobs::Shutdown() already called!");
   }
 
   return server->ClientConnected();
@@ -134,9 +135,7 @@ std::unique_ptr<ClientInterface> StandaloneFactory::CreateClient(std::string ser
 
 std::unique_ptr<ServerInterface> StandaloneFactory::CreateServer(int listenPort) {
   if (server) {
-    // At least not for now...
-    std::cerr << "Logic error: Multiple standalone server instances in one process are not allowed!";
-    throw std::exception("Logic error: Multiple standalone server instances in one process are not allowed!");
+    throw blobs::Exception("Logic error: Multiple standalone server instances in one process are not allowed!");
   }
   
   return std::make_unique<Server>(*this);

@@ -90,6 +90,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="common\Exception.cpp" />
     <ClCompile Include="message\DatabaseCloseResponse.cpp" />
     <ClCompile Include="SocketClient.cpp" />
     <ClCompile Include="common\BlobLocation.cpp" />
@@ -120,6 +121,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\common\BlobLocation.hpp" />
+    <ClInclude Include="include\common\Exception.hpp" />
     <ClInclude Include="include\network\ClientInterface.hpp" />
     <ClInclude Include="include\network\Factory.hpp" />
     <ClInclude Include="include\network\IOCompletionHandler.hpp" />
