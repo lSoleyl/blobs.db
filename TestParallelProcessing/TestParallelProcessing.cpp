@@ -9,7 +9,7 @@ int main() {
     blobs::Initialize();
 
     std::cout << "Opening database...\n";
-    auto db = blobs::Database::Open("127.0.0.1", "parallel-processing.db");
+    auto db = blobs::Database::Open("127.0.0.1", "mem:parallel-processing.db");
     std::cout << "Database opened.\n";
 
 

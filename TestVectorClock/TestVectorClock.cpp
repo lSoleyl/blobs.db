@@ -42,7 +42,7 @@ int main() {
     blobs::Initialize();
 
     std::cout << "Opening database...\n";
-    auto db = blobs::Database::Open("127.0.0.1", "vector-clock.db");
+    auto db = blobs::Database::Open("127.0.0.1", "mem:vector-clock.db");
     std::cout << "Database opened.\n";
 
     auto initialClock = db->ReadVector<int>(0, 0, 0, true);

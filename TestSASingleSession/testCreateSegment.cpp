@@ -7,7 +7,7 @@ namespace {
 
 // We want to use the same db for all these tests
 Database* testDb() {
-  static auto db = Database::Open("localhost", "create_segment.db");
+  static auto db = Database::Open("localhost", "mem:create_segment.db");
   return db;
 }
 

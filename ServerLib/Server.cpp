@@ -87,6 +87,35 @@ Server& Server::Instance() {
   return *instance;
 }
 
+
+void Server::HandleDatabaseOpenResult(Database& database, network::message::DatabaseOpenResponse::Result result, client_id clientId) {
+  TODO("Handle client closing connection before the databse completed opening");
+  auto& client = server::Client::Get(clientId);
+
+
+  if (client.HasDatabaseOpened(database)) {
+    // Client already opened this same database before without closing it. We don't allow this would lead to the client
+    // holding two separate blob caches and we would have to add a refcount to properly handle closing the database.
+    SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN, 0));
+  } else {
+    if (result != network::message::DatabaseOpenResponse::Result::SUCCESS) {
+      // Database loading failed -> send error code back to client
+      SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(result, 0));
+    } else {
+      try {
+        // Mark the databse as opened in the client (if possible) and reply with success status code
+        SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(database)));
+      } catch (std::exception&) {
+        SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN, 0));
+      }
+    }
+  }
+}
+
+
+
+
+
 void Server::SendMessageToClient(client_id clientId, network::MessagePointer message) {
   server->SendMessageToClient(clientId, std::move(message));
 }
@@ -106,33 +135,7 @@ void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::
 
 void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::DatabaseOpen> message) {
   // OpenDB request
-  auto dbName = message->GetDatabaseName();
-
-  TODO("Handle error in case database is not found");
-
-  //TODO: Open the database if not already
-  //TODO: Opening the database involves processing the header, transaction log, construction of basic data structure cache
-  //TODO: Opening is an async process, whose completion clients should subscribe to
-  //TODO: The database must be put into some kind of loading state, which will continue until the database is ready to be used
-  //TODO: Abort loading process on error and propagate error to all clients waiting for this database to open
-  //TODO: If a client disconnects while waiting, we must remove him from the waiting list
-  //TODO: which completion-port should I use for this!?
-
-
-  auto& db = server::Database::Get(dbName);
-  auto& client = server::Client::Get(message->clientId);
-
-  if (client.HasDatabaseOpened(db)) {
-    // Client already opened this same database before without closing it. We don't allow this would lead to the client
-    // holding two separate blob caches and we would have to add a refcount to properly handle closing the database.
-    SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN, 0));
-  } else {
-    try {
-      SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(db)));
-    } catch (std::exception&) {
-      SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN, 0));
-    }
-  }
+  server::Database::Open(message->GetDatabaseName(), message->clientId);
 }
 
 

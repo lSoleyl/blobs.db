@@ -1,22 +1,51 @@
 #include "pch.hpp"
 #include "include/server/Database.hpp"
+#include "include/server/Server.hpp"
 
 namespace blobs {
 namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot) {}
-
-Database& Database::Get(std::string_view databaseName) {
-  auto pos = databases.find(databaseName);
-  if (pos != databases.end()) {
-    return pos->second;
-  } 
-
-  std::string nameStr(databaseName.data(), databaseName.size());
-  return databases.emplace(nameStr, Database(nameStr)).first->second;
+Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot) {
+  // In-Memory databases start with "mem:" prefix and are always loaded
+  fileDatabase = !this->name._Starts_with("mem:");
+  loaded = !fileDatabase;
 }
+
+Database* Database::Get(std::string_view databaseName) {
+  auto pos = databases.find(databaseName);
+  return (pos != databases.end()) ? &pos->second : nullptr;
+}
+
+
+
+Database& Database::Open(std::string_view databaseName, client_id clientId) {
+  // Check whether database was already opened
+  auto database = Get(databaseName);
+
+  if (!database) {
+    // Database wasn't opened yet -> enter new database
+    std::string nameStr(databaseName.data(), databaseName.size());
+    database = &databases.emplace(nameStr, Database(nameStr)).first->second;
+    // The newly created database may already be fully loaded in case of an in-memory database
+
+    TODO("If the newly created database is a file database then we must trigger loading it here");
+  }
+
+
+  if (database->loaded) {
+    // Database is already fully loaded -> call callback for client immediately
+    Server::Instance().HandleDatabaseOpenResult(*database, network::message::DatabaseOpenResponse::Result::SUCCESS, clientId);
+  } else {
+    // Database is in the process of being loaded -> register client for callback
+    database->clientsWaitingForLoading.push_back(clientId);
+  }
+
+  return *database;
+}
+
+
 
 Blob* Database::GetBlob(const BlobLocation& location) {
   return snapshot->GetBlob(location);

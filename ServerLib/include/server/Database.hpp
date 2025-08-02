@@ -19,9 +19,15 @@ public:
     "fetching is simply a memory lookup.We shouldn't block the server while watiting for the database to be fully loaded and ready."
   )
 
-  /** Fetch an already opened database or open the specified database
-    */
-  static Database& Get(std::string_view databaseName);
+  /** Fetch an already opened database or return nullptr
+   *  The returned database may still be in a loading state.
+   */
+  static Database* Get(std::string_view databaseName);
+
+  /** Opens the the database for the specified client, which will always end with a call to Server::HandleDatabaseOpenResult() for that
+   *  client once the database is fully loaded (which may happen immediately).
+   */
+  static Database& Open(std::string_view databaseName, client_id clientId);
 
   /** Returns a blob from this database (if it exists)
    */
@@ -183,6 +189,10 @@ private:
   /** All currently active locks in this database
    */
   std::set<Lock, std::less<>> locks;
+
+  bool fileDatabase; // true if the database is a file database (in contrast to a pure in-memory database)
+  bool loaded;       // true if the the FILE database has been fully loaded and is ready to be used by clients
+  std::vector<client_id> clientsWaitingForLoading; // Clients to notify once the database has completed loading to complete their OpenDatabse requests
 
   static std::map<std::string, Database, std::less<>> databases;
 };

@@ -29,11 +29,16 @@ public:
   static Server& Instance();
 
 
+  /** When a database completes/fails loading this will be called for each client, which registered itself to the database
+   */
+  void HandleDatabaseOpenResult(Database& database, network::message::DatabaseOpenResponse::Result result, client_id clientId);
+
+
+
+private:
   /** Shorthand for server->SendMessageToClient(...)
    */
   void SendMessageToClient(client_id clientId, network::MessagePointer message);
-
-private:
 
   void HandleConnectionOpened(network::MessagePointer_T<network::message::ConnectionOpened> message);
   void HandleConnectionClosed(network::MessagePointer_T<network::message::ConnectionClosed> message);
