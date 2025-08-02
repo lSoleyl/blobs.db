@@ -13,6 +13,7 @@ class Client;
 class Server {
 public:
   Server(int port = 8108);
+  ~Server();
 
   /** Main server network message processing loop.
    */
@@ -22,6 +23,15 @@ public:
    *  This method does not wait for the ServerMain() to be exited.
    */
   void BeginShutdown();
+
+  /** Static access to the only running server instance
+   */
+  static Server& Instance();
+
+
+  /** Shorthand for server->SendMessageToClient(...)
+   */
+  void SendMessageToClient(client_id clientId, network::MessagePointer message);
 
 private:
 
@@ -74,6 +84,10 @@ private:
   void ClientTransactionEnded(const blobs::server::Client& client);
 
   std::unique_ptr<network::ServerInterface> server;
+
+  /** The single server instance (we currently do not support multiple server instances in a single process due to Database for example holding a static map of opened databases)
+   */
+  static Server* instance;
 };
 
 }}

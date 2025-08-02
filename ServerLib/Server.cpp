@@ -8,7 +8,16 @@
 namespace blobs {
 namespace server {
 
-Server::Server(int port) : server(network::Factory::Instance().CreateServer(port)) {}
+Server* Server::instance = nullptr;
+
+Server::Server(int port) : server(network::Factory::Instance().CreateServer(port)) {
+  assert(!instance); // Only one server instance is allowed to run at a time
+  instance = this;
+}
+
+Server::~Server() {
+  instance = nullptr;
+}
 
 
 void Server::ServerMain() {
@@ -73,6 +82,16 @@ void Server::BeginShutdown() {
   server->Stop();
 }
 
+Server& Server::Instance() {
+  assert(instance);
+  return *instance;
+}
+
+void Server::SendMessageToClient(client_id clientId, network::MessagePointer message) {
+  server->SendMessageToClient(clientId, std::move(message));
+}
+
+
 void Server::HandleConnectionOpened(network::MessagePointer_T<network::message::ConnectionOpened> message) {
   // New client connected (initialize logical client data)
   Client::ClientConnected(message->clientId);
@@ -83,23 +102,35 @@ void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::
   TODO("Remove from client map, release all held locks, release database references and close database if this was the last one");
 }
 
+
+
 void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::DatabaseOpen> message) {
   // OpenDB request
   auto dbName = message->GetDatabaseName();
 
   TODO("Handle error in case database is not found");
+
+  //TODO: Open the database if not already
+  //TODO: Opening the database involves processing the header, transaction log, construction of basic data structure cache
+  //TODO: Opening is an async process, whose completion clients should subscribe to
+  //TODO: The database must be put into some kind of loading state, which will continue until the database is ready to be used
+  //TODO: Abort loading process on error and propagate error to all clients waiting for this database to open
+  //TODO: If a client disconnects while waiting, we must remove him from the waiting list
+  //TODO: which completion-port should I use for this!?
+
+
   auto& db = server::Database::Get(dbName);
   auto& client = server::Client::Get(message->clientId);
 
   if (client.HasDatabaseOpened(db)) {
     // Client already opened this same database before without closing it. We don't allow this would lead to the client
     // holding two separate blob caches and we would have to add a refcount to properly handle closing the database.
-    server->SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN, 0));
+    SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN, 0));
   } else {
     try {
-      server->SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(db)));
+      SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(db)));
     } catch (std::exception&) {
-      server->SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN, 0));
+      SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN, 0));
     }
   }
 }
@@ -109,16 +140,16 @@ void Server::HandleDatabaseClose(network::MessagePointer_T<network::message::Dat
   auto& client = server::Client::Get(message->clientId);
   if (client.IsInsideTransaction()) {
     // This is actually being prevented by the client lib, but just in case client transaction is out of sync -> check it here to be safe
-    server->SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::TRANSACTION_IN_PROGRESS));
+    SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::TRANSACTION_IN_PROGRESS));
     return;
   }
 
   if (client.CloseDatabase(message->databaseId)) {
     // Successfully closed database
-    server->SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::SUCCESS));
+    SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::SUCCESS));
   } else {
     // Client didn't open this database or already closed it
-    server->SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::DATABASE_NOT_OPEN));
+    SendMessageToClient(client.id, network::message::DatabaseCloseResponse::Create(network::message::DatabaseCloseResponse::Result::DATABASE_NOT_OPEN));
   }
 
   
@@ -133,12 +164,13 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
     auto database = client.GetDatabase(message->databaseId);
     assert(database); // <- TryHandleBlobsRead() would have returned true otherwise
 
-    // Queue this message to the databse to be processed as soon as the conflicting locks are released
+    // Queue this message to the database to be processed as soon as the conflicting locks are released
     if (!database->QueueReadCheckDeadlock(std::move(message))) {
       // Deadlock detected -> cannot enqueue message
-      client.AbortTransaction(); // abort the client's current transaction
-      server->SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
-      TODO("Also check whether any outstanding reads can be completed now that the client has released his previously held locks");
+      SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
+      // Abort the client's current transaction (this client is the deadlock victim)
+      // Aborting the transaction will also trigger processing of any outstanding reads, which may now be possible to complete
+      AbortTransaction(client); 
     }
   }
 }
@@ -478,7 +510,7 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   auto& client = server::Client::Get(message.clientId);
   auto database = client.GetDatabase(message.databaseId);
   if (!database) {
-    server->SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED));
+    SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED));
     return true;
   }
 
@@ -487,7 +519,7 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     auto& requestedBlob = *message.begin();
     auto blob = database->GetBlob(requestedBlob);
     if (!blob) {
-      server->SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
+      SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
       return true;
     }
 
@@ -497,13 +529,13 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
         // - The client has the current version of the blob 
         // - Or the client requested the write locks only for deletion of the blobs
         // --> In both cases we can simply send an empty response
-        server->SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
+        SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
       } else {
         // Client's blob is not up to date -> send the server's current version
         auto blobContent = blob->ReadContent();
         auto response = network::message::BlobsReadResponse::Create(blobContent.size());
         response->begin().SetBlob(requestedBlob, blob->commitId, blobContent.data(), static_cast<blob_size>(blobContent.size()));
-        server->SendMessageToClient(message.clientId, std::move(response));
+        SendMessageToClient(message.clientId, std::move(response));
       }
       return true; // messages fully processed
     } else {
