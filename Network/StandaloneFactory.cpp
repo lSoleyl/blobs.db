@@ -1,5 +1,6 @@
 #include <network/StandaloneFactory.hpp>
 #include <network/ReceiveMessageQueue.hpp>
+#include <network/IOCPReceiveMessageQueue.hpp>
 #include <network/message/All.hpp>
 
 #include <common/Exception.hpp>
@@ -9,7 +10,7 @@
 
 namespace blobs::network {
 
-class StandaloneFactory::Client : public ClientInterface {
+class StandaloneFactory::Client final : public ClientInterface {
 public:
   Client(Server& server, client_id id);
   virtual ~Client() override;
@@ -30,9 +31,9 @@ private:
 };
 
 
-class StandaloneFactory::Server : public ServerInterface {
+class StandaloneFactory::Server final : public ServerInterface {
 public:  
-  Server(StandaloneFactory& factory) : factory(factory), lastClientId(0) {
+  Server(StandaloneFactory& factory, IOCPReceiveMessageQueue& serverReceiveQueue) : factory(factory), lastClientId(0), messageQueue(serverReceiveQueue) {
     factory.server = this;
   }
 
@@ -43,8 +44,8 @@ public:
 
   /** Wait for the next sever message without a timeout
    */
-  virtual MessagePointer AwaitMessage() override {
-    return messageQueue.AwaitMessage();
+  virtual MessagePointer FetchMessage() override {
+    return messageQueue.FetchMessage();
   }
 
   /** Send an already allocated message to the specified client
@@ -58,13 +59,6 @@ public:
       }
     }
   }
-
-  /** Simply post a null message to the server's message queue to indicate the shutdown
-   */
-  virtual void Stop() override {
-    messageQueue.MessageReceived(MessagePointer());
-  }
-
 
   /** Used to construct a new standalone client instance connected to this server
    */
@@ -89,7 +83,7 @@ public:
     messageQueue.MessageReceived(message::ConnectionClosed::Create(client->id));
   }
 
-  ReceiveMessageQueue messageQueue;
+  IOCPReceiveMessageQueue& messageQueue;
   std::vector<Client*> clients;
   std::mutex clientsMutex;
 private:
@@ -133,12 +127,12 @@ std::unique_ptr<ClientInterface> StandaloneFactory::CreateClient(std::string ser
   return server->ClientConnected();
 }
 
-std::unique_ptr<ServerInterface> StandaloneFactory::CreateServer(int listenPort) {
+std::unique_ptr<ServerInterface> StandaloneFactory::CreateServer(IOCPReceiveMessageQueue& serverReceiveQueue, int listenPort) {
   if (server) {
     throw blobs::Exception("Logic error: Multiple standalone server instances in one process are not allowed!");
   }
   
-  return std::make_unique<Server>(*this);
+  return std::make_unique<Server>(*this, serverReceiveQueue);
 }
 
 

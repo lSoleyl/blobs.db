@@ -19,8 +19,8 @@ std::unique_ptr<ClientInterface> SocketFactory::CreateClient(std::string serverA
   return std::make_unique<SocketClient>(std::move(serverAddress), std::to_string(serverPort));
 }
 
-std::unique_ptr<ServerInterface> SocketFactory::CreateServer(int listenPort) {
-  return std::make_unique<SocketServer>(listenPort);
+std::unique_ptr<ServerInterface> SocketFactory::CreateServer(IOCPReceiveMessageQueue& serverReceiveQueue, int listenPort) {
+  return std::make_unique<SocketServer>(serverReceiveQueue, listenPort);
 }
 
 

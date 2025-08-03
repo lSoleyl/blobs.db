@@ -10,27 +10,44 @@ namespace server {
 
 Server* Server::instance = nullptr;
 
-Server::Server(int port) : server(network::Factory::Instance().CreateServer(port)) {
+Server::Server(int port) : messageReceived(*this), receiveQueue(ioCompletionPort, messageReceived) {
   assert(!instance); // Only one server instance is allowed to run at a time
   instance = this;
+
+  ioCompletionPort.Create();
+  server = network::Factory::Instance().CreateServer(receiveQueue, port);
 }
 
 Server::~Server() {
   instance = nullptr;
 }
 
-
 void Server::ServerMain() {
-  TODO("Figure out when to shutdown the server");
-
-  while (true) {
-    auto message = server->AwaitMessage();
-    if (!message) {
-      // A null message is used as indication to initiate a server shutdown
-      std::cout << "Shutdown signal received, exiting Server::ServerMain()\n";
-      return;
+  try {
+    while (true) {
+      ioCompletionPort.ProcessIOCompletionPacket();
     }
+  } catch (network::IOCompletionPort::Stopped&) {
+    std::cout << "Shutdown signal received, exiting Server::ServerMain()\n";
+    return;
+  }
+}
 
+void Server::BeginShutdown() {
+  // This will post a stop handler to the IOCompletionPort, which will lead to the server exiting the main server loop
+  ioCompletionPort.StopProcessing();
+}
+
+Server& Server::Instance() {
+  assert(instance);
+  return *instance;
+}
+
+
+void Server::ProcessReceivedMessages() {
+
+  // Process all outstanding messages
+  while (auto message = server->FetchMessage()) {
     LogMessage(*message);
 
     TODO("Determine the client of the message here already and unless it is ConnectionOpened, pass it to the Handle-Method");
@@ -75,18 +92,6 @@ void Server::ServerMain() {
     }
   }
 }
-
-
-void Server::BeginShutdown() {
-  // This will post the empty message into the message queue, which will exit the ServerMain()
-  server->Stop();
-}
-
-Server& Server::Instance() {
-  assert(instance);
-  return *instance;
-}
-
 
 void Server::HandleDatabaseOpenResult(Database& database, network::message::DatabaseOpenResponse::Result result, client_id clientId) {
   TODO("Handle client closing connection before the databse completed opening");
@@ -592,6 +597,16 @@ void Server::ClientTransactionEnded(const blobs::server::Client& client) {
       TryProcessQueuedReads(*database);
     }
   }
+}
+
+
+
+
+
+Server::MessageReceiveHandler::MessageReceiveHandler(Server& server) : server(server) {}
+
+void Server::MessageReceiveHandler::HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
+  server.ProcessReceivedMessages();
 }
 
 

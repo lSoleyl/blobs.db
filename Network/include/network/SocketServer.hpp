@@ -3,6 +3,7 @@
 #include "ServerInterface.hpp"
 #include "DuplexMessageSocket.hpp"
 #include "ReceiveMessageQueue.hpp"
+#include "IOCPReceiveMessageQueue.hpp"
 #include "..\win_include.hpp"
 #include "message/DatabaseOpenResponse.hpp"
 
@@ -19,24 +20,20 @@ class SocketServer final : private IOCompletionHandler, public ServerInterface {
   public: 
     /** The constructor will immediately start listening
      */
-    SocketServer(int listenPort = 8108);
+    SocketServer(IOCPReceiveMessageQueue& serverReceiveQueue, int listenPort = 8108);
     virtual ~SocketServer() override;
     // SocketServer instance is not copyable
     SocketServer(const SocketServer&) = delete;
     SocketServer& operator=(const SocketServer&) = delete;
 
 
-    /** Wait for the next sever message without a timeout
+    /** Fetch the next message from the server's receive queue. A null message is returned if no message is queued.
      */
-    virtual MessagePointer AwaitMessage() override;
+    virtual MessagePointer FetchMessage() override;
 
     /** Send an already allocated message to the specified client
      */
     virtual void SendMessageToClient(client_id client, MessagePointer message) override;
-    
-    /** Posts a null message into the server's receive queue to indicate the server shutdown
-     */
-    virtual void Stop() override;
 
   private:
     void ListenThreadMain();
@@ -145,7 +142,7 @@ class SocketServer final : private IOCompletionHandler, public ServerInterface {
     AcceptData accept; // structure containing the necessary fields for the current async accept call
 
     //FIXME: Or should we rather have one queue per client?
-    ReceiveMessageQueue receiveQueue; // all received messages will be pushed into this queue
+    IOCPReceiveMessageQueue& receiveQueue; // all received messages will be pushed into this queue
 };
 
 

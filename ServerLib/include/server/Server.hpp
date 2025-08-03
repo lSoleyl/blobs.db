@@ -3,6 +3,8 @@
 
 #include <network/ServerInterface.hpp>
 #include <network/message/All.hpp>
+#include <network/IOCompletionPort.hpp>
+#include <network/IOCPReceiveMessageQueue.hpp>
 
 namespace blobs {
 namespace server {
@@ -36,6 +38,11 @@ public:
 
 
 private:
+  /** Processes any outstanding not yet processed network messages
+   */
+  void ProcessReceivedMessages();
+
+
   /** Shorthand for server->SendMessageToClient(...)
    */
   void SendMessageToClient(client_id clientId, network::MessagePointer message);
@@ -89,6 +96,28 @@ private:
   void ClientTransactionEnded(const blobs::server::Client& client);
 
   std::unique_ptr<network::ServerInterface> server;
+
+  /** The IO completion port used to trigger processing in the server's main event loop.
+   *  This includes events like the message receive queue not being empty anymore and events like
+   *  the completion of a database load.
+   */
+  network::IOCompletionPort ioCompletionPort;
+
+  /** Completion handler to be called when receiving new messages in the message queue and the message queue is not empty anymore
+   */
+  class MessageReceiveHandler : public network::IOCompletionHandler {
+  public:
+    MessageReceiveHandler(Server& server);
+    virtual void HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) override;
+  private:
+    Server& server;
+
+  } messageReceived;
+
+  /** The server receives all messages from clients on this queue (through the `server` interface)
+   */
+  network::IOCPReceiveMessageQueue receiveQueue;
+
 
   /** The single server instance (we currently do not support multiple server instances in a single process due to Database for example holding a static map of opened databases)
    */

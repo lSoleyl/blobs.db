@@ -105,6 +105,9 @@
     <ClCompile Include="common\Exception.cpp">
       <Filter>Quelldateien\common</Filter>
     </ClCompile>
+    <ClCompile Include="IOCPReceiveMessageQueue.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -202,6 +205,9 @@
     </ClInclude>
     <ClInclude Include="include\common\Exception.hpp">
       <Filter>Headerdateien\common</Filter>
+    </ClInclude>
+    <ClInclude Include="include\network\IOCPReceiveMessageQueue.hpp">
+      <Filter>Headerdateien\network</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

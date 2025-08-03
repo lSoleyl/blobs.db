@@ -91,6 +91,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="common\Exception.cpp" />
+    <ClCompile Include="IOCPReceiveMessageQueue.cpp" />
     <ClCompile Include="message\DatabaseCloseResponse.cpp" />
     <ClCompile Include="SocketClient.cpp" />
     <ClCompile Include="common\BlobLocation.cpp" />
@@ -127,6 +128,7 @@
     <ClInclude Include="include\network\IOCompletionHandler.hpp" />
     <ClInclude Include="include\network\DuplexMessageSocket.hpp" />
     <ClInclude Include="include\network\IOCompletionPort.hpp" />
+    <ClInclude Include="include\network\IOCPReceiveMessageQueue.hpp" />
     <ClInclude Include="include\network\MessagePointer.hpp" />
     <ClInclude Include="include\network\message\All.hpp" />
     <ClInclude Include="include\network\message\BlobsReadResponse.hpp" />

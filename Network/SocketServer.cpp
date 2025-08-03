@@ -9,7 +9,7 @@
 
 namespace blobs {
 
-network::SocketServer::SocketServer(int listenPort) : listenPort(listenPort), running(true) {
+network::SocketServer::SocketServer(IOCPReceiveMessageQueue& serverReceiveQueue, int listenPort) : listenPort(listenPort), running(true), receiveQueue(serverReceiveQueue) {
   network::Initialize();
   networkThread = std::thread([this]() { ListenThreadMain(); });
 }
@@ -30,16 +30,12 @@ network::SocketServer::~SocketServer() {
 }
 
 
-network::MessagePointer network::SocketServer::AwaitMessage() {
-  return receiveQueue.AwaitMessage();
+network::MessagePointer network::SocketServer::FetchMessage() {
+  return receiveQueue.FetchMessage();
 }
 
 void network::SocketServer::SendMessageToClient(client_id client, MessagePointer message) {
   clients.QueueClientMessage(client, std::move(message));
-}
-
-void network::SocketServer::Stop() {
-  receiveQueue.MessageReceived(MessagePointer());
 }
 
 void network::SocketServer::ListenThreadMain() {

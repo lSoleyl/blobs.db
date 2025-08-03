@@ -28,7 +28,7 @@ public:
 
   /** A wrapper around PostQueuedCompletionStatus() to post a completion packet to this IO completion port for the specified completion handler
    */
-  void PostIOCompletionPacket(IOCompletionHandler* completionHandler, DWORD bytesTransferred, OVERLAPPED* overlapped);
+  void PostIOCompletionPacket(IOCompletionHandler* completionHandler, DWORD bytesTransferred = 0, OVERLAPPED* overlapped = nullptr);
 
   /** This helper method will wrap the function object into an IOCompletionHandler and post it to have it being processed by
    *  ProcessIOCompletionPacket()
