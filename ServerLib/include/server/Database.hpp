@@ -102,6 +102,13 @@ public:
 private:
   Database(std::string name);
 
+
+  /** Called to load the database structure form file. 
+   *  Loading is performed in a separate thread to be able to use synchronous IO calles without blocking the server's main thread.
+   *  An IOCompletionHandler will be posted to the server's IOCompletionPort upon completion to notify all waiting clients about the completed database load.
+   */
+  void LoadFromFile();
+
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
    *  The transaction is committed by simply replacing the snapshot pointer with another snapshot pointer.
    */

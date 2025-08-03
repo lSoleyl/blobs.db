@@ -43,6 +43,9 @@ Server& Server::Instance() {
   return *instance;
 }
 
+network::IOCompletionPort& Server::GetCompletionPort() {
+  return ioCompletionPort;
+}
 
 void Server::ProcessReceivedMessages() {
 

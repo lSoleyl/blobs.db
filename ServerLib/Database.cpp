@@ -30,7 +30,10 @@ Database& Database::Open(std::string_view databaseName, client_id clientId) {
     database = &databases.emplace(nameStr, Database(nameStr)).first->second;
     // The newly created database may already be fully loaded in case of an in-memory database
 
-    TODO("If the newly created database is a file database then we must trigger loading it here");
+    // Start the loading process if necessary
+    if (database->fileDatabase) {
+      database->LoadFromFile();
+    }
   }
 
 
@@ -45,6 +48,38 @@ Database& Database::Open(std::string_view databaseName, client_id clientId) {
   return *database;
 }
 
+
+void Database::LoadFromFile() {
+  std::thread loadThread([this]() {
+    TODO("Open the file");
+    TODO("Read the file contents into memory (but not the blob contents!)");
+    TODO("Process any outstanding transaction log entries");
+
+
+    // Notify the server about the completed database load
+    class DBLoadCompleted : public network::IOCompletionHandler {
+    public:
+      DBLoadCompleted(Database& database) : database(database) {}
+
+      virtual void HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) override {
+        database.loaded = true;
+        for (auto clientId : database.clientsWaitingForLoading) {
+          Server::Instance().HandleDatabaseOpenResult(database, network::message::DatabaseOpenResponse::Result::SUCCESS, clientId);
+        }
+        
+        delete this; // Release the memory for this completion handler
+      }
+
+      Database& database;
+    };
+
+    Server::Instance().GetCompletionPort().PostIOCompletionPacket(new DBLoadCompleted(*this));
+  });
+
+
+  // don't wait for this thread to complete
+  loadThread.detach();
+}
 
 
 Blob* Database::GetBlob(const BlobLocation& location) {

@@ -30,11 +30,14 @@ public:
    */
   static Server& Instance();
 
+  /** Access to server's completion port to be able to post completion handlers from other threads to be processed in the server's main thread.
+   */
+  network::IOCompletionPort& GetCompletionPort();
+
 
   /** When a database completes/fails loading this will be called for each client, which registered itself to the database
    */
   void HandleDatabaseOpenResult(Database& database, network::message::DatabaseOpenResponse::Result result, client_id clientId);
-
 
 
 private:
