@@ -91,6 +91,7 @@
     <ClInclude Include="include\server\Client.hpp" />
     <ClInclude Include="include\server\Cluster.hpp" />
     <ClInclude Include="include\server\Database.hpp" />
+    <ClInclude Include="include\server\File.hpp" />
     <ClInclude Include="include\server\Lock.hpp" />
     <ClInclude Include="include\server\Segment.hpp" />
     <ClInclude Include="include\server\Server.hpp" />
@@ -101,6 +102,7 @@
     <ClCompile Include="Client.cpp" />
     <ClCompile Include="Cluster.cpp" />
     <ClCompile Include="Database.cpp" />
+    <ClCompile Include="File.cpp" />
     <ClCompile Include="Lock.cpp" />
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="Segment.cpp" />
