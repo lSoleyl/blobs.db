@@ -104,98 +104,33 @@ void Database::LoadFromFile() {
       return;
     }
 
-
-    if (GetLastError() == ERROR_ALREADY_EXISTS) {
-      // Read database file structure
-      
-      TODO("Read all the structures from the file into memory - at least the toplevel ones");
-      
-    } else {
-      // Newly created database file -> populate it
-      // Construct the file to write in memory to only perform one write call
-      std::vector<char> fileBuffer;
-      fileBuffer.resize(
-        sizeof(file::Database) +
-        sizeof(file::Snapshot) + sizeof(file::Snapshot::SegmentRange) + sizeof(uint64_t) +
-        sizeof(file::Segment) + sizeof(file::Segment::ClusterRange) + sizeof(uint64_t) +
-        sizeof(file::Cluster) + sizeof(file::Cluster::BlobRange) + sizeof(uint64_t) +
-        sizeof(file::Blob) +
-        sizeof(file::FreeList)
-        //TODO: don't start with an empty free list -> preallocate some size
-      );
-
-      
-      uint64_t currentOffset = 0;
-      auto* dbStruct = reinterpret_cast<file::Database*>(fileBuffer.data());
-      dbStruct->header.Initialize();
-      currentOffset += sizeof(file::Database);
-
-      // Construct snapshot
-      dbStruct->roots[0].snapshotOffset = currentOffset;
-      auto* snapshot = reinterpret_cast<file::Snapshot*>(fileBuffer.data() + currentOffset);
-      snapshot->size = sizeof(file::Snapshot) + sizeof(file::Snapshot::SegmentRange) + sizeof(uint64_t);
-      snapshot->commitId = 1;
-      snapshot->nextFreeSegmentId = 1;
-      auto& segmentRange = *snapshot->begin();
-      segmentRange.startId = 0;
-      segmentRange.endId = 1;
-
-      // Segment 0
-      currentOffset += snapshot->size;
-      *segmentRange.begin() = currentOffset;
-      auto* segment = reinterpret_cast<file::Segment*>(fileBuffer.data() + currentOffset);
-      segment->size = sizeof(file::Segment) + sizeof(file::Segment::ClusterRange) + sizeof(uint64_t);
-      segment->commitId = 1;
-      segment->nextFreeClusterId = 1;
-      auto& clusterRange = *segment->begin();
-      clusterRange.startId = 0;
-      clusterRange.endId = 1;
-
-      // Cluster 0
-      currentOffset += segment->size;
-      *clusterRange.begin() = currentOffset;
-      auto* cluster = reinterpret_cast<file::Cluster*>(fileBuffer.data() + currentOffset);
-      cluster->size = sizeof(file::Cluster) + sizeof(file::Cluster::BlobRange) + sizeof(uint64_t);
-      cluster->commitId = 1;
-      cluster->nextFreeBlobId = 1;
-      auto& blobRange = *cluster->begin();
-      blobRange.startId = 0;
-      blobRange.endId = 1;
-
-      // Blob 0
-      currentOffset += cluster->size;
-      *blobRange.begin() = currentOffset;
-      auto* blob = reinterpret_cast<file::Blob*>(fileBuffer.data() + currentOffset);
-      blob->size = sizeof(file::Blob); // + 0 bytes of data
-      blob->commitId = 1;
-
-      // Empty free list
-      currentOffset += blob->size;
-      dbStruct->roots[0].freelistOffset = currentOffset;
-      auto* freeList = reinterpret_cast<file::FreeList*>(fileBuffer.data() + currentOffset);
-      freeList->size = sizeof(file::FreeList);
-      TODO("Don't start with a completely empty free list... this minimizes the file size, but forces us to grow the file (SetEndOfFile?) on the first commit");
-      freeList->endOffset = currentOffset + freeList->size;
-
-      DWORD bytesWritten;
-      if (!WriteFile(fileHandle, fileBuffer.data(), fileBuffer.size(), &bytesWritten, NULL)) {
-        // Failed to write -> close handle / report error
-        CloseHandle(fileHandle);
-        fileHandle = INVALID_HANDLE_VALUE;
-        TODO("Handle creation error");
+    if (GetLastError() != ERROR_ALREADY_EXISTS) {
+      // Database doesn't exist yet -> initialize it
+      if (!InitializeDatabaseFile()) {
+        TODO("Get more precise error message to report something useful back to the client");
         Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
           CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
           // And close the database
           Close();
         });
-        return; // exit db IO thread
+        // Quit the Database IO thread.
+        return;
       }
-
-      FlushFileBuffers(fileHandle);
     }
 
-    TODO("Process any outstanding transaction log entries?");
+    // Now the database file exists -> read it and convert it into memory objects
+    if (!ReadInitialFileDatabaseData()) {
+      Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
+        CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
+        // And close the database
+        Close();
+      });
+      // Quit the Database IO thread.
+      return;
+    }
 
+      
+    TODO("Process any outstanding transaction log entries?");
 
     // Notify the server about the completed database load
     Server::Instance().GetCompletionPort().PostSimpleTask([this]() { CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::SUCCESS); });
@@ -206,6 +141,104 @@ void Database::LoadFromFile() {
   loadThread.detach();
 }
 
+
+bool Database::InitializeDatabaseFile() {
+  const uint64_t INITIAL_SIZE = 1024; // The database structures ~216 Bytes, allocate the remaining space as free memory
+  // Construct all the datastructures in a memory buffer to write it to file in just one write operation
+  std::vector<char> fileBuffer(INITIAL_SIZE, 0); 
+
+  uint64_t currentOffset = 0;
+  auto* dbStruct = reinterpret_cast<file::Database*>(fileBuffer.data());
+  dbStruct->header.Initialize();
+  currentOffset += sizeof(file::Database);
+
+  // Construct snapshot
+  dbStruct->roots[0].snapshotOffset = currentOffset;
+  auto* snapshot = reinterpret_cast<file::Snapshot*>(fileBuffer.data() + currentOffset);
+  snapshot->size = sizeof(file::Snapshot) + sizeof(file::Snapshot::SegmentRange) + sizeof(uint64_t);
+  snapshot->commitId = 1;
+  snapshot->nextFreeSegmentId = 1;
+  auto& segmentRange = *snapshot->begin();
+  segmentRange.startId = 0;
+  segmentRange.endId = 1;
+
+  // Segment 0
+  currentOffset += snapshot->size;
+  *segmentRange.begin() = currentOffset;
+  auto* segment = reinterpret_cast<file::Segment*>(fileBuffer.data() + currentOffset);
+  segment->size = sizeof(file::Segment) + sizeof(file::Segment::ClusterRange) + sizeof(uint64_t);
+  segment->commitId = 1;
+  segment->nextFreeClusterId = 1;
+  auto& clusterRange = *segment->begin();
+  clusterRange.startId = 0;
+  clusterRange.endId = 1;
+
+  // Cluster 0
+  currentOffset += segment->size;
+  *clusterRange.begin() = currentOffset;
+  auto* cluster = reinterpret_cast<file::Cluster*>(fileBuffer.data() + currentOffset);
+  cluster->size = sizeof(file::Cluster) + sizeof(file::Cluster::BlobRange) + sizeof(uint64_t);
+  cluster->commitId = 1;
+  cluster->nextFreeBlobId = 1;
+  auto& blobRange = *cluster->begin();
+  blobRange.startId = 0;
+  blobRange.endId = 1;
+
+  // Blob 0
+  currentOffset += cluster->size;
+  *blobRange.begin() = currentOffset;
+  auto* blob = reinterpret_cast<file::Blob*>(fileBuffer.data() + currentOffset);
+  blob->size = sizeof(file::Blob); // + 0 bytes of data
+  blob->commitId = 1;
+
+  // Free list with one free block holding all the memory up to 1024 bytes
+  currentOffset += blob->size;
+  dbStruct->roots[0].freelistOffset = currentOffset;
+  auto* freeList = reinterpret_cast<file::FreeList*>(fileBuffer.data() + currentOffset);
+  freeList->size = sizeof(file::FreeList) + sizeof(file::FreeList::Block);
+  freeList->endOffset = INITIAL_SIZE;
+  currentOffset += freeList->size;
+
+  auto& freeBlock = *freeList->begin();
+  freeBlock.blockOffset = currentOffset;
+  freeBlock.blockSize = freeList->endOffset - currentOffset;
+
+  DWORD bytesWritten;
+  if (!WriteFile(fileHandle, fileBuffer.data(), fileBuffer.size(), &bytesWritten, NULL) || bytesWritten != fileBuffer.size()) {
+    // Failed to write    
+    TODO("Handle creation error... maybe return the error code?");
+    return false;
+  }
+
+  FlushFileBuffers(fileHandle);
+  return true;
+}
+
+
+bool Database::ReadInitialFileDatabaseData() {
+  LARGE_INTEGER offset = { 0 };
+  SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
+
+  DWORD bytesRead;
+  file::Database dbStruct;
+  if (!ReadFile(fileHandle, &dbStruct, sizeof(dbStruct), &bytesRead, NULL) || bytesRead != sizeof(dbStruct)) {
+    // Failed to read the databse header (file may not contain such a header)
+    return false;
+  }
+
+  if (!dbStruct.header.IsValid()) {
+    // Invalid header, this may not be a blobs.db database -> don't open it
+    return false;
+  }
+
+
+
+  TODO("Read the header data and create the corresponding datastructures");
+  TODO("But for that we also need to be able to store the file offsets and some load state of segment/cluster/blob");
+  TODO("We need a transient version of the FreeList as this structure must be quickly accessible by the server");
+
+  return true;
+}
 
 
 void Database::CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode) {

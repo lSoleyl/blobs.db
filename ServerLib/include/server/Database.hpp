@@ -117,6 +117,19 @@ private:
    */
   void LoadFromFile();
 
+  /** Used internally called by LoadFromFile to write the initial file structure of the database containing a single blob
+   *  This should be called after the file has been created, but not yet initialized.
+   * 
+   * @return false if failed
+   */
+  bool InitializeDatabaseFile();
+
+  /** Used inside LoadFromFile to load and validate the database header and then load the snapshot and the segment list, without loading the segments yet.
+   * 
+   * @return false if the database file is in an invalid state
+   */
+  bool ReadInitialFileDatabaseData();
+
   /** Run in the server's IO completion handler once loading succeeded or failed to mark the database as loaded and inform all waiting clients about the status.
    */
   void CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode);

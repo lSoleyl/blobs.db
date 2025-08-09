@@ -81,13 +81,13 @@ struct FreeList : public MemoryBlock {
    *  Using var int encoding could also save space, but would make the encoding step computationally more expensive.
    */
   TODO("Use varint? - But then we wouldn't be able to preallocate the size of the freeList - Loading the freelist is only done once to be fair");
-  struct FreeBlock {
+  struct Block {
     uint64_t blockOffset; // File offset to the free block
     uint64_t blockSize;   // Size of the block
   };
 
-  FreeBlock* begin();
-  FreeBlock* end();
+  Block* begin();
+  Block* end();
 };
 
 

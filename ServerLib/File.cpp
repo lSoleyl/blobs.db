@@ -29,12 +29,12 @@ bool Database::Header::IsValid() const {
 
 
 
-FreeList::FreeBlock* FreeList::begin() {
-  return reinterpret_cast<FreeBlock*>(reinterpret_cast<uint8_t*>(this) + sizeof(FreeList));
+FreeList::Block* FreeList::begin() {
+  return reinterpret_cast<Block*>(reinterpret_cast<uint8_t*>(this) + sizeof(FreeList));
 }
 
-FreeList::FreeBlock* FreeList::end() {
-  return reinterpret_cast<FreeBlock*>(reinterpret_cast<uint8_t*>(this) + size);
+FreeList::Block* FreeList::end() {
+  return reinterpret_cast<Block*>(reinterpret_cast<uint8_t*>(this) + size);
 }
 
 Snapshot::iterator Snapshot::begin() {
