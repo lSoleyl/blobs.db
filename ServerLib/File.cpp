@@ -72,4 +72,14 @@ std::string_view Blob::Data() {
 
 
 
+uint64_t* TransactionLog::begin() {
+  // The first offset starts right after the transaction log structure ends
+  return reinterpret_cast<uint64_t*>(this + 1);
+}
+
+uint64_t* TransactionLog::end() {
+  return reinterpret_cast<uint64_t*>(reinterpret_cast<uint8_t*>(this) + size);
+}
+
+
 }

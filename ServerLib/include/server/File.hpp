@@ -51,6 +51,7 @@ struct Database {
 
   Header header;
   uint8_t rootIndex;  // Index of the currently active database root in our copy on write update
+  uint8_t unused[2];
   Root roots[2];      // Two root datastructures (one active, one inactive to support copy-on-write)
 };
 
@@ -66,6 +67,14 @@ struct MemoryBlock {
  *  The number of entries is implicitly derived from the size of the memory block
  */
 struct FreeList : public MemoryBlock {
+  /** End file offset(end of the memory region managed by this FreeList - everthing following that offset can be considered garbage)
+   *  We define this field here for the specific use case where the file has already been grown to allocate a new block, but the server crashes
+   *  before the new FreeList is written into the Database::Root. If we load the grown database with this FreeList as still being active, we know that
+   *  the memory following the endOffset is garbage and can be reused for new blocks, which we otherwise would have to assume being in use.
+   */
+  uint64_t endOffset;
+
+
   /** Each entry of the free list represents one unused memory block.
    *  Using 16 bytes per free block seems like a lot of waste and we could probably do better by either using relative offsets and limit
    *  blocks to 4GB, but that could turn into a major invonvenience down the road.
@@ -192,11 +201,14 @@ struct Blob : public MemoryBlock {
 
 
 
+TODO("Implement transaction log later")
+struct TransactionLog : public MemoryBlock {
+  uint64_t* begin(); // file offset of the first transaction log entry
+  uint64_t* end();   // file offset of the past end transaction log entry
 
 
-TODO("What is the data structure of the transaction log?");
-
-
+  TODO("Define structure for transaction log entries");
+};
 
 
 }

@@ -33,7 +33,21 @@ public:
   /** This helper method will wrap the function object into an IOCompletionHandler and post it to have it being processed by
    *  ProcessIOCompletionPacket()
    */
-  void PostSimpleTask(std::function<void()>&& task);
+  template<typename Fn>
+  void PostSimpleTask(Fn&& taskFunctor) {
+    class CompletionHandler : public IOCompletionHandler {
+    public:
+      CompletionHandler(Fn&& taskFunctor) : taskFunctor(std::forward<Fn>(taskFunctor)) {}
+      virtual void HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) override {
+        taskFunctor();
+        delete this;
+      }
+
+      Fn taskFunctor;
+    };
+
+    PostIOCompletionPacket(new CompletionHandler(std::forward<Fn>(taskFunctor)));
+  }
 
 
   /** This method may be called from within another thread to interrupt a currently waiting ProcessIOCompletionPort() and exit the

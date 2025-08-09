@@ -7,6 +7,8 @@
 #include "Segment.hpp"
 #include "Lock.hpp"
 
+#include "win_include.hpp"
+
 
 namespace blobs {
 namespace server {
@@ -14,11 +16,6 @@ namespace server {
 class Database {
   class Snapshot;
 public:
-  TODO(
-    "Later we must separate these two paths as opening will mean reading and parsing a file, while "
-    "fetching is simply a memory lookup.We shouldn't block the server while watiting for the database to be fully loaded and ready."
-  )
-
   /** Fetch an already opened database or return nullptr
    *  The returned database may still be in a loading state.
    */
@@ -28,6 +25,10 @@ public:
    *  client once the database is fully loaded (which may happen immediately).
    */
   static Database& Open(std::string_view databaseName, client_id clientId);
+
+
+  TODO("Add some kind of use count for each database and close it once no client uses it anymore.");
+  TODO("Implement a Close(), which will wait for any scheduled writes to complete and then close the file handle and release all memory");
 
   /** Returns a blob from this database (if it exists)
    */
@@ -200,6 +201,7 @@ private:
   bool fileDatabase; // true if the database is a file database (in contrast to a pure in-memory database)
   bool loaded;       // true if the the FILE database has been fully loaded and is ready to be used by clients
   std::vector<client_id> clientsWaitingForLoading; // Clients to notify once the database has completed loading to complete their OpenDatabse requests
+  HANDLE fileHandle;
 
   static std::map<std::string, Database, std::less<>> databases;
 };

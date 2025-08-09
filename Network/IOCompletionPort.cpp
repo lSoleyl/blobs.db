@@ -31,23 +31,6 @@ void IOCompletionPort::PostIOCompletionPacket(IOCompletionHandler* completionHan
   PostQueuedCompletionStatus(**this, bytesTransferred, reinterpret_cast<ULONG_PTR>(completionHandler), overlapped);
 }
 
-void IOCompletionPort::PostSimpleTask(std::function<void()>&& task) {
-  class TaskHandler : public IOCompletionHandler {
-  public:
-    TaskHandler(std::function<void()>&& task) : task(std::move(task)) {}
-    virtual void HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) {
-      task();
-      delete this; // free the memory used by this task object
-    }
-
-    std::function<void()> task;
-  };
-
-  // Move the functor into a the task handler object and post a dummy IO completion packet
-  PostIOCompletionPacket(new TaskHandler(std::move(task)), 0, nullptr);
-}
-
-
 
 
 

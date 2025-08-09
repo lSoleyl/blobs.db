@@ -1,13 +1,14 @@
 #include "pch.hpp"
 #include "include/server/Database.hpp"
 #include "include/server/Server.hpp"
+#include "include/server/File.hpp"
 
 namespace blobs {
 namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot) {
+Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot), fileHandle(INVALID_HANDLE_VALUE) {
   // In-Memory databases start with "mem:" prefix and are always loaded
   fileDatabase = !this->name._Starts_with("mem:");
   loaded = !fileDatabase;
@@ -50,30 +51,59 @@ Database& Database::Open(std::string_view databaseName, client_id clientId) {
 
 
 void Database::LoadFromFile() {
+  TODO("Maybe this should be the Database-Thread and we simply create one thread per database, which exclusively performs read/write operations on the database");
   std::thread loadThread([this]() {
+    TODO("Support Unicode (UTF-8) paths later on");
+    fileHandle = CreateFileA(
+      name.c_str(),
+      GENERIC_READ | GENERIC_WRITE,
+      0 /*exclusive access*/,
+      NULL,
+      // for now no FILE_FLAG_OVERLAPPED as we want to perform serial reads/writes in this thread alone
+      // We don't specify FILE_FLAG_NO_BUFFERING as it requires us to always read/write whole sectors, which would only complicate things
+      // We don't specify FILE_FLAG_WRITE_THROUGH because we only need to flush the writes once we perform the final pointer update (or right before and right after).
+      OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, 
+      NULL
+    );
+
+    if (fileHandle == INVALID_HANDLE_VALUE) {
+      TODO("Handle error opening database file");
+      return;
+    }
+
+
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+      // Read database file structure
+      
+      // Newly created database file -> populate it
+      file::Database dbStruct = { 0 };
+      dbStruct.header.Initialize();
+
+
+      TODO("Write file content");
+
+
+
+      FlushFileBuffers(fileHandle);
+    } else {
+      
+
+
+
+    }
+
     TODO("Open the file");
     TODO("Read the file contents into memory (but not the blob contents!)");
     TODO("Process any outstanding transaction log entries");
 
 
     // Notify the server about the completed database load
-    class DBLoadCompleted : public network::IOCompletionHandler {
-    public:
-      DBLoadCompleted(Database& database) : database(database) {}
-
-      virtual void HandleIOCompletion(DWORD bytesTransferred, OVERLAPPED* overlapped) override {
-        database.loaded = true;
-        for (auto clientId : database.clientsWaitingForLoading) {
-          Server::Instance().HandleDatabaseOpenResult(database, network::message::DatabaseOpenResponse::Result::SUCCESS, clientId);
-        }
-        
-        delete this; // Release the memory for this completion handler
+    Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
+      loaded = true;
+      for (auto clientId : clientsWaitingForLoading) {
+        Server::Instance().HandleDatabaseOpenResult(*this, network::message::DatabaseOpenResponse::Result::SUCCESS, clientId);
       }
-
-      Database& database;
-    };
-
-    Server::Instance().GetCompletionPort().PostIOCompletionPacket(new DBLoadCompleted(*this));
+    });
   });
 
 
