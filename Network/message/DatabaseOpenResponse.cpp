@@ -22,8 +22,8 @@ std::ostream& operator<<(std::ostream& out, const DatabaseOpenResponse& message)
       out << "dbId=" << message.databaseId;
       break;
 
-    case DatabaseOpenResponse::Result::DATABASE_NOT_FOUND:
-      out << "DATABASE_NOT_FOUND";
+    case DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED:
+      out << "DATABASE_OPEN_FAILED";
       break;
 
     case DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN:

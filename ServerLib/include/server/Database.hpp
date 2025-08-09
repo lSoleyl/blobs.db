@@ -3,6 +3,7 @@
 #include <common/BlobLocation.hpp>
 #include <network/message/BlobsRead.hpp>
 #include <network/message/TransactionCommit.hpp>
+#include <network/message/DatabaseOpenResponse.hpp>
 
 #include "Segment.hpp"
 #include "Lock.hpp"
@@ -27,8 +28,14 @@ public:
   static Database& Open(std::string_view databaseName, client_id clientId);
 
 
-  TODO("Add some kind of use count for each database and close it once no client uses it anymore.");
-  TODO("Implement a Close(), which will wait for any scheduled writes to complete and then close the file handle and release all memory");
+  /** Should be called by clients if they don't use this database anymore to delete it once the last client stopped using it.
+   */
+  void Release();
+
+
+  /** Close this database as soon as possible
+   */
+  void Close();
 
   /** Returns a blob from this database (if it exists)
    */
@@ -109,6 +116,10 @@ private:
    *  An IOCompletionHandler will be posted to the server's IOCompletionPort upon completion to notify all waiting clients about the completed database load.
    */
   void LoadFromFile();
+
+  /** Run in the server's IO completion handler once loading succeeded or failed to mark the database as loaded and inform all waiting clients about the status.
+   */
+  void CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode);
 
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
    *  The transaction is committed by simply replacing the snapshot pointer with another snapshot pointer.
@@ -202,6 +213,7 @@ private:
   bool loaded;       // true if the the FILE database has been fully loaded and is ready to be used by clients
   std::vector<client_id> clientsWaitingForLoading; // Clients to notify once the database has completed loading to complete their OpenDatabse requests
   HANDLE fileHandle;
+  int useCount;      // How many clients are currently using this database - the Database is closed once this count reaches 0
 
   static std::map<std::string, Database, std::less<>> databases;
 };

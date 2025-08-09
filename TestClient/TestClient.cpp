@@ -8,7 +8,7 @@ int main()
     blobs::Initialize();
 
     std::cout << "Starting client\n";
-    auto db = blobs::Database::Open("127.0.0.1", "mem:test.db");
+    auto db = blobs::Database::Open("127.0.0.1", "test.db");
 
     TODO(
       "Once the server is operational, I should implement some nice example programs to verify the correct working of the database. "

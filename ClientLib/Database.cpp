@@ -155,8 +155,8 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
   
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
     return new Database(std::string(databaseName), message->databaseId, connectionId);
-  } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_NOT_FOUND) {
-    throw Exception("Database not found!");
+  } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED) {
+    throw Exception("Failed to open database!");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {
     throw Exception("Too many databases already open. Close unused databases and retry.");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN) {

@@ -51,11 +51,14 @@ database_id Client::OpenDatabase(Database& db) {
 
 
 bool Client::CloseDatabase(database_id id) {
-  if (GetDatabase(id)) {
+  if (auto database = GetDatabase(id)) {
     // database is actually opened
     assert(openDatabases[id].locks.empty()); // since no transaction should be running
     openDatabases[id].database = nullptr;
-    TODO("decrement databse use count to cleanup the transiently held data structures if the database isn't needed anymore (maybe with a delay)");
+
+
+    // Decrement databse use count to cleanup the transiently held data structures if the database isn't needed anymore
+    database->Release();
 
     return true; // database actually closed
   }

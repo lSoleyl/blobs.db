@@ -8,7 +8,7 @@ namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot), fileHandle(INVALID_HANDLE_VALUE) {
+Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot), fileHandle(INVALID_HANDLE_VALUE), useCount(0) {
   // In-Memory databases start with "mem:" prefix and are always loaded
   fileDatabase = !this->name._Starts_with("mem:");
   loaded = !fileDatabase;
@@ -46,12 +46,38 @@ Database& Database::Open(std::string_view databaseName, client_id clientId) {
     database->clientsWaitingForLoading.push_back(clientId);
   }
 
+  // One more client is using this database
+  ++database->useCount;
   return *database;
+}
+
+
+void Database::Release() {
+  if (--useCount == 0) {
+    TODO("Maybe add some delay in case the database is reopened soon");
+    // Last client called release -> close the database file and delete this object
+    Close();
+  }
+}
+
+
+
+void Database::Close() {
+  TODO("If DB IO-Thread is still running -> mark the database as to-delete and return immediately performing a delayed deletion.");
+  
+  if (fileHandle != INVALID_HANDLE_VALUE) {
+    CloseHandle(fileHandle);
+    fileHandle = INVALID_HANDLE_VALUE;
+  }
+
+  // Delete this object by removing it from the databases map
+  databases.erase(name);
 }
 
 
 void Database::LoadFromFile() {
   TODO("Maybe this should be the Database-Thread and we simply create one thread per database, which exclusively performs read/write operations on the database");
+  TODO("This could become the main IO thread for the database and we could also post tasks to it via an IOCompletionPort to process if the thread is idle");
   std::thread loadThread([this]() {
     TODO("Support Unicode (UTF-8) paths later on");
     fileHandle = CreateFileA(
@@ -68,6 +94,13 @@ void Database::LoadFromFile() {
 
     if (fileHandle == INVALID_HANDLE_VALUE) {
       TODO("Handle error opening database file");
+      TODO("Check whether what the reason was and translate the most common ones into own error codes to return");
+      Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
+        CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
+        // And close the database
+        Close();
+      });
+      // Quit the Database IO thread.
       return;
     }
 
@@ -75,40 +108,111 @@ void Database::LoadFromFile() {
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
       // Read database file structure
       
+      TODO("Read all the structures from the file into memory - at least the toplevel ones");
+      
+    } else {
       // Newly created database file -> populate it
-      file::Database dbStruct = { 0 };
-      dbStruct.header.Initialize();
+      // Construct the file to write in memory to only perform one write call
+      std::vector<char> fileBuffer;
+      fileBuffer.resize(
+        sizeof(file::Database) +
+        sizeof(file::Snapshot) + sizeof(file::Snapshot::SegmentRange) + sizeof(uint64_t) +
+        sizeof(file::Segment) + sizeof(file::Segment::ClusterRange) + sizeof(uint64_t) +
+        sizeof(file::Cluster) + sizeof(file::Cluster::BlobRange) + sizeof(uint64_t) +
+        sizeof(file::Blob) +
+        sizeof(file::FreeList)
+        //TODO: don't start with an empty free list -> preallocate some size
+      );
 
+      
+      uint64_t currentOffset = 0;
+      auto* dbStruct = reinterpret_cast<file::Database*>(fileBuffer.data());
+      dbStruct->header.Initialize();
+      currentOffset += sizeof(file::Database);
 
-      TODO("Write file content");
+      // Construct snapshot
+      dbStruct->roots[0].snapshotOffset = currentOffset;
+      auto* snapshot = reinterpret_cast<file::Snapshot*>(fileBuffer.data() + currentOffset);
+      snapshot->size = sizeof(file::Snapshot) + sizeof(file::Snapshot::SegmentRange) + sizeof(uint64_t);
+      snapshot->commitId = 1;
+      snapshot->nextFreeSegmentId = 1;
+      auto& segmentRange = *snapshot->begin();
+      segmentRange.startId = 0;
+      segmentRange.endId = 1;
 
+      // Segment 0
+      currentOffset += snapshot->size;
+      *segmentRange.begin() = currentOffset;
+      auto* segment = reinterpret_cast<file::Segment*>(fileBuffer.data() + currentOffset);
+      segment->size = sizeof(file::Segment) + sizeof(file::Segment::ClusterRange) + sizeof(uint64_t);
+      segment->commitId = 1;
+      segment->nextFreeClusterId = 1;
+      auto& clusterRange = *segment->begin();
+      clusterRange.startId = 0;
+      clusterRange.endId = 1;
 
+      // Cluster 0
+      currentOffset += segment->size;
+      *clusterRange.begin() = currentOffset;
+      auto* cluster = reinterpret_cast<file::Cluster*>(fileBuffer.data() + currentOffset);
+      cluster->size = sizeof(file::Cluster) + sizeof(file::Cluster::BlobRange) + sizeof(uint64_t);
+      cluster->commitId = 1;
+      cluster->nextFreeBlobId = 1;
+      auto& blobRange = *cluster->begin();
+      blobRange.startId = 0;
+      blobRange.endId = 1;
+
+      // Blob 0
+      currentOffset += cluster->size;
+      *blobRange.begin() = currentOffset;
+      auto* blob = reinterpret_cast<file::Blob*>(fileBuffer.data() + currentOffset);
+      blob->size = sizeof(file::Blob); // + 0 bytes of data
+      blob->commitId = 1;
+
+      // Empty free list
+      currentOffset += blob->size;
+      dbStruct->roots[0].freelistOffset = currentOffset;
+      auto* freeList = reinterpret_cast<file::FreeList*>(fileBuffer.data() + currentOffset);
+      freeList->size = sizeof(file::FreeList);
+      TODO("Don't start with a completely empty free list... this minimizes the file size, but forces us to grow the file (SetEndOfFile?) on the first commit");
+      freeList->endOffset = currentOffset + freeList->size;
+
+      DWORD bytesWritten;
+      if (!WriteFile(fileHandle, fileBuffer.data(), fileBuffer.size(), &bytesWritten, NULL)) {
+        // Failed to write -> close handle / report error
+        CloseHandle(fileHandle);
+        fileHandle = INVALID_HANDLE_VALUE;
+        TODO("Handle creation error");
+        Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
+          CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
+          // And close the database
+          Close();
+        });
+        return; // exit db IO thread
+      }
 
       FlushFileBuffers(fileHandle);
-    } else {
-      
-
-
-
     }
 
-    TODO("Open the file");
-    TODO("Read the file contents into memory (but not the blob contents!)");
-    TODO("Process any outstanding transaction log entries");
+    TODO("Process any outstanding transaction log entries?");
 
 
     // Notify the server about the completed database load
-    Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
-      loaded = true;
-      for (auto clientId : clientsWaitingForLoading) {
-        Server::Instance().HandleDatabaseOpenResult(*this, network::message::DatabaseOpenResponse::Result::SUCCESS, clientId);
-      }
-    });
+    Server::Instance().GetCompletionPort().PostSimpleTask([this]() { CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::SUCCESS); });
   });
 
 
   // don't wait for this thread to complete
   loadThread.detach();
+}
+
+
+
+void Database::CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode) {
+  loaded = true;
+  for (auto clientId : clientsWaitingForLoading) {
+    Server::Instance().HandleDatabaseOpenResult(*this, completionCode, clientId);
+  }
 }
 
 
