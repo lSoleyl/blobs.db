@@ -9,9 +9,84 @@
 namespace blobs::server::file 
 {
 
+/** Everything, which can be overwritten (in copy-on-write) will be allocated in memory blocks to be able to return them into the free list when they are no longer needed
+ *  At the moment a memory block has no own data members, but we could add a block type and a block size in here if we want some way to validate the database file's consistency.
+ */
+struct MemoryBlock {};
 
 
 
+/** We store the size of a block inside the reference to that block. This externalization of the block's size
+ *  will ensure that we only need to perform one read access to read the whole block and not two reads (size & then content).
+ *  This externalization however also makes recovery of a broken databse more difficult, but we could mitigate that by additionally storing
+ *  some header information in each block (like a block type and size). This redundancy could make the database more resistant to data loss...
+ *  But even the best header information is useless if it itself is damaged, so for now we only store the block size externally.
+ */
+struct BlockReference {
+  uint64_t offset; // File offset to the block
+  uint64_t size;   // Size of the referenced memory block
+
+  uint64_t EndOffset() const; // returns the past end block offset (positioned right after the block in the file)
+};
+
+
+
+
+/** This struct represents a range of block references of a sepcific type (blob_id, cluster_id, segment_id)
+ *  The range encoding is used to save some space as the allocated numbers are in most cases sequential.
+ */
+template<typename T>
+struct Range {
+  T startId; // first id 
+  T endId;   // past end id
+
+  /** Pointer to the file offset of the first element in the range
+   */
+  BlockReference* begin() {
+    // The first entry starts right after the Range object itself in memory
+    return reinterpret_cast<BlockReference*>(this + 1);
+  }
+
+  /** Past end pointer to the endId file offset(don't dereference obviously)
+   */
+  BlockReference* end() {
+    auto nEntries = endId - startId;
+    return begin() + nEntries;
+  }
+};
+
+/** This class implements an iterator over a sequence of Range objects.
+ */
+template<typename T>
+class RangesIterator {
+public:
+  using value_type = Range<T>;
+  using pointer = value_type*;
+  using reference = value_type&;
+
+  RangesIterator(pointer pos) : pos(pos) {}
+
+  bool operator==(const RangesIterator& other) const { return pos == other.pos; }
+  bool operator!=(const RangesIterator& other) const { return pos != other.pos; }
+
+  RangesIterator& operator++() {
+    // The following code is correct as the past end position of the range is 
+    // where the next range will start in memory as they are layouted one after another.
+    pos = reinterpret_cast<Range<T>*>(pos->end());
+    return *this;
+  }
+
+  reference operator*() const {
+    return *pos;
+  }
+
+  pointer operator->() const {
+    return pos;
+  }
+
+private:
+  pointer pos;
+};
 
 
 /** Every database file starts with the Database structure
@@ -44,9 +119,9 @@ struct Database {
   /** The database root consists of three offsets to the main data structures, which are modified by each transaction
    */
   struct Root {
-    uint64_t snapshotOffset;        // File offset to the current databse snapshot
-    uint64_t freelistOffset;        // File offset to the free file block list
-    uint64_t transactionLogOffset;  // File offset to the transaction log
+    BlockReference snapshot;        // File offset and size to the current databse snapshot block
+    BlockReference freeList;        // File offset and size to the free list block
+    BlockReference transactionLog;  // File offset and size to the transaction log block
   };
 
   Header header;
@@ -56,11 +131,8 @@ struct Database {
 };
 
 
-/** Everything, which can be overwritten (in copy-on-write) will be allocated in memory blocks to be able to return them into the free list when they are no longer needed
- */
-struct MemoryBlock {
-  uint64_t size; // Size of this memory block including this size field - we allow memory block sizes larger than 4 GB to be able to store huge blobs / datastructures if needed
-};
+
+
 
 
 /** The free list used to store the a list of all free memory blocks with their corresponding sizes
@@ -80,67 +152,10 @@ struct FreeList : public MemoryBlock {
    *  blocks to 4GB, but that could turn into a major invonvenience down the road.
    *  Using var int encoding could also save space, but would make the encoding step computationally more expensive.
    */
-  TODO("Use varint? - But then we wouldn't be able to preallocate the size of the freeList - Loading the freelist is only done once to be fair");
-  struct Block {
-    uint64_t blockOffset; // File offset to the free block
-    uint64_t blockSize;   // Size of the block
-  };
-
-  Block* begin();
-  Block* end();
-};
-
-
-template<typename T>
-struct Range {
-  T startId; // first id 
-  T endId;   // past end id
-
-  /** Pointer to the file offset of the first element in the range
+  BlockReference* begin();
+  /** Since the MemoryBlock at the moment doesn't know its size, it must be passed in as parameter
    */
-  uint64_t* begin() {
-    // The first entry starts right after the Range object itself in memory
-    return reinterpret_cast<uint64_t*>(this + 1);
-  }
-
-  /** Past end pointer to the endId file offset(don't dereference obviously)
-   */
-  uint64_t* end() {
-    auto nEntries = endId - startId;
-    return begin() + nEntries;
-  }
-};
-
-
-template<typename T>
-class RangesIterator {
-public:
-  using value_type = Range<T>;
-  using pointer = value_type*;
-  using reference = value_type&;
-
-  RangesIterator(pointer pos) : pos(pos) {}
-  
-  bool operator==(const RangesIterator& other) const { return pos == other.pos; }
-  bool operator!=(const RangesIterator& other) const { return pos != other.pos; }
-
-  RangesIterator& operator++() {
-    // The following code is correct as the past end position of the range is 
-    // where the next range will start in memory as they are layouted one after another.
-    pos = reinterpret_cast<Range<T>*>(pos->end());
-    return *this;
-  }
-
-  reference operator*() const {
-    return *pos;
-  }
-
-  pointer operator->() const {
-    return pos;
-  }
-
-private:
-  pointer pos;
+  BlockReference* end(uint64_t blockSize);
 };
 
 
@@ -156,7 +171,10 @@ struct Snapshot : public MemoryBlock {
   using iterator = RangesIterator<segment_id>;
 
   iterator begin();
-  iterator end();
+  
+  /** Since the MemoryBlock at the moment doesn't know its size, it must be passed in as parameter
+   */
+  iterator end(uint64_t blockSize);
 };
 
 TODO("Should I use pragma pack to avoid the padding in between?");
@@ -173,7 +191,10 @@ struct Segment : public MemoryBlock {
   using iterator = RangesIterator<cluster_id>;
 
   iterator begin();
-  iterator end();
+
+  /** Since the MemoryBlock at the moment doesn't know its size, it must be passed in as parameter
+   */
+  iterator end(uint64_t blockSize);
 };
 
 
@@ -189,24 +210,27 @@ struct Cluster : public MemoryBlock {
   using iterator = RangesIterator<blob_id>;
 
   iterator begin();
-  iterator end();
+
+  /** Since the MemoryBlock at the moment doesn't know its size, it must be passed in as parameter
+   */
+  iterator end(uint64_t blockSize);
 };
 
 
 struct Blob : public MemoryBlock {
   commit_id commitId;
   
-  std::string_view Data();
+  /** Since the MemoryBlock at the moment doesn't know its size, it must be passed in as parameter
+   */
+  std::string_view Data(uint64_t blockSize);
 };
+
+
 
 
 
 TODO("Implement transaction log later")
 struct TransactionLog : public MemoryBlock {
-  uint64_t* begin(); // file offset of the first transaction log entry
-  uint64_t* end();   // file offset of the past end transaction log entry
-
-
   TODO("Define structure for transaction log entries");
 };
 

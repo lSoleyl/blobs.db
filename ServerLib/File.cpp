@@ -5,6 +5,10 @@
 namespace blobs::server::file {
 
 
+uint64_t BlockReference::EndOffset() const {
+  return offset + size;
+}
+
 
 void Database::Header::Initialize() {
   std::memcpy(&typeId, "blobs.db", sizeof(typeId));
@@ -29,20 +33,20 @@ bool Database::Header::IsValid() const {
 
 
 
-FreeList::Block* FreeList::begin() {
-  return reinterpret_cast<Block*>(reinterpret_cast<uint8_t*>(this) + sizeof(FreeList));
+BlockReference* FreeList::begin() {
+  return reinterpret_cast<BlockReference*>(this+1);
 }
 
-FreeList::Block* FreeList::end() {
-  return reinterpret_cast<Block*>(reinterpret_cast<uint8_t*>(this) + size);
+BlockReference* FreeList::end(uint64_t blockSize) {
+  return reinterpret_cast<BlockReference*>(reinterpret_cast<uint8_t*>(this) + blockSize);
 }
 
 Snapshot::iterator Snapshot::begin() {
   return iterator(reinterpret_cast<SegmentRange*>(this+1));
 }
 
-Snapshot::iterator Snapshot::end() {
-  return iterator(reinterpret_cast<SegmentRange*>(reinterpret_cast<uint8_t*>(this) + size));
+Snapshot::iterator Snapshot::end(uint64_t blockSize) {
+  return iterator(reinterpret_cast<SegmentRange*>(reinterpret_cast<uint8_t*>(this) + blockSize));
 }
 
 
@@ -50,8 +54,8 @@ Segment::iterator Segment::begin() {
   return iterator(reinterpret_cast<ClusterRange*>(this+1));
 }
 
-Segment::iterator Segment::end() {
-  return iterator(reinterpret_cast<ClusterRange*>(reinterpret_cast<uint8_t*>(this) + size));
+Segment::iterator Segment::end(uint64_t blockSize) {
+  return iterator(reinterpret_cast<ClusterRange*>(reinterpret_cast<uint8_t*>(this) + blockSize));
 }
 
 
@@ -59,26 +63,15 @@ Cluster::iterator Cluster::begin() {
   return iterator(reinterpret_cast<BlobRange*>(this + 1));
 }
 
-Cluster::iterator Cluster::end() {
-  return iterator(reinterpret_cast<BlobRange*>(reinterpret_cast<uint8_t*>(this) + size));
+Cluster::iterator Cluster::end(uint64_t blockSize) {
+  return iterator(reinterpret_cast<BlobRange*>(reinterpret_cast<uint8_t*>(this) + blockSize));
 }
 
 
 
-std::string_view Blob::Data() {
+std::string_view Blob::Data(uint64_t blockSize) {
   char* dataBegin = reinterpret_cast<char*>(this + 1);
-  return std::string_view(dataBegin, size - sizeof(Blob));
-}
-
-
-
-uint64_t* TransactionLog::begin() {
-  // The first offset starts right after the transaction log structure ends
-  return reinterpret_cast<uint64_t*>(this + 1);
-}
-
-uint64_t* TransactionLog::end() {
-  return reinterpret_cast<uint64_t*>(reinterpret_cast<uint8_t*>(this) + size);
+  return std::string_view(dataBegin, blockSize - sizeof(Blob));
 }
 
 

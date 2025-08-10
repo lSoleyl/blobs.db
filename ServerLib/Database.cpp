@@ -147,15 +147,15 @@ bool Database::InitializeDatabaseFile() {
   // Construct all the datastructures in a memory buffer to write it to file in just one write operation
   std::vector<char> fileBuffer(INITIAL_SIZE, 0); 
 
-  uint64_t currentOffset = 0;
   auto* dbStruct = reinterpret_cast<file::Database*>(fileBuffer.data());
   dbStruct->header.Initialize();
-  currentOffset += sizeof(file::Database);
 
-  // Construct snapshot
-  dbStruct->roots[0].snapshotOffset = currentOffset;
-  auto* snapshot = reinterpret_cast<file::Snapshot*>(fileBuffer.data() + currentOffset);
-  snapshot->size = sizeof(file::Snapshot) + sizeof(file::Snapshot::SegmentRange) + sizeof(uint64_t);
+  // Construct snapshot and store reference to it in the active root
+  auto& snapshotReference = dbStruct->roots[0].snapshot;
+  snapshotReference.offset = sizeof(file::Database);
+  snapshotReference.size = sizeof(file::Snapshot) + sizeof(file::Snapshot::SegmentRange) + sizeof(file::BlockReference);
+
+  auto* snapshot = reinterpret_cast<file::Snapshot*>(fileBuffer.data() + snapshotReference.offset);
   snapshot->commitId = 1;
   snapshot->nextFreeSegmentId = 1;
   auto& segmentRange = *snapshot->begin();
@@ -163,10 +163,11 @@ bool Database::InitializeDatabaseFile() {
   segmentRange.endId = 1;
 
   // Segment 0
-  currentOffset += snapshot->size;
-  *segmentRange.begin() = currentOffset;
-  auto* segment = reinterpret_cast<file::Segment*>(fileBuffer.data() + currentOffset);
-  segment->size = sizeof(file::Segment) + sizeof(file::Segment::ClusterRange) + sizeof(uint64_t);
+  auto& segmentReference = *segmentRange.begin();
+  segmentReference.offset = snapshotReference.EndOffset();
+  segmentReference.size = sizeof(file::Segment) + sizeof(file::Segment::ClusterRange) + sizeof(file::BlockReference);
+
+  auto* segment = reinterpret_cast<file::Segment*>(fileBuffer.data() + segmentReference.offset);
   segment->commitId = 1;
   segment->nextFreeClusterId = 1;
   auto& clusterRange = *segment->begin();
@@ -174,10 +175,11 @@ bool Database::InitializeDatabaseFile() {
   clusterRange.endId = 1;
 
   // Cluster 0
-  currentOffset += segment->size;
-  *clusterRange.begin() = currentOffset;
-  auto* cluster = reinterpret_cast<file::Cluster*>(fileBuffer.data() + currentOffset);
-  cluster->size = sizeof(file::Cluster) + sizeof(file::Cluster::BlobRange) + sizeof(uint64_t);
+  auto& clusterReference = *clusterRange.begin();
+  clusterReference.offset = segmentReference.EndOffset();
+  clusterReference.size = sizeof(file::Cluster) + sizeof(file::Cluster::BlobRange) + sizeof(file::BlockReference);
+  
+  auto* cluster = reinterpret_cast<file::Cluster*>(fileBuffer.data() + clusterReference.offset);
   cluster->commitId = 1;
   cluster->nextFreeBlobId = 1;
   auto& blobRange = *cluster->begin();
@@ -185,23 +187,24 @@ bool Database::InitializeDatabaseFile() {
   blobRange.endId = 1;
 
   // Blob 0
-  currentOffset += cluster->size;
-  *blobRange.begin() = currentOffset;
-  auto* blob = reinterpret_cast<file::Blob*>(fileBuffer.data() + currentOffset);
-  blob->size = sizeof(file::Blob); // + 0 bytes of data
+  auto& blobReference = *blobRange.begin();
+  blobReference.offset = clusterReference.EndOffset();
+  blobReference.size = sizeof(file::Blob); // + 0 bytes of data
+
+  auto* blob = reinterpret_cast<file::Blob*>(fileBuffer.data() + blobReference.offset);
   blob->commitId = 1;
 
   // Free list with one free block holding all the memory up to 1024 bytes
-  currentOffset += blob->size;
-  dbStruct->roots[0].freelistOffset = currentOffset;
-  auto* freeList = reinterpret_cast<file::FreeList*>(fileBuffer.data() + currentOffset);
-  freeList->size = sizeof(file::FreeList) + sizeof(file::FreeList::Block);
+  auto& freeListReference = dbStruct->roots[0].freeList;
+  freeListReference.offset = blobReference.EndOffset();
+  freeListReference.size = sizeof(file::FreeList) + sizeof(file::BlockReference);
+
+  auto* freeList = reinterpret_cast<file::FreeList*>(fileBuffer.data() + freeListReference.offset);
   freeList->endOffset = INITIAL_SIZE;
-  currentOffset += freeList->size;
 
   auto& freeBlock = *freeList->begin();
-  freeBlock.blockOffset = currentOffset;
-  freeBlock.blockSize = freeList->endOffset - currentOffset;
+  freeBlock.offset = freeListReference.EndOffset();
+  freeBlock.size = freeList->endOffset - freeListReference.EndOffset();
 
   DWORD bytesWritten;
   if (!WriteFile(fileHandle, fileBuffer.data(), fileBuffer.size(), &bytesWritten, NULL) || bytesWritten != fileBuffer.size()) {
