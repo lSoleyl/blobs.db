@@ -93,6 +93,7 @@
     <ClInclude Include="include\server\Database.hpp" />
     <ClInclude Include="include\server\File.hpp" />
     <ClInclude Include="include\server\Lock.hpp" />
+    <ClInclude Include="include\server\MemoryBlock.hpp" />
     <ClInclude Include="include\server\Segment.hpp" />
     <ClInclude Include="include\server\Server.hpp" />
     <ClInclude Include="pch.hpp" />
@@ -104,6 +105,7 @@
     <ClCompile Include="Database.cpp" />
     <ClCompile Include="File.cpp" />
     <ClCompile Include="Lock.cpp" />
+    <ClCompile Include="MemoryBlock.cpp" />
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="Segment.cpp" />
     <ClCompile Include="Server.cpp" />

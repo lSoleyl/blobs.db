@@ -8,10 +8,9 @@ namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), snapshot(new Snapshot), fileHandle(INVALID_HANDLE_VALUE), useCount(0) {
+Database::Database(std::string name) : name(std::move(name)), fileHandle(INVALID_HANDLE_VALUE), useCount(0), loaded(false) {
   // In-Memory databases start with "mem:" prefix and are always loaded
   fileDatabase = !this->name._Starts_with("mem:");
-  loaded = !fileDatabase;
 }
 
 Database* Database::Get(std::string_view databaseName) {
@@ -34,6 +33,8 @@ Database& Database::Open(std::string_view databaseName, client_id clientId) {
     // Start the loading process if necessary
     if (database->fileDatabase) {
       database->LoadFromFile();
+    } else {
+      database->InitializeInMemory();
     }
   }
 
@@ -73,6 +74,25 @@ void Database::Close() {
   // Delete this object by removing it from the databases map
   databases.erase(name);
 }
+
+
+
+void Database::InitializeInMemory() {
+  // Create the snapshot with segment cluster and blob
+  auto snapshot = std::make_unique<Snapshot>();
+  auto segment = snapshot->UpdateSegment(0);
+  snapshot->SetNextFreeSegmentId(1);
+
+  auto cluster = segment->UpdateCluster(0);
+  segment->SetNextFreeClusterId(1);
+
+  auto blob = cluster->UpdateBlob(0);
+  cluster->SetNextFreeBlobId(1);
+
+  this->snapshot = std::move(snapshot);
+  loaded = true;
+}
+
 
 
 void Database::LoadFromFile() {
@@ -217,22 +237,89 @@ bool Database::InitializeDatabaseFile() {
   return true;
 }
 
+namespace {
+
+/** Returns true if the specified buffer could successfully be filled with the requested amount of bytes from the file
+ *  This function will perform multiple reads if necessary
+ */
+bool ReadIntoMemory(HANDLE fileHandle, char* buffer, size_t bytes) {
+  DWORD bytesRead;
+  while (bytes > 0) {
+    if (!ReadFile(fileHandle, buffer, bytes, &bytesRead, NULL)) {
+      // Read failed
+      return false;
+    }
+
+    bytes -= bytesRead;
+    buffer += bytesRead;
+  }
+}
+
+
+
+template<typename T>
+bool LoadStructFromFile(HANDLE fileHandle, T& targetStruct) {
+  return ReadIntoMemory(fileHandle, reinterpret_cast<char*>(&targetStruct), sizeof(T));
+}
+
+
+
+template<typename T>
+std::unique_ptr<T> LoadFileReference(HANDLE fileHandle, const file::BlockReference& reference) {
+  std::unique_ptr<char[]> buffer(new char[reference.size]);
+  LARGE_INTEGER offset;
+  offset.QuadPart = reference.offset;
+  SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
+  
+  if (ReadIntoMemory(fileHandle, buffer.get(), reference.size)) {
+    return std::unique_ptr<T>(reinterpret_cast<T*>(buffer.release()));
+  } else {
+    // Otherwise we failed to read the specified amount of bytes -> return a nullptr to indicate that error
+    return std::unique_ptr<T>();
+  }
+}
+
+
+}
+
+
+
 
 bool Database::ReadInitialFileDatabaseData() {
   LARGE_INTEGER offset = { 0 };
   SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
 
-  DWORD bytesRead;
   file::Database dbStruct;
-  if (!ReadFile(fileHandle, &dbStruct, sizeof(dbStruct), &bytesRead, NULL) || bytesRead != sizeof(dbStruct)) {
+  if (!LoadStructFromFile(fileHandle, dbStruct)) {
     // Failed to read the databse header (file may not contain such a header)
+    TODO("Maybe throw exception instead... should be easier to handle");
     return false;
   }
 
   if (!dbStruct.header.IsValid()) {
     // Invalid header, this may not be a blobs.db database -> don't open it
+    TODO("Maybe throw exception instead... should be easier to handle");
     return false;
   }
+
+
+  auto& root = dbStruct.roots[dbStruct.rootIndex];
+  auto fileSnapshot = LoadFileReference<file::Snapshot>(fileHandle, root.snapshot);
+  if (!fileSnapshot) {
+    TODO("Failed -> throw exception?");
+    return false;
+  }
+  
+
+  auto snapshot = std::make_unique<Snapshot>(fileSnapshot->commitId);
+  snapshot->offset = root.snapshot.offset;
+  snapshot->size = root.snapshot.size;
+  snapshot->SetNextFreeSegmentId(fileSnapshot->nextFreeSegmentId);
+
+  TODO("Load segment list");
+
+
+  TODO("Load free list");
 
 
 
@@ -240,6 +327,8 @@ bool Database::ReadInitialFileDatabaseData() {
   TODO("But for that we also need to be able to store the file offsets and some load state of segment/cluster/blob");
   TODO("We need a transient version of the FreeList as this structure must be quickly accessible by the server");
 
+  // Finally assign the loaded snapshot
+  this->snapshot = std::move(snapshot);
   return true;
 }
 
@@ -373,9 +462,7 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
 
 
 
-Database::Snapshot::Snapshot(commit_id commitId) : commitId(commitId), nextFreeSegmentId(1), nextFreeSegmentIdBlob(constants::NextFreeBlobId, commitId) {
-  TODO("Add proper loading from database file");
-  segments.emplace(0, std::make_shared<Segment>(0, commitId));
+Database::Snapshot::Snapshot(commit_id commitId) : commitId(commitId), nextFreeSegmentId(0), nextFreeSegmentIdBlob(constants::NextFreeBlobId, commitId) {
   nextFreeSegmentIdBlob.SetIdContent(nextFreeSegmentId);
 }
 

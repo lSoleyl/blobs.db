@@ -5,7 +5,7 @@
 namespace blobs {
 namespace server {
 
-class Segment {
+class Segment : public MemoryBlock {
 public:
   Segment(segment_id id, commit_id commitId);
 

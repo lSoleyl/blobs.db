@@ -4,9 +4,7 @@
 namespace blobs {
 namespace server {
 
-Cluster::Cluster(cluster_id id, commit_id commitId) : id(id), commitId(commitId), nextFreeBlobId(1), nextFreeBlobIdBlob(constants::NextFreeBlobId, commitId) {
-  TODO("Later load the blobs from the database file");
-  blobs.emplace(0, std::make_shared<Blob>(0));
+Cluster::Cluster(cluster_id id, commit_id commitId) : id(id), commitId(commitId), nextFreeBlobId(0), nextFreeBlobIdBlob(constants::NextFreeBlobId, commitId) {
   nextFreeBlobIdBlob.SetIdContent(nextFreeBlobId);
 }
 

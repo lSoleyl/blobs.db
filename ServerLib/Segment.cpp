@@ -5,8 +5,7 @@
 namespace blobs {
 namespace server {
 
-Segment::Segment(segment_id id, commit_id commitId) : id(id), commitId(commitId), nextFreeClusterId(1), nextFreeClusterIdBlob(constants::NextFreeBlobId, commitId) {
-  clusters.emplace(0, std::make_shared<Cluster>(0, commitId));
+Segment::Segment(segment_id id, commit_id commitId) : id(id), commitId(commitId), nextFreeClusterId(0), nextFreeClusterIdBlob(constants::NextFreeBlobId, commitId) {
   nextFreeClusterIdBlob.SetIdContent(nextFreeClusterId);
 }
 

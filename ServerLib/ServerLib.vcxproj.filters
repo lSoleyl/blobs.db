@@ -48,6 +48,9 @@
     <ClInclude Include="include\server\File.hpp">
       <Filter>Headerdateien\server</Filter>
     </ClInclude>
+    <ClInclude Include="include\server\MemoryBlock.hpp">
+      <Filter>Headerdateien\server</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Blob.cpp">
@@ -75,6 +78,9 @@
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="File.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="MemoryBlock.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>

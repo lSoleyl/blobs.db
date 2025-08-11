@@ -1,9 +1,10 @@
 #pragma once
 
-namespace blobs {
-namespace server {
+#include "MemoryBlock.hpp"
 
-class Blob {
+namespace blobs::server {
+
+class Blob : public MemoryBlock {
 public:
   // Initialize an empty blob
   Blob(blob_id id, commit_id commitId = 1);
@@ -41,4 +42,4 @@ private:
   std::vector<uint8_t> data;
 };
 
-}}
+}

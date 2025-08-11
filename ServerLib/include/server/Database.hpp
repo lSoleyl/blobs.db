@@ -7,12 +7,12 @@
 
 #include "Segment.hpp"
 #include "Lock.hpp"
+#include "File.hpp"
 
 #include "win_include.hpp"
 
 
-namespace blobs {
-namespace server {
+namespace blobs::server {
 
 class Database {
   class Snapshot;
@@ -111,6 +111,10 @@ private:
   Database(std::string name);
 
 
+  /** Initializes the database to an in memory database structure with one segment, one cluster and one blob
+   */
+  void InitializeInMemory();
+
   /** Called to load the database structure form file. 
    *  Loading is performed in a separate thread to be able to use synchronous IO calles without blocking the server's main thread.
    *  An IOCompletionHandler will be posted to the server's IOCompletionPort upon completion to notify all waiting clients about the completed database load.
@@ -130,6 +134,7 @@ private:
    */
   bool ReadInitialFileDatabaseData();
 
+
   /** Run in the server's IO completion handler once loading succeeded or failed to mark the database as loaded and inform all waiting clients about the status.
    */
   void CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode);
@@ -137,7 +142,7 @@ private:
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
    *  The transaction is committed by simply replacing the snapshot pointer with another snapshot pointer.
    */
-  class Snapshot {
+  class Snapshot : public MemoryBlock {
   public:
     Snapshot(commit_id commitId = 1);
     
@@ -232,5 +237,5 @@ private:
 };
 
 
-}}
+}
 

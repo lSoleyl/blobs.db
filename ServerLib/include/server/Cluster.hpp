@@ -5,7 +5,7 @@
 namespace blobs {
 namespace server {
 
-class Cluster {
+class Cluster : public MemoryBlock {
 public:
   Cluster(cluster_id id, commit_id commitId = 1);
 
