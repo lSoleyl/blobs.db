@@ -112,48 +112,39 @@ void Database::LoadFromFile() {
       NULL
     );
 
-    if (fileHandle == INVALID_HANDLE_VALUE) {
-      TODO("Handle error opening database file");
-      TODO("Check whether what the reason was and translate the most common ones into own error codes to return");
-      Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
-        CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
-        // And close the database
-        Close();
-      });
-      // Quit the Database IO thread.
-      return;
-    }
-
-    if (GetLastError() != ERROR_ALREADY_EXISTS) {
-      // Database doesn't exist yet -> initialize it
-      if (!InitializeDatabaseFile()) {
-        TODO("Get more precise error message to report something useful back to the client");
-        Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
-          CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
-          // And close the database
-          Close();
-        });
-        // Quit the Database IO thread.
-        return;
+    try {
+      if (fileHandle == INVALID_HANDLE_VALUE) {
+        TODO("Check what the reason was and translate the most common ones into own error codes to return");
+        throw std::exception("Failed to open/create database file");
       }
-    }
 
-    // Now the database file exists -> read it and convert it into memory objects
-    if (!ReadInitialFileDatabaseData()) {
-      Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
-        CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
-        // And close the database
-        Close();
-      });
-      // Quit the Database IO thread.
-      return;
-    }
+      if (GetLastError() != ERROR_ALREADY_EXISTS) {
+        // Database doesn't exist yet -> initialize it
+        InitializeDatabaseFile();
+      }
+
+      // Now the database file exists -> read it and convert it into memory objects
+      ReadInitialFileDatabaseData();
 
       
-    TODO("Process any outstanding transaction log entries?");
+      TODO("Process any outstanding transaction log entries?");
 
-    // Notify the server about the completed database load
-    Server::Instance().GetCompletionPort().PostSimpleTask([this]() { CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::SUCCESS); });
+      // Notify the server about the completed database load
+      Server::Instance().GetCompletionPort().PostSimpleTask([this]() { CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::SUCCESS); });
+
+
+
+      TODO("Should we now loop and wait for our own completion port to support running tasks in this database thread?");
+      TODO("Or should we simply have a queue of load/write requests to process?");
+
+    } catch (std::exception& ex) {
+      // Opening the database failed for some reason
+      Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
+        CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
+        // And close the database
+        Close();
+      });
+    }
   });
 
 
@@ -162,7 +153,7 @@ void Database::LoadFromFile() {
 }
 
 
-bool Database::InitializeDatabaseFile() {
+void Database::InitializeDatabaseFile() {
   const uint64_t INITIAL_SIZE = 1024; // The database structures ~216 Bytes, allocate the remaining space as free memory
   // Construct all the datastructures in a memory buffer to write it to file in just one write operation
   std::vector<char> fileBuffer(INITIAL_SIZE, 0); 
@@ -229,12 +220,10 @@ bool Database::InitializeDatabaseFile() {
   DWORD bytesWritten;
   if (!WriteFile(fileHandle, fileBuffer.data(), fileBuffer.size(), &bytesWritten, NULL) || bytesWritten != fileBuffer.size()) {
     // Failed to write    
-    TODO("Handle creation error... maybe return the error code?");
-    return false;
+    throw std::exception("Failed to write initial database structure into the database file");
   }
 
   FlushFileBuffers(fileHandle);
-  return true;
 }
 
 namespace {
@@ -285,51 +274,61 @@ std::unique_ptr<T> LoadFileReference(HANDLE fileHandle, const file::BlockReferen
 
 
 
-bool Database::ReadInitialFileDatabaseData() {
+void Database::ReadInitialFileDatabaseData() {
   LARGE_INTEGER offset = { 0 };
   SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
 
   file::Database dbStruct;
   if (!LoadStructFromFile(fileHandle, dbStruct)) {
     // Failed to read the databse header (file may not contain such a header)
-    TODO("Maybe throw exception instead... should be easier to handle");
-    return false;
+    throw std::exception("Failed to load root database structure from database file");
   }
 
   if (!dbStruct.header.IsValid()) {
     // Invalid header, this may not be a blobs.db database -> don't open it
-    TODO("Maybe throw exception instead... should be easier to handle");
-    return false;
+    throw std::exception("Database header is invalid");
   }
 
 
   auto& root = dbStruct.roots[dbStruct.rootIndex];
   auto fileSnapshot = LoadFileReference<file::Snapshot>(fileHandle, root.snapshot);
   if (!fileSnapshot) {
-    TODO("Failed -> throw exception?");
-    return false;
+    throw std::exception("Failed to load snapshot reference");
   }
   
 
   auto snapshot = std::make_unique<Snapshot>(fileSnapshot->commitId);
-  snapshot->offset = root.snapshot.offset;
-  snapshot->size = root.snapshot.size;
+  snapshot->fileLocation = root.snapshot;
   snapshot->SetNextFreeSegmentId(fileSnapshot->nextFreeSegmentId);
 
-  TODO("Load segment list");
+  // A file snapshot holds a list of segment reference ranges (for more compact storage)
+  // Load the segment map, but don't load the segments themselves yet
+  for (auto it = fileSnapshot->begin(), end = fileSnapshot->end(snapshot->fileLocation.size); it != end; ++it) {
+    auto& range = *it;
+    auto segmentId = range.startId;
+    for (auto& segmentReference : range) {
+      auto segment = snapshot->UpdateSegment(segmentId);
+      segment->fileLocation = segmentReference;
+      segment->status = MemoryBlock::Status::NOT_LOADED;
+      ++segmentId;
+    }
+  }
+
+  auto fileFreeList = LoadFileReference<file::FreeList>(fileHandle, root.freeList);
+  auto freeList = std::make_unique<FreeList>(fileFreeList->endOffset);
+  freeList->fileLocation = root.freeList;
+  
+  // Simply enter all block references as free memory blocks into the free list
+  for (auto it = fileFreeList->begin(), end = fileFreeList->end(freeList->fileLocation.offset); it != end; ++it) {
+    freeList->FreeMemoryBlock(*it);
+  }
+
+  // We assume the free list to already be reorganized before writing it to file, so we won't do this here
 
 
-  TODO("Load free list");
-
-
-
-  TODO("Read the header data and create the corresponding datastructures");
-  TODO("But for that we also need to be able to store the file offsets and some load state of segment/cluster/blob");
-  TODO("We need a transient version of the FreeList as this structure must be quickly accessible by the server");
-
-  // Finally assign the loaded snapshot
+  // Finally assign the loaded snapshot and free list to this database
   this->snapshot = std::move(snapshot);
-  return true;
+  this->freeList = std::move(freeList);
 }
 
 
@@ -429,11 +428,14 @@ void Database::AbortClientTransaction(client_id client, const std::vector<BlobLo
 }
 
 
-Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot) : database(database), snapshot(std::move(snapshot)) {}
+Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList) 
+  : database(database), snapshot(std::move(snapshot)), freeList(std::move(freeList)) 
+{}
 
 commit_id Database::CommitResult::ApplyToDatabase() {
   // As inner class we can directly access the database snapshot
   database.snapshot = std::move(snapshot);
+  database.freeList = std::move(freeList);
   return database.snapshot->commitId;
 }
 
@@ -446,7 +448,8 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
     newSnapshot->ApplyCommitMessage(**pos);
   }
   
-  return CommitResult(*this, std::move(newSnapshot));
+  TODO("Actually calculate the modified free list...");
+  return CommitResult(*this, std::move(newSnapshot), nullptr);
 }
 
 
@@ -572,6 +575,18 @@ segment_id Database::Snapshot::GetNextFreeSegmentId() const {
 void Database::Snapshot::SetNextFreeSegmentId(segment_id nextFreeId) {
   nextFreeSegmentId = nextFreeId;
   nextFreeSegmentIdBlob.SetIdContent(nextFreeSegmentId);
+}
+
+
+
+Database::FreeList::FreeList(uint64_t endOffset) : endOffset(endOffset) {}
+
+void Database::FreeList::FreeMemoryBlock(file::BlockReference location) {
+  freeList.push_back(location);
+}
+
+void Database::FreeList::ReorganizeFreeList() {
+
 }
 
 

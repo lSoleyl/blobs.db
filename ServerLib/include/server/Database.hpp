@@ -16,6 +16,7 @@ namespace blobs::server {
 
 class Database {
   class Snapshot;
+  class FreeList;
 public:
   /** Fetch an already opened database or return nullptr
    *  The returned database may still be in a loading state.
@@ -75,7 +76,7 @@ public:
 
   class CommitResult {
   public:
-    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot);
+    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList);
 
     /** Applies the snapshot to the database and returns the commit id of that snapshot
      */
@@ -84,6 +85,7 @@ public:
   private:
     Database& database;
     std::unique_ptr<Snapshot> snapshot;
+    std::unique_ptr<FreeList> freeList;
   };
 
 
@@ -124,15 +126,15 @@ private:
   /** Used internally called by LoadFromFile to write the initial file structure of the database containing a single blob
    *  This should be called after the file has been created, but not yet initialized.
    * 
-   * @return false if failed
+   * @throws std::exception writing the initial database structure fails
    */
-  bool InitializeDatabaseFile();
+  void InitializeDatabaseFile();
 
   /** Used inside LoadFromFile to load and validate the database header and then load the snapshot and the segment list, without loading the segments yet.
    * 
-   * @return false if the database file is in an invalid state
+   * @throws std::exception if the database is in an invalid state
    */
-  bool ReadInitialFileDatabaseData();
+  void ReadInitialFileDatabaseData();
 
 
   /** Run in the server's IO completion handler once loading succeeded or failed to mark the database as loaded and inform all waiting clients about the status.
@@ -202,6 +204,38 @@ private:
     Blob nextFreeSegmentIdBlob;
   };
 
+
+  /** The transient free list data structure, which is used to manage space in the database file
+   */
+  class FreeList : public MemoryBlock {
+  public:
+    FreeList(uint64_t endOffset);
+
+    /** Enters the specified block into the free list marking it for reuse 
+     */
+    void FreeMemoryBlock(file::BlockReference location);
+
+    /** A cleanup operation sorting all entries by their offset and merging adjacent blocks into a single block
+     *  Should be performed BEFORE writing the free list into the database file.
+     */
+    void ReorganizeFreeList();
+
+
+
+  private:
+    /** End file offset(end of the memory region managed by this FreeList - everthing following that offset can be considered garbage)
+     *  This field is part of the FreeList for the specific use case where the file has already been grown to allocate a new block, but the server crashes
+     *  before the new FreeList is written into the Database::Root. If we load the grown database with this FreeList as still being active, we know that
+     *  the memory following the endOffset is garbage and can be reused for new blocks, which we otherwise would have to assume being in use and would be lost forever.
+     */
+    uint64_t endOffset;
+
+    /** Lets try with a simple vector first. Unless the free list becomes gigantic searching the whole vector should still be 
+     *  a very efficient and cache locality wise optimal operation
+     */
+    std::vector<file::BlockReference> freeList;
+  };
+
   /** Returns true if the client can acquire a lock at the specified location with the specified access.
    *  This will NOT acquire the lock itself.
    */
@@ -222,6 +256,10 @@ private:
   /** The database snapshot that is currently valid and updated each transaction
    */
   std::unique_ptr<Snapshot> snapshot;
+
+  /** The currently active free list for this database. Only set for file databases (otherwise nullptr)
+   */
+  std::unique_ptr<FreeList> freeList;
 
   /** All currently active locks in this database
    */

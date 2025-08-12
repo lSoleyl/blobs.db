@@ -23,6 +23,8 @@ struct MemoryBlock {};
  *  But even the best header information is useless if it itself is damaged, so for now we only store the block size externally.
  */
 struct BlockReference {
+  BlockReference(); // default initializes both values to 0
+
   uint64_t offset; // File offset to the block
   uint64_t size;   // Size of the referenced memory block
 

@@ -4,6 +4,7 @@
 
 namespace blobs::server::file {
 
+BlockReference::BlockReference() : offset(0), size(0) {}
 
 uint64_t BlockReference::EndOffset() const {
   return offset + size;

@@ -4,6 +4,6 @@
 
 namespace blobs::server {
 
-MemoryBlock::MemoryBlock() : offset(0), size(0), status(Status::LOADED) {}
+MemoryBlock::MemoryBlock() : status(Status::LOADED) {}
 
 }

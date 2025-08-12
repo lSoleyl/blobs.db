@@ -1,5 +1,7 @@
 #pragma once
 
+#include "File.hpp"
+
 namespace blobs::server {
 
 
@@ -8,8 +10,9 @@ namespace blobs::server {
 struct MemoryBlock {
   MemoryBlock();
 
-  uint64_t offset;
-  uint64_t size;
+  /** Where in the file this object is allcoated
+   */
+  file::BlockReference fileLocation;
 
   enum class Status : uint8_t {
     NOT_LOADED,
