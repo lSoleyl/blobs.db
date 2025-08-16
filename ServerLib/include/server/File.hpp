@@ -24,6 +24,7 @@ struct MemoryBlock {};
  */
 struct BlockReference {
   BlockReference(); // default initializes both values to 0
+  BlockReference(uint64_t offset, uint64_t size);
 
   uint64_t offset; // File offset to the block
   uint64_t size;   // Size of the referenced memory block

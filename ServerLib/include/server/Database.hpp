@@ -254,6 +254,9 @@ private:
     iterator begin();
     iterator end();
 
+    /** Returns the number of free list entries in this list
+     */
+    size_t Size() const;
 
     /** Estimates the maximum required memory size needed to store this free list if 
      *  it should be merged with the given other free list, stored as new free blocks AND
@@ -314,6 +317,9 @@ private:
   int useCount;      // How many clients are currently using this database - the Database is closed once this count reaches 0
 
   static std::map<std::string, Database, std::less<>> databases;
+
+
+  friend class DatabaseDocTestAccess;
 };
 
 

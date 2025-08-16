@@ -701,6 +701,9 @@ auto Database::FreeList::end() -> iterator {
   return freeList.end();
 }
 
+size_t Database::FreeList::Size() const {
+  return freeList.size();
+}
 
 
 uint64_t Database::FreeList::EstimateRequiredSize(const FreeList& other) const {
@@ -714,7 +717,119 @@ uint64_t Database::FreeList::EstimateRequiredSize(const FreeList& other) const {
 
 
 
-TODO("Write tests for freelist allocation and reorganization")
+
+
+class DatabaseDocTestAccess {
+public:
+  static Database::FreeList NewFreeList(uint64_t endOffset = 0) { return Database::FreeList(endOffset); }
+};
+
+
+SCENARIO("FreeList Invariants") {
+  GIVEN("An empty FreeList") {
+    auto freeList = DatabaseDocTestAccess::NewFreeList();
+
+    THEN("Size() shoudl return 0") {
+      REQUIRE(freeList.Size() == 0);
+    }
+
+    THEN("Allocating 100 bytes should return offset 0") {
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 0);
+    }
+
+    THEN("Allocating two blocks of 100 bytes should return offset 100") {
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 0);
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 100);
+    }
+    
+    THEN("Allocating three blocks of 100 bytes should return offset 200") {
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 0);
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 100);
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 200);
+    }
+
+    THEN("Feering a memory block should change the size to 1") {
+      freeList.FreeMemoryBlock(file::BlockReference(123, 123));
+      REQUIRE(freeList.Size() == 1);
+    }
+
+    THEN("Freeing a 0 size block should also increase the size by 1") {
+      freeList.FreeMemoryBlock(file::BlockReference(123, 0));
+      REQUIRE(freeList.Size() == 1);
+    }
+  }
+
+
+  GIVEN("A free list with blocks (0,100), (100,100), (200,100)") {
+    auto freeList = DatabaseDocTestAccess::NewFreeList(300);
+    freeList.FreeMemoryBlock(file::BlockReference(0, 100));
+    freeList.FreeMemoryBlock(file::BlockReference(100, 100));
+    freeList.FreeMemoryBlock(file::BlockReference(200, 100));
+
+
+    THEN("Size() should return 3") {
+      REQUIRE(freeList.Size() == 3);
+    }
+
+    THEN("Allocate 100 should return 0") {
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 0);
+    }
+
+    THEN("Allocating three blocks of 50 size should return 0,50,100") {
+      REQUIRE(freeList.AllocateMemoryBlock(50) == 0);
+      REQUIRE(freeList.AllocateMemoryBlock(50) == 50);
+      REQUIRE(freeList.AllocateMemoryBlock(50) == 100);
+    }
+
+    THEN("Reorganize() should be able to collapse all blocks into one block of size 300") {
+      freeList.Reorganize();
+      REQUIRE(freeList.Size() == 1);
+      auto& block = *freeList.begin();
+      REQUIRE(block.offset == 0);
+      REQUIRE(block.size == 300);
+    }
+
+    THEN("Afer allocating 3 blocks of 100 Reorganize() should remove all blocks") {
+      freeList.AllocateMemoryBlock(100);
+      freeList.AllocateMemoryBlock(100);
+      freeList.AllocateMemoryBlock(100);
+      freeList.Reorganize();
+
+      REQUIRE(freeList.Size() == 0);
+    }
+  }
+
+  GIVEN("A free list with blocks (0,100), (300, 50), (200,100)") {
+    auto freeList = DatabaseDocTestAccess::NewFreeList(350);
+    freeList.FreeMemoryBlock(file::BlockReference(0, 100));
+    freeList.FreeMemoryBlock(file::BlockReference(300, 50));
+    freeList.FreeMemoryBlock(file::BlockReference(200, 100));
+
+    THEN("Reorganize() should result in two blocks") {
+      freeList.Reorganize();
+      REQUIRE(freeList.Size() == 2);
+      auto& first = *freeList.begin();
+      REQUIRE(first.offset == 0);
+      REQUIRE(first.size == 100);
+
+      auto& second = *(freeList.begin() + 1);
+      REQUIRE(second.offset == 200);
+      REQUIRE(second.size == 150);
+    }
+
+    THEN("Allocating 3 blocks of 100 should return 0, 200, 350") {
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 0);
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 200);
+      REQUIRE(freeList.AllocateMemoryBlock(100) == 350); // must allocate AFTER the 50 block
+    }
+
+    THEN("Allocating 3 blocks of 50 should return 0, 50, 300") {
+      REQUIRE(freeList.AllocateMemoryBlock(50) == 0);
+      REQUIRE(freeList.AllocateMemoryBlock(50) == 50);
+      REQUIRE(freeList.AllocateMemoryBlock(50) == 300);
+    }
+  }
+}
 
 
 }}
