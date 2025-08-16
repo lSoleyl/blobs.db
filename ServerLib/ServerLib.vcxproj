@@ -92,6 +92,7 @@
     <ClInclude Include="include\server\Cluster.hpp" />
     <ClInclude Include="include\server\Database.hpp" />
     <ClInclude Include="include\server\File.hpp" />
+    <ClInclude Include="include\server\sorted_flat_map.hpp" />
     <ClInclude Include="include\server\Lock.hpp" />
     <ClInclude Include="include\server\MemoryBlock.hpp" />
     <ClInclude Include="include\server\Segment.hpp" />

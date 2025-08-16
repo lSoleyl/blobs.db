@@ -41,6 +41,11 @@ public:
    */
   void SetNextFreeClusterId(cluster_id nextFreeId);
 
+  /** Calculate the size of the Segment's memory block if stored in file
+   */
+  virtual uint64_t CalculateRequiredSize() const override;
+
+
   const segment_id id;
 
   /** The commit id of the transaction when the cluster map has been modified last time
@@ -48,7 +53,7 @@ public:
   const commit_id commitId;
 private:
   cluster_id nextFreeClusterId;
-  std::unordered_map<cluster_id, std::shared_ptr<Cluster>> clusters;
+  sorted_flat_map<cluster_id, std::shared_ptr<Cluster>> clusters;
 
   /** When requesting the `NextFreeClusterId` cluster via GetBlob() we want to be able to return a blob to avoid too much special handling in
    *  Server::TryHandleBlobsRead(). This blob however is not stored in the blobs map as this is rather considered segmetn metadata than an

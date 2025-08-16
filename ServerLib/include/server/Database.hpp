@@ -94,9 +94,6 @@ public:
    */
   CommitResult CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitBegin, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd);
 
-
-  TODO("Should the database keep an open count to efficiently perform the check whether any client still uses it?")
-
   /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to
    *  other clients holding conflicting locks. These messages should be retried as soon as the conflicting reads are released.
    */
@@ -178,8 +175,18 @@ private:
      * 
      *  The commitMessage is taken by non-const reference even though it isn't modified, because TransactionCommit at the moment
      *  has no const iterator.
+     * 
+     *  We specifically update two free list structures here to:
+     *  - FIRST allocate all the required memory for new memory blocks from the current free list and
+     *  - THEN releasing all the memory of the previous memory blocks
+     *  The caller can then finally merge both together into one resulting freeList.
+     *  Only then can we perform a safe copy-on-write update of the database (by not creating new data in currently occupied blocks).
+     * 
+     * @param commitMessage the commit message to apply to this snapshot's state
+     * @param allocateFrom the freeList to modify (mutate!) during ApplyCommitMessage when allocating memory from it (may be nullptr for memory dbs)
+     * @param relaseInto the freeList to relase freed memory blocks into (may be nullptr for memory dbs)
      */
-    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage);
+    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage, FreeList* allocateFrom, FreeList* relaseInto);
 
     /** Returns the next free segment id for this database
      *  This is the value, which can be read from the (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`) blob
@@ -191,6 +198,11 @@ private:
      */
     void SetNextFreeSegmentId(segment_id nextFreeId);
 
+
+    /** Calculate the size of the Segment's memory block if stored in file
+     */
+    virtual uint64_t CalculateRequiredSize() const override;
+
     /** Global commit id counter of the last commited transaction for this database (snapshot).
      *  Initialized to 1 for a new database and is incremented with each transaction commit (and thus with each snapshot)
      *  This field is const as it is never modified, but the snapshot is instead replaced by another snapshot
@@ -199,7 +211,7 @@ private:
 
   private:
     segment_id nextFreeSegmentId;
-    std::unordered_map<segment_id, std::shared_ptr<Segment>> segments;
+    sorted_flat_map<segment_id, std::shared_ptr<Segment>> segments;
 
     Blob nextFreeSegmentIdBlob;
   };
@@ -211,16 +223,46 @@ private:
   public:
     FreeList(uint64_t endOffset);
 
-    /** Enters the specified block into the free list marking it for reuse 
+    /** Enters the specified block into the free list marking it for reuse. 
+     *  By calling this method the FreeList becomes unorganized and Reorganize() must be called 
+     *  before writing the FreeList to disk.
      */
     void FreeMemoryBlock(file::BlockReference location);
+
+    /** Allocates a memory block of the specified size in the file by selecting a matching free list.
+     * By calling this method the FreeList may become unorganized and Reorganize() must be called 
+     *  before writing the FreeList to disk.
+     * 
+     * @return the file offset where the block could be allocated
+     */
+    uint64_t AllocateMemoryBlock(uint64_t size);
+
 
     /** A cleanup operation sorting all entries by their offset and merging adjacent blocks into a single block
      *  Should be performed BEFORE writing the free list into the database file.
      */
-    void ReorganizeFreeList();
+    void Reorganize();
+
+    /** Calculate the size of the FreeList's memory block if stored in file
+     */
+    virtual uint64_t CalculateRequiredSize() const override;
+
+    using iterator = std::vector<file::BlockReference>::iterator;
+
+    /** Iteration over all free memory blocks
+     */
+    iterator begin();
+    iterator end();
 
 
+    /** Estimates the maximum required memory size needed to store this free list if 
+     *  it should be merged with the given other free list, stored as new free blocks AND
+     *  the memory block for storing this free list will be allocated form the free list before 
+     *  releasing the specified number of blocks.
+     * 
+     * @param other the other free list whose free blocks should be merged with this one
+     */
+    uint64_t EstimateRequiredSize(const FreeList& other) const;
 
   private:
     /** End file offset(end of the memory region managed by this FreeList - everthing following that offset can be considered garbage)

@@ -50,4 +50,33 @@ void Cluster::SetNextFreeBlobId(blob_id nextFreeId) {
 }
 
 
+uint64_t Cluster::CalculateRequiredSize() const {
+  uint64_t size = sizeof(file::Cluster);
+
+  // To calculate the required file size, we need to determine the number of contiguous blob ids
+  // This calculation is the reason why we opted for the sorted flat map instead of any other map as 
+  // the sorted flat map makes this calculation easiest while still providing a good lookup performance.
+  int contiguousBlocks = 0;
+  std::optional<blob_id> lastBlobId;
+  for (auto& [blobId, blob] : blobs) {
+    if (!lastBlobId || blobId != *lastBlobId + 1) {
+      // first block, or any following block
+      ++contiguousBlocks;
+    }
+    lastBlobId = blobId;
+  }
+
+  // We have to allocate one BlobRange for each continguous range of block ids
+  size += sizeof(file::Cluster::BlobRange) * contiguousBlocks;
+
+  // And then allocate one block reference for each blob
+  size += sizeof(file::BlockReference) * blobs.size();
+
+  return size;
+
+  TODO("When writing the cluster into file, assert that we don't write past the calculated required size");
+}
+
+
+
 }}

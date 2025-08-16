@@ -63,4 +63,32 @@ void Segment::SetNextFreeClusterId(cluster_id nextFreeId) {
 }
 
 
+uint64_t Segment::CalculateRequiredSize() const {
+  uint64_t size = sizeof(file::Segment);
+
+  // To calculate the required file size, we need to determine the number of contiguous cluster ids
+  // This calculation is the reason why we opted for the sorted flat map instead of any other map as 
+  // the sorted flat map makes this calculation easiest while still providing a good lookup performance.
+  int contiguousBlocks = 0;
+  std::optional<cluster_id> lastClusterId;
+  for (auto& [clusterId, cluster] : clusters) {
+    if (!lastClusterId || clusterId != *lastClusterId + 1) {
+      // first block, or any following block
+      ++contiguousBlocks;
+    }
+    lastClusterId = clusterId;
+  }
+
+  // We have to allocate one ClusterRange for each continguous range of cluster ids
+  size += sizeof(file::Segment::ClusterRange) * contiguousBlocks;
+
+  // And then allocate one block reference for each cluster
+  size += sizeof(file::BlockReference) * clusters.size();
+
+  return size;
+
+  TODO("When writing the segment into file, assert that we don't write past the calculated required size");
+}
+
+
 }}

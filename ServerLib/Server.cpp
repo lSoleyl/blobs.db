@@ -534,6 +534,8 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
       return true;
     }
 
+    TODO("Handle not yet loaded blobs/clusters/segments");
+
     if (client.AcquireLocks(message)) {
       // Locks successfully acquired (no conflicts) -> send response
       if (requestedBlob.ifCommitIdHigher >= blob->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {

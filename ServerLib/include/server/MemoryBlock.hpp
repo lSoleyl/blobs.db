@@ -10,6 +10,12 @@ namespace blobs::server {
 struct MemoryBlock {
   MemoryBlock();
 
+  /** This method must be implemented by all structures, which can be allocated inside the file database.
+   *  After modifying such a data structure, this method should calculate the new required memory size for storing it.
+   */
+  virtual uint64_t CalculateRequiredSize() const = 0;
+
+
   /** Where in the file this object is allcoated
    */
   file::BlockReference fileLocation;

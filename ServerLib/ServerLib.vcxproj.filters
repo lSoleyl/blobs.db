@@ -51,6 +51,9 @@
     <ClInclude Include="include\server\MemoryBlock.hpp">
       <Filter>Headerdateien\server</Filter>
     </ClInclude>
+    <ClInclude Include="include\server\sorted_flat_map.hpp">
+      <Filter>Headerdateien\server</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Blob.cpp">

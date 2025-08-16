@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Blob.hpp"
+#include "sorted_flat_map.hpp"
 
 namespace blobs {
 namespace server {
@@ -46,6 +47,9 @@ public:
    */
   void SetNextFreeBlobId(blob_id nextFreeId);
 
+  /** Calculate the size of the Cluster's memory block if stored in file
+   */
+  virtual uint64_t CalculateRequiredSize() const override;
 
   const cluster_id id;
 
@@ -57,7 +61,9 @@ private:
 
   // We allow holes in blob numbering due to deletion, so we need a map to hold all blobs of a cluster
   // The blobs are held as shared_ptrs to perform safe copy on write updates
-  std::unordered_map<blob_id, std::shared_ptr<Blob>> blobs;
+  // We use a sorted vector of pairs instead of an actual map as this should have the best performance metrics
+  // for our use cases and is better suited for storage in the file database format.
+  sorted_flat_map<blob_id, std::shared_ptr<Blob>> blobs;
 
   /** When requesting the `NextFreeBlobId` blob via GetBlob() we want to be able to return a blob to avoid too much special handling in
    *  Server::TryHandleBlobsRead(). This blob however is not stored in the blobs map as this is rather considered cluster metadata than an

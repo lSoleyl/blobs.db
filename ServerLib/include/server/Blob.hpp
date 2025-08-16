@@ -34,6 +34,10 @@ public:
     }
   }
 
+  /** Calculate the size of the Blob's memory block if stored in file
+   */
+  virtual uint64_t CalculateRequiredSize() const override;
+
 
   const blob_id id;
   const commit_id commitId; // id of commit/transaction when this blob was created/written

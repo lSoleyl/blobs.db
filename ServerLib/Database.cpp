@@ -434,6 +434,10 @@ Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapsho
 
 commit_id Database::CommitResult::ApplyToDatabase() {
   // As inner class we can directly access the database snapshot
+
+  TODO("Wait for the necessary file writes to finish before modifying this pointer!");
+
+
   database.snapshot = std::move(snapshot);
   database.freeList = std::move(freeList);
   return database.snapshot->commitId;
@@ -442,14 +446,30 @@ commit_id Database::CommitResult::ApplyToDatabase() {
 Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitPos, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd) {
   // Create the new snapshot implicitly also setting the new commit id
   auto newSnapshot = std::make_unique<Snapshot>(*snapshot);
+  auto newFreeList = freeList ? std::make_unique<FreeList>(*freeList) : nullptr;
+  auto releasedList = freeList ? std::make_unique<FreeList>(0) : nullptr;
 
   // Now apply the commit messages one by one to the snapshot modifying it in the process
   for (auto pos = commitPos, end = commitEnd; pos != end; ++pos) {
-    newSnapshot->ApplyCommitMessage(**pos);
+    newSnapshot->ApplyCommitMessage(**pos, newFreeList.get(), releasedList.get());
+  }
+
+  if (newFreeList) {
+    // Calculate the new free lists file maximum size AFTER merging it with the blocks from the released list and allocate that amount of memory
+    // from the current free list BEFORE merging with the released list to avoid allocating from any recently released blocks as this would overwrite
+    // these blocks before finalizing the transaction.
+    newFreeList->fileLocation.size = newFreeList->EstimateRequiredSize(*releasedList);
+    newFreeList->fileLocation.offset = newFreeList->AllocateMemoryBlock(newFreeList->fileLocation.size);
+
+    // Only now merge the free list with released blocks and reorganize it
+    for (auto location : *releasedList) {
+      newFreeList->FreeMemoryBlock(location);
+    }
+    newFreeList->Reorganize();
+    TODO("Schedule write freelist operation");
   }
   
-  TODO("Actually calculate the modified free list...");
-  return CommitResult(*this, std::move(newSnapshot), nullptr);
+  return CommitResult(*this, std::move(newSnapshot), std::move(newFreeList));
 }
 
 
@@ -517,12 +537,14 @@ void Database::Snapshot::DeleteSegment(segment_id segment) {
 }
 
 
-void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage) {
+void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, FreeList* allocateFrom, FreeList* releaseInto) {
+  TODO("Maybe we should use if(constexpr) for the db-less path");
 
   // Apply each modification in sequence
   for (auto pos = commitMessage.begin(), end = commitMessage.end(); pos != end; ++pos) {
     auto& update = *pos;
 
+    TODO("Keep track of deleted memory blocks");
 
     // Validate commit message already verified that the nextFreeXXXId updates are correctly structured, but 
     // we will validate them in debug mode using assertions anyway.
@@ -538,6 +560,7 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
     } else {
       // Fetch a copy of the segment this update refers to and create it if necessary
       auto segment = UpdateSegment(update.segment);
+      TODO("Create the default cluster and blob in here too");
 
       if (update.cluster == constants::NextFreeClusterId) {
         // One or more clusters are being created in this segment -> update the next free cluster id of the segment
@@ -550,7 +573,7 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
       } else {
         // Fetch a copy of the cluster this update refers to and create it if necessary
         auto cluster = segment->UpdateCluster(update.cluster);
-
+        TODO("Create the default blob in here too if necessary")
 
         if (update.blob == constants::NextFreeBlobId) {
           // One or more blobs are being created in this cluster -> update the next free blob id of the cluster
@@ -560,6 +583,9 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
           cluster->DeleteBlob(update.blob);
         } else {
           // Regular blob content update
+          TODO("I know how I can allocate memory from the freelist for the new blob, but what about the modified cluster (the blob list changed)...");
+          TODO("I should probably just collect them in a list and mark them as (needs reallocation) or smth like this and allocate memory for them in the end");
+          TODO("And with in the end I mean after applying ALL commit messages to not attempt to allocate the memory multiple times");
           cluster->UpdateBlob(update.blob)->SetContent(pos.ReadData());
         }
       }
@@ -578,6 +604,35 @@ void Database::Snapshot::SetNextFreeSegmentId(segment_id nextFreeId) {
 }
 
 
+uint64_t Database::Snapshot::CalculateRequiredSize() const {
+  uint64_t size = sizeof(file::Snapshot);
+
+  // To calculate the required file size, we need to determine the number of contiguous segment ids
+  // This calculation is the reason why we opted for the sorted flat map instead of any other map as 
+  // the sorted flat map makes this calculation easiest while still providing a good lookup performance.
+  int contiguousBlocks = 0;
+  std::optional<segment_id> lastSegmentId;
+  for (auto& [segmentId, segment] : segments) {
+    if (!lastSegmentId || segmentId != *lastSegmentId + 1) {
+      // first block, or any following block
+      ++contiguousBlocks;
+    }
+    lastSegmentId = segmentId;
+  }
+
+  // We have to allocate one SegmentRange for each continguous range of segment ids
+  size += sizeof(file::Snapshot::SegmentRange) * contiguousBlocks;
+
+  // And then allocate one block reference for each cluster
+  size += sizeof(file::BlockReference) * segments.size();
+
+  return size;
+
+  TODO("When writing the snapshot into file, assert that we don't write past the calculated required size");
+}
+
+
+
 
 Database::FreeList::FreeList(uint64_t endOffset) : endOffset(endOffset) {}
 
@@ -585,9 +640,81 @@ void Database::FreeList::FreeMemoryBlock(file::BlockReference location) {
   freeList.push_back(location);
 }
 
-void Database::FreeList::ReorganizeFreeList() {
+uint64_t Database::FreeList::AllocateMemoryBlock(uint64_t size) {
+  TODO("Maybe we should search for the best fitting block to avoid database fragmentation");
+  auto pos = std::find_if(freeList.begin(), freeList.end(), [size](const file::BlockReference& block) { return block.size >= size; });
 
+  if (pos != freeList.end()) {
+    // Found large enough block (allocate at the beginning of that block)
+    auto offset = pos->offset;
+    pos->offset += size;
+    pos->size -= size;
+    return offset;
+  } else {
+    // Grow the databse file by the required size (simply by the size of the requested block size)
+    auto offset = endOffset;
+    endOffset += size;
+    return offset;
+  }
 }
+
+
+void Database::FreeList::Reorganize() {
+  if (freeList.size() > 1) {
+    // First sort by address
+    std::sort(freeList.begin(), freeList.end(), [](auto& a, auto& b) { return a.offset < b.offset; });
+  
+    // Merge neigbouring blocks
+    auto pos = freeList.begin();
+    auto next = pos + 1;
+    auto end = freeList.end();
+
+    while (next != end) {
+      if (pos->EndOffset() == next->offset) {
+        // Adjacent blocks -> merge into the latter one
+        next->offset -= pos->size;
+        next->size += pos->size;
+        pos->size = 0;
+      }
+
+      ++pos;
+      ++next;
+    }
+
+    // Now remove all 0 size blocks
+    freeList.erase(std::remove_if(freeList.begin(), freeList.end(), [](auto& block) { return block.size == 0; }), freeList.end());
+  }
+}
+
+
+uint64_t Database::FreeList::CalculateRequiredSize() const {
+  return sizeof(file::FreeList) + sizeof(file::BlockReference) * freeList.size();
+}
+
+
+
+auto Database::FreeList::begin() -> iterator {
+  return freeList.begin();
+}
+
+auto Database::FreeList::end() -> iterator {
+  return freeList.end();
+}
+
+
+
+uint64_t Database::FreeList::EstimateRequiredSize(const FreeList& other) const {
+  // Maximum size not taking into account that Blocks may be deleted inside Reorganize()
+  auto estimatedSize = CalculateRequiredSize() + sizeof(file::BlockReference) * other.freeList.size();
+
+  // If the current free list has no free memory, then it will have to allocate a new block from the end of the file
+  // which will be exactly the required size, so no new block reference will be added to the free list as it will be immediately consumed.
+  return estimatedSize;
+}
+
+
+
+TODO("Write tests for freelist allocation and reorganization")
 
 
 }}

@@ -16,4 +16,10 @@ std::string_view Blob::ReadContent() const {
   return std::string_view(reinterpret_cast<const char*>(data.data()), data.size());
 }
 
+
+
+uint64_t Blob::CalculateRequiredSize() const {
+  return sizeof(file::Blob) + data.size();
+}
+
 }}
