@@ -6,6 +6,8 @@
 namespace blobs {
 namespace server {
 
+class MemoryBlockDelta;
+
 class Cluster : public MemoryBlock {
 public:
   Cluster(cluster_id id, commit_id commitId = 1);
@@ -28,14 +30,29 @@ public:
    * 
    *  We don't COPY the blob when modifying it during this transaction, because the only data to copy is the blob content 
    *  and we are only interested in modifying that data, so why copy something that will be overwritten anyway?
+   * 
+   * @param blob the blob id to retrieve the blob for
+   * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
+   *              This may be nullptr for pure in memory databases
    */
-  Blob* UpdateBlob(blob_id blob);
+  Blob* UpdateBlob(blob_id blob, MemoryBlockDelta* delta);
 
 
   /** Removes the specified blob from the blob map. This doesn't `delete` the blob itself.
    *  This will be done by the std::shared_ptr if this cluster was the last one referencing it.
+   * 
+   * @param blob the blob id of the blob to delete
+   * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
+   *              This may be nullptr for pure in memory databases
    */
-  void DeleteBlob(blob_id blob);
+  void DeleteBlob(blob_id blob, MemoryBlockDelta* delta);
+
+
+  /** Called by Segment::DeleteCluster() to ensure the cluster marks all of its blobs
+   *  as released too to not leak their memory blocks. The blob map itself is not modifed by this operation because this
+   *  cluster may still be referenced by an MVCC snapshot.
+   */
+  void ReleaseAllBlobs(MemoryBlockDelta* delta);
 
   /** Returns the next free blob id for this cluster
    *  This is the value, which can be read from the `NextFreeBlobId` blob

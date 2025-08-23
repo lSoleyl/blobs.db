@@ -109,8 +109,9 @@ struct FreeBlockReference {
 
 struct FreeList<auto Offset, auto Size> {
   u64 endOffset; // End of managed file memory region
+  u64 entryCount; // Number of entries in free list
   
-  FreeBlockReference freeBlocks[while($ < Offset + Size)];
+  FreeBlockReference freeBlocks[entryCount];
 };
 
 struct FreeListReference {

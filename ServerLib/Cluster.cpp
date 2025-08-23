@@ -1,5 +1,6 @@
 #include "pch.hpp"
 #include "include/server/Cluster.hpp"
+#include "include/server/MemoryBlockDelta.hpp"
 
 namespace blobs {
 namespace server {
@@ -25,18 +26,39 @@ Blob* Cluster::GetBlob(blob_id blob) {
   return (pos != blobs.end()) ? pos->second.get() : nullptr;
 }
 
-Blob* Cluster::UpdateBlob(blob_id blob) {
+Blob* Cluster::UpdateBlob(blob_id blob, MemoryBlockDelta* delta) {
   auto& blobPtr = blobs[blob];
   if (!blobPtr || blobPtr->commitId != commitId) {
+    if (delta && blobPtr) {
+      // Mark the blob from the previous commit as released (will be replaced by a new one)
+      delta->Released(blobPtr.get());
+    }
+
     // Blob not yet created OR not yet modified in this transaction -> create an empty one
     blobPtr = std::make_shared<Blob>(blob, commitId);
+    if (delta) {
+      delta->Allocated(blobPtr.get());
+    }
   }
 
   return blobPtr.get();
 }
 
-void Cluster::DeleteBlob(blob_id blob) {
-  blobs.erase(blob);
+void Cluster::DeleteBlob(blob_id blob, MemoryBlockDelta* delta) {
+  auto pos = blobs.find(blob);
+  if (pos != blobs.end()) {
+    if (delta) {
+      delta->Released(pos->second.get());
+    }
+    blobs.erase(pos);
+  }
+}
+
+
+void Cluster::ReleaseAllBlobs(MemoryBlockDelta* delta) {
+  for (auto& [blobId, blob] : blobs) {
+    delta->Released(blob.get());
+  }
 }
 
 

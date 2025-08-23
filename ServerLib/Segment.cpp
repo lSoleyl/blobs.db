@@ -1,5 +1,6 @@
 #include "pch.hpp"
 #include "include/server/Segment.hpp"
+#include "include/server/MemoryBlockDelta.hpp"
 
 
 namespace blobs {
@@ -23,21 +24,51 @@ Cluster* Segment::GetCluster(cluster_id cluster) {
 }
 
 
-Cluster* Segment::UpdateCluster(cluster_id cluster) {
+Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta) {
+  TODO("What if the segment isn't loaded yet? Can this happen?");
+
   auto& clusterPtr = clusters[cluster];
   if (!clusterPtr) {
     // Cluster doesn't exist yet -> create it
     clusterPtr = std::make_shared<Cluster>(cluster, commitId);
+    // And implicitly create the empty blob 0
+    clusterPtr->UpdateBlob(0, delta);
+    clusterPtr->SetNextFreeBlobId(1);
+
+    if (delta) {
+      delta->Allocated(clusterPtr.get());
+    }
   } else if (clusterPtr->commitId != commitId) {
     // Cluster not yet copied in this transaction -> do it now
+    if (delta) {
+      delta->Released(clusterPtr.get());
+    }
     clusterPtr = std::make_shared<Cluster>(*clusterPtr, commitId);
+    if (delta) {
+      delta->Allocated(clusterPtr.get());
+    }
   }
 
   return clusterPtr.get();
 }
 
-void Segment::DeleteCluster(cluster_id cluster) {
-  clusters.erase(cluster);
+void Segment::DeleteCluster(cluster_id cluster, MemoryBlockDelta* delta) {
+  auto pos = clusters.find(cluster);
+  if (pos != clusters.end()) {
+    if (delta) {
+      delta->Released(pos->second.get());
+      // Important: Explicitly mark all blobs of the cluster as released to not leak their memory
+      pos->second->ReleaseAllBlobs(delta);
+    }
+    clusters.erase(pos);
+  }
+}
+
+void Segment::ReleaseAllClusters(MemoryBlockDelta* delta) {
+  for (auto& [clusterId, cluster] : clusters) {
+    delta->Released(cluster.get());
+    cluster->ReleaseAllBlobs(delta);
+  }
 }
 
 

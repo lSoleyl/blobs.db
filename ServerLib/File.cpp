@@ -40,8 +40,8 @@ BlockReference* FreeList::begin() {
   return reinterpret_cast<BlockReference*>(this+1);
 }
 
-BlockReference* FreeList::end(uint64_t blockSize) {
-  return reinterpret_cast<BlockReference*>(reinterpret_cast<uint8_t*>(this) + blockSize);
+BlockReference* FreeList::end() {
+  return begin() + entryCount;
 }
 
 Snapshot::iterator Snapshot::begin() {

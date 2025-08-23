@@ -5,6 +5,8 @@
 namespace blobs {
 namespace server {
 
+struct MemoryBlockDelta;
+
 class Segment : public MemoryBlock {
 public:
   Segment(segment_id id, commit_id commitId);
@@ -20,13 +22,27 @@ public:
 
   /** This method is used by the snapshot's ApplyCommitMessage method to fetch the cluster with the specified id
    *  and copy it if it hasn't been modified in the same transaction as the segment yet or create the cluster if id doesn't exist yet.
+   *
+   * @param cluster the cluster id to retrieve the cluster for
+   * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
+   *              This may be nullptr for pure in memory databases
    */
-  Cluster* UpdateCluster(cluster_id cluster);
+  Cluster* UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta);
 
   /** Deletes the specified cluster from this segment by removing it from the cluster map. If this was the last reference to that cluster
    *  then it will be 'delete'd
+   * 
+   * @param cluster the cluster id of the cluster to delete
+   * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
+   *              This may be nullptr for pure in memory databases
    */
-  void DeleteCluster(cluster_id cluster);
+  void DeleteCluster(cluster_id cluster, MemoryBlockDelta* delta);
+
+  /** Called by Snapshot::DeleteSegment() to ensure the segment marks all of its clusters as released
+   *  too to not leak their memory blocks. The cluster map itself is not modified by this operation because this
+   *  segment may still be referenced by an MVCC snapshot.
+   */
+  void ReleaseAllClusters(MemoryBlockDelta* delta);
 
   /** Returns the specified cluster's blob or nullptr if it doesn't exist
    */

@@ -2,6 +2,7 @@
 #include "include/server/Database.hpp"
 #include "include/server/Server.hpp"
 #include "include/server/File.hpp"
+#include "include/server/MemoryBlockDelta.hpp"
 
 namespace blobs {
 namespace server {
@@ -80,15 +81,10 @@ void Database::Close() {
 void Database::InitializeInMemory() {
   // Create the snapshot with segment cluster and blob
   auto snapshot = std::make_unique<Snapshot>();
-  auto segment = snapshot->UpdateSegment(0);
+  auto segment = snapshot->UpdateSegment(0, nullptr);
   snapshot->SetNextFreeSegmentId(1);
 
-  auto cluster = segment->UpdateCluster(0);
-  segment->SetNextFreeClusterId(1);
-
-  auto blob = cluster->UpdateBlob(0);
-  cluster->SetNextFreeBlobId(1);
-
+  // Cluster 0 and Blob 0 are created implicitly
   this->snapshot = std::move(snapshot);
   loaded = true;
 }
@@ -212,6 +208,7 @@ void Database::InitializeDatabaseFile() {
 
   auto* freeList = reinterpret_cast<file::FreeList*>(fileBuffer.data() + freeListReference.offset);
   freeList->endOffset = INITIAL_SIZE;
+  freeList->entryCount = 1;
 
   auto& freeBlock = *freeList->begin();
   freeBlock.offset = freeListReference.EndOffset();
@@ -307,9 +304,7 @@ void Database::ReadInitialFileDatabaseData() {
     auto& range = *it;
     auto segmentId = range.startId;
     for (auto& segmentReference : range) {
-      auto segment = snapshot->UpdateSegment(segmentId);
-      segment->fileLocation = segmentReference;
-      segment->status = MemoryBlock::Status::NOT_LOADED;
+      snapshot->DelayLoadSegment(segmentId, segmentReference);
       ++segmentId;
     }
   }
@@ -319,11 +314,11 @@ void Database::ReadInitialFileDatabaseData() {
   freeList->fileLocation = root.freeList;
   
   // Simply enter all block references as free memory blocks into the free list
-  for (auto it = fileFreeList->begin(), end = fileFreeList->end(freeList->fileLocation.offset); it != end; ++it) {
-    freeList->FreeMemoryBlock(*it);
+  for (auto& blockReference : *freeList) {
+    freeList->FreeMemoryBlock(blockReference);
   }
 
-  // We assume the free list to already be reorganized before writing it to file, so we won't do this here
+  // We assume the free list to already be reorganized before writing it to file, so we won't do it here
 
 
   // Finally assign the loaded snapshot and free list to this database
@@ -447,25 +442,15 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
   // Create the new snapshot implicitly also setting the new commit id
   auto newSnapshot = std::make_unique<Snapshot>(*snapshot);
   auto newFreeList = freeList ? std::make_unique<FreeList>(*freeList) : nullptr;
-  auto releasedList = freeList ? std::make_unique<FreeList>(0) : nullptr;
+  auto delta = freeList ? std::make_unique<MemoryBlockDelta>() : nullptr;
 
   // Now apply the commit messages one by one to the snapshot modifying it in the process
   for (auto pos = commitPos, end = commitEnd; pos != end; ++pos) {
-    newSnapshot->ApplyCommitMessage(**pos, newFreeList.get(), releasedList.get());
+    newSnapshot->ApplyCommitMessage(**pos, delta.get());
   }
 
   if (newFreeList) {
-    // Calculate the new free lists file maximum size AFTER merging it with the blocks from the released list and allocate that amount of memory
-    // from the current free list BEFORE merging with the released list to avoid allocating from any recently released blocks as this would overwrite
-    // these blocks before finalizing the transaction.
-    newFreeList->fileLocation.size = newFreeList->EstimateRequiredSize(*releasedList);
-    newFreeList->fileLocation.offset = newFreeList->AllocateMemoryBlock(newFreeList->fileLocation.size);
-
-    // Only now merge the free list with released blocks and reorganize it
-    for (auto location : *releasedList) {
-      newFreeList->FreeMemoryBlock(location);
-    }
-    newFreeList->Reorganize();
+    newFreeList->AllocateAndApplyDelta(*delta);
     TODO("Schedule write freelist operation");
   }
   
@@ -519,25 +504,65 @@ Segment* Database::Snapshot::GetSegment(segment_id segment) {
 }
 
 
-Segment* Database::Snapshot::UpdateSegment(segment_id segment) {
+Segment* Database::Snapshot::UpdateSegment(segment_id segment, MemoryBlockDelta* delta) {
+  TODO("What if the segment hasn't been loaded from the database yet?");
+
   auto& segmentPtr = segments[segment];
   if (!segmentPtr) {
     // Create if not yet exist
     segmentPtr = std::make_shared<Segment>(segment, commitId);
+
+    // And implicitly create cluster 0
+    segmentPtr->UpdateCluster(0, delta);
+    segmentPtr->SetNextFreeClusterId(1);
+
+    if (delta) {
+      delta->Allocated(segmentPtr.get());
+    }
   } else if (segmentPtr->commitId != commitId) {
     // Segment hasn't been copied yet in this transaction -> do it now
+    if (delta) {
+      delta->Released(segmentPtr.get());
+    }
     segmentPtr = std::make_shared<Segment>(*segmentPtr, commitId);
+    if (delta) {
+      delta->Allocated(segmentPtr.get());
+    }
   }
 
   return segmentPtr.get();
 }
 
-void Database::Snapshot::DeleteSegment(segment_id segment) {
-  segments.erase(segment);
+
+void Database::Snapshot::DelayLoadSegment(segment_id segment, file::BlockReference& fileReference) {
+  auto& segmentPtr = segments[segment];
+  
+  // This operation is not allowed for already existing/loaded segments
+  assert(!segmentPtr);
+
+  segmentPtr = std::make_shared<Segment>(segment, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the segment's memory block, so we cannot know it yet */);
+  segmentPtr->status = MemoryBlock::Status::NOT_LOADED;
+  segmentPtr->fileLocation = fileReference;
 }
 
 
-void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, FreeList* allocateFrom, FreeList* releaseInto) {
+
+
+void Database::Snapshot::DeleteSegment(segment_id segment, MemoryBlockDelta* delta) {
+  auto pos = segments.find(segment);
+  if (pos != segments.end()) {
+    if (delta) {
+      delta->Released(pos->second.get());
+      // Also make sure to release all clusters in that segment
+      pos->second->ReleaseAllClusters(delta);
+    }
+
+    segments.erase(pos);
+  }
+}
+
+
+void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta) {
   TODO("Maybe we should use if(constexpr) for the db-less path");
 
   // Apply each modification in sequence
@@ -556,10 +581,10 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
     } else if (update.cluster == constants::SegmentDeleteId) {
       // A segment is being deleted by writing to the SegmentDeleteId cluster
       assert(update.blob == constants::ClusterDeleteId);
-      DeleteSegment(update.segment);
+      DeleteSegment(update.segment, delta);
     } else {
       // Fetch a copy of the segment this update refers to and create it if necessary
-      auto segment = UpdateSegment(update.segment);
+      auto segment = UpdateSegment(update.segment, delta);
       TODO("Create the default cluster and blob in here too");
 
       if (update.cluster == constants::NextFreeClusterId) {
@@ -568,11 +593,11 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
         segment->SetNextFreeClusterId(pos.ReadId<cluster_id>());
       } else if (update.blob == constants::ClusterDeleteId) {
         // A cluster is being deleted by writing to ClusterDeleteId blob
-        segment->DeleteCluster(update.cluster);
+        segment->DeleteCluster(update.cluster, delta);
 
       } else {
         // Fetch a copy of the cluster this update refers to and create it if necessary
-        auto cluster = segment->UpdateCluster(update.cluster);
+        auto cluster = segment->UpdateCluster(update.cluster, delta);
         TODO("Create the default blob in here too if necessary")
 
         if (update.blob == constants::NextFreeBlobId) {
@@ -580,13 +605,10 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
           cluster->SetNextFreeBlobId(pos.ReadId<blob_id>());
         } else if (update.blobSize == constants::DeleteBlobSize) {
           // The specified blob is being deleted
-          cluster->DeleteBlob(update.blob);
+          cluster->DeleteBlob(update.blob, delta);
         } else {
           // Regular blob content update
-          TODO("I know how I can allocate memory from the freelist for the new blob, but what about the modified cluster (the blob list changed)...");
-          TODO("I should probably just collect them in a list and mark them as (needs reallocation) or smth like this and allocate memory for them in the end");
-          TODO("And with in the end I mean after applying ALL commit messages to not attempt to allocate the memory multiple times");
-          cluster->UpdateBlob(update.blob)->SetContent(pos.ReadData());
+          cluster->UpdateBlob(update.blob, delta)->SetContent(pos.ReadData());
         }
       }
     }
@@ -705,18 +727,47 @@ size_t Database::FreeList::Size() const {
   return freeList.size();
 }
 
+void Database::FreeList::AllocateAndApplyDelta(MemoryBlockDelta& delta) {
+  // This method should be called on a free list copy, which knows the file location of the previous free list
+  assert(fileLocation.offset && fileLocation.size > 0);
+  // Remember the original block to mark it as free memory block in the end
+  auto previousListBlock = fileLocation;
 
-uint64_t Database::FreeList::EstimateRequiredSize(const FreeList& other) const {
-  // Maximum size not taking into account that Blocks may be deleted inside Reorganize()
-  auto estimatedSize = CalculateRequiredSize() + sizeof(file::BlockReference) * other.freeList.size();
+  // First allocate all the memory blocks marked for allocation and store the 
+  // new file locations inside the blocks
+  for (auto block : delta.GetAllocated()) {
+    block->fileLocation.size = block->CalculateRequiredSize();
+    block->fileLocation.offset = AllocateMemoryBlock(block->fileLocation.size);
+  }
 
-  // If the current free list has no free memory, then it will have to allocate a new block from the end of the file
-  // which will be exactly the required size, so no new block reference will be added to the free list as it will be immediately consumed.
-  return estimatedSize;
+  // Then estimate the maximum size of the memory block needed to hold the full free list (may get smaller due to reorganization)
+  fileLocation.size = EstimateRequiredSize(delta.GetReleased().size() + 1); // +1 because we release this free list's old memory block too
+  fileLocation.offset = AllocateMemoryBlock(fileLocation.size);
+
+  // Only now that we performed all allocations we can safely release all memory blocks, which were released during this commit
+  // This is important to be done last as we DO NOT want to accidentially allocate from a memory block, which was released during the same
+  // commit as this break the copy-on-write semantics for this database and lead to unrecoverable database corruptions.
+  for (auto block : delta.GetReleased()) {
+    FreeMemoryBlock(block->fileLocation);
+  }
+
+  // And don't forget to release the memory block in which the previous version of this free list was allocated
+  FreeMemoryBlock(previousListBlock);
+
+  // Finally reorganize the 
+  Reorganize();
 }
 
 
 
+uint64_t Database::FreeList::EstimateRequiredSize(uint64_t additionalFreeBlocks) const {
+  // Maximum size not taking into account that Blocks may be deleted inside Reorganize()
+  auto estimatedSize = CalculateRequiredSize() + sizeof(file::BlockReference) * additionalFreeBlocks;
+
+  // If the current free list has no free memory, then it will have to allocate one new block from the end of the file
+  // which will be exactly the required size, so no new block reference will be added to the free list as it will be immediately consumed.
+  return estimatedSize;
+}
 
 
 class DatabaseDocTestAccess {
@@ -729,7 +780,7 @@ SCENARIO("FreeList Invariants") {
   GIVEN("An empty FreeList") {
     auto freeList = DatabaseDocTestAccess::NewFreeList();
 
-    THEN("Size() shoudl return 0") {
+    THEN("Size() should return 0") {
       REQUIRE(freeList.Size() == 0);
     }
 

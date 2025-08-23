@@ -45,6 +45,10 @@ public:
     return map.erase(pos);
   }
 
+  void clear() {
+    return map.clear();
+  }
+
   size_type erase(const key_type& key) {
     auto pos = find(key);
     if (pos != map.end()) {

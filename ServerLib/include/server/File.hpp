@@ -149,6 +149,10 @@ struct FreeList : public MemoryBlock {
    */
   uint64_t endOffset;
 
+  /** The number of entries must be stored explicitly in the free list as we Reorganize() the list before storing it to file and this can
+   *  reduce the number of entries, so we cannot store the number of free list entries implicitly in the memory block size anymore.
+   */
+  uint64_t entryCount;
 
   /** Each entry of the free list represents one unused memory block.
    *  Using 16 bytes per free block seems like a lot of waste and we could probably do better by either using relative offsets and limit
@@ -156,9 +160,7 @@ struct FreeList : public MemoryBlock {
    *  Using var int encoding could also save space, but would make the encoding step computationally more expensive.
    */
   BlockReference* begin();
-  /** Since the MemoryBlock at the moment doesn't know its size, it must be passed in as parameter
-   */
-  BlockReference* end(uint64_t blockSize);
+  BlockReference* end();
 };
 
 

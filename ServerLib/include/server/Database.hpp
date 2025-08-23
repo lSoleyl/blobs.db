@@ -162,13 +162,25 @@ private:
     /** This method is internally by ApplyCommitMessage to fetch a segment for update in this transaction, which will
      *  return either a copy of the segment (if it already exists, but hasn't been copied in this transaction yet) or
      *  a new segment if it doesn't exist yet. Or the already copied segment.
+     * 
+     * @param segment the segment id to retrieve the segment for
+     * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
+     *              This may be nullptr for pure in memory databases
      */
-    Segment* UpdateSegment(segment_id segment);
+    Segment* UpdateSegment(segment_id segment, MemoryBlockDelta* delta);
+
+    /** Used when loading a snapshot to mark the segment as exisitng, but not yet loaded from file
+     */
+    void DelayLoadSegment(segment_id segment, file::BlockReference& fileLocation);
 
     /** Deletes the segment from this snapshot by removing it from the segment map. If this was the last reference to that
      *  segment then it will also be actually 'delete'd
+     * 
+     * @param segment the segment id of the segment to delete
+     * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
+     *              This may be nullptr for pure in memory databases
      */
-    void DeleteSegment(segment_id segment);
+    void DeleteSegment(segment_id segment, MemoryBlockDelta* delta);
 
     /** This method will apply the changes specified in the commit message to this snapshot.
      *  Modified Segments/Clusters/Blobs will be copied if their commitId is smaller than this snaphot's commitId
@@ -183,10 +195,10 @@ private:
      *  Only then can we perform a safe copy-on-write update of the database (by not creating new data in currently occupied blocks).
      * 
      * @param commitMessage the commit message to apply to this snapshot's state
-     * @param allocateFrom the freeList to modify (mutate!) during ApplyCommitMessage when allocating memory from it (may be nullptr for memory dbs)
-     * @param relaseInto the freeList to relase freed memory blocks into (may be nullptr for memory dbs)
+     * @param delta the data structure used to keep track of allocated/released blocks during copy-on-write commits
+     *              This may be nullptr for pure in memory databases
      */
-    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage, FreeList* allocateFrom, FreeList* relaseInto);
+    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta);
 
     /** Returns the next free segment id for this database
      *  This is the value, which can be read from the (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`) blob
@@ -257,17 +269,29 @@ private:
     /** Returns the number of free list entries in this list
      */
     size_t Size() const;
+    
 
-    /** Estimates the maximum required memory size needed to store this free list if 
-     *  it should be merged with the given other free list, stored as new free blocks AND
-     *  the memory block for storing this free list will be allocated form the free list before 
-     *  releasing the specified number of blocks.
-     * 
-     * @param other the other free list whose free blocks should be merged with this one
+    /** This method will first mark the free list's memory block for release.
+     *  This method will then allocate memory for all memory blocks marked for allocation in delta.
+     *  It will then estimate the required size needed to store the modified free list in file.
+     *  A block of that size will then be allocated from this free list.
+     *  Then all released memory blocks will be marked as free in this free list.
+     *  
+     *  Finally the free list is reorganized, which may remove some entries and shrink it in size.
+     *  The memory block itself is not resized to account for this.
      */
-    uint64_t EstimateRequiredSize(const FreeList& other) const;
+    void AllocateAndApplyDelta(MemoryBlockDelta& delta);
 
   private:
+    /** Estimates the maximum required memory size needed to store this free list if
+     *  it should be merged with the given other free list, stored as new free blocks AND
+     *  the memory block for storing this free list will be allocated form the free list before
+     *  releasing the specified number of blocks.
+     *
+     * @param additionalFreeBlocks the number of additional free blocks, which will be entered into the free list BEFORE writing it to disk
+     */
+    uint64_t EstimateRequiredSize(uint64_t additionalFreeBlocks) const;
+
     /** End file offset(end of the memory region managed by this FreeList - everthing following that offset can be considered garbage)
      *  This field is part of the FreeList for the specific use case where the file has already been grown to allocate a new block, but the server crashes
      *  before the new FreeList is written into the Database::Root. If we load the grown database with this FreeList as still being active, we know that
