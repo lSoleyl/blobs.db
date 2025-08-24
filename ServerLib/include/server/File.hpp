@@ -227,7 +227,11 @@ struct Blob : public MemoryBlock {
   
   /** Since the MemoryBlock at the moment doesn't know its size, it must be passed in as parameter
    */
-  std::string_view Data(uint64_t blockSize);
+  std::string_view Data(uint64_t blockSize) const;
+
+  /** Returns the start position of the blob's data for writing
+   */
+  char* DataBegin();
 };
 
 

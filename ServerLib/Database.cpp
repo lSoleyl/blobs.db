@@ -649,9 +649,49 @@ uint64_t Database::Snapshot::CalculateRequiredSize() const {
   size += sizeof(file::BlockReference) * segments.size();
 
   return size;
-
-  TODO("When writing the snapshot into file, assert that we don't write past the calculated required size");
 }
+
+
+
+void Database::Snapshot::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
+  // Assume the memory block has been correctly sized before calling this method
+  assert(CalculateRequiredSize() == fileLocation.size);
+  targetBuffer.resize(fileLocation.size);
+
+  auto fileSnapshot = reinterpret_cast<file::Snapshot*>(targetBuffer.data());
+  fileSnapshot->commitId = commitId;
+  fileSnapshot->nextFreeSegmentId = nextFreeSegmentId;
+
+
+  auto rangePos = fileSnapshot->begin();
+
+  auto segmentsPos = segments.begin();
+  auto segmentsEnd = segments.end();
+  while (segmentsPos != segmentsEnd) {
+    // Find the next group of contiguous segments
+    auto startId = segmentsPos->first;
+    auto endId = rangePos->startId;
+
+    auto writePos = rangePos->begin();
+    *writePos++ = segmentsPos->second->fileLocation; // store the block reference
+
+    // Find the end of the contiguous segments
+    while (++segmentsPos != segmentsEnd && segmentsPos->first == endId + 1) {
+      ++endId;
+      *writePos++ = segmentsPos->second->fileLocation; // store the block reference
+    }
+
+    // Set the range of contiguous segments and advance the ranges iterator
+    rangePos->startId = startId;
+    rangePos->endId = endId + 1;
+    ++rangePos;
+  }
+
+  // After writing the last segment range, we should end up at the end position
+  assert(rangePos == fileSnapshot->end(fileLocation.size));
+}
+
+
 
 
 
@@ -711,6 +751,17 @@ void Database::FreeList::Reorganize() {
 
 uint64_t Database::FreeList::CalculateRequiredSize() const {
   return sizeof(file::FreeList) + sizeof(file::BlockReference) * freeList.size();
+}
+
+void Database::FreeList::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
+  // Assume the memory block has been correctly sized before calling this method
+  assert(CalculateRequiredSize() == fileLocation.size);
+  targetBuffer.resize(fileLocation.size);
+
+  auto fileFreeList = reinterpret_cast<file::FreeList*>(targetBuffer.data());
+  fileFreeList->endOffset = endOffset;
+  fileFreeList->entryCount = freeList.size();
+  std::copy(freeList.begin(), freeList.end(), fileFreeList->begin());
 }
 
 

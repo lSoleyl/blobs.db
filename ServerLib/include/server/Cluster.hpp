@@ -68,6 +68,10 @@ public:
    */
   virtual uint64_t CalculateRequiredSize() const override;
 
+  /** Serialize the cluster into a buffer for writing it to file
+   */
+  virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
+
   const cluster_id id;
 
   /** The commit id of the transaction when this cluster's blob table has been last modified

@@ -215,6 +215,10 @@ private:
      */
     virtual uint64_t CalculateRequiredSize() const override;
 
+    /** Serialize the snapshot into a buffer for writing it to file
+     */
+    virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
+
     /** Global commit id counter of the last commited transaction for this database (snapshot).
      *  Initialized to 1 for a new database and is incremented with each transaction commit (and thus with each snapshot)
      *  This field is const as it is never modified, but the snapshot is instead replaced by another snapshot
@@ -258,6 +262,10 @@ private:
     /** Calculate the size of the FreeList's memory block if stored in file
      */
     virtual uint64_t CalculateRequiredSize() const override;
+
+    /** Serialize the free list into a buffer for writing it to file
+     */
+    virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
 
     using iterator = std::vector<file::BlockReference>::iterator;
 

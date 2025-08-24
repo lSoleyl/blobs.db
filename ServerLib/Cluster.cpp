@@ -95,8 +95,46 @@ uint64_t Cluster::CalculateRequiredSize() const {
   size += sizeof(file::BlockReference) * blobs.size();
 
   return size;
+}
 
-  TODO("When writing the cluster into file, assert that we don't write past the calculated required size");
+
+void Cluster::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
+  // Assume the memory block has been correctly sized before calling this method
+  assert(CalculateRequiredSize() == fileLocation.size);
+  targetBuffer.resize(fileLocation.size);
+
+  auto fileCluster = reinterpret_cast<file::Cluster*>(targetBuffer.data());
+  fileCluster->commitId = commitId;
+  fileCluster->nextFreeBlobId = nextFreeBlobId;
+  fileCluster->id = id;
+
+
+  auto rangePos = fileCluster->begin();
+  
+  auto blobsPos = blobs.begin();
+  auto blobsEnd = blobs.end();
+  while (blobsPos != blobsEnd) {
+    // Find the next group of contiguous blobs
+    auto startId = blobsPos->first;
+    auto endId = rangePos->startId;
+
+    auto writePos = rangePos->begin();
+    *writePos++ = blobsPos->second->fileLocation; // store the block reference
+
+    // Find the end of the contiguous blobs
+    while (++blobsPos != blobsEnd && blobsPos->first == endId + 1) {
+      ++endId;
+      *writePos++ = blobsPos->second->fileLocation; // store the block reference
+    }
+
+    // Set the range of contiguous blobs and advance the ranges iterator
+    rangePos->startId = startId;
+    rangePos->endId = endId + 1;
+    ++rangePos;
+  }  
+  
+  // After writing the last blob range, we should end up at the end position
+  assert(rangePos == fileCluster->end(fileLocation.size));
 }
 
 

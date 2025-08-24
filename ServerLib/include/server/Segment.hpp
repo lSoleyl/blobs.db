@@ -61,6 +61,9 @@ public:
    */
   virtual uint64_t CalculateRequiredSize() const override;
 
+  /** Serialize the segment into a buffer for writing it to file
+   */
+  virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
 
   const segment_id id;
 

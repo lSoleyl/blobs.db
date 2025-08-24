@@ -72,9 +72,13 @@ Cluster::iterator Cluster::end(uint64_t blockSize) {
 
 
 
-std::string_view Blob::Data(uint64_t blockSize) {
-  char* dataBegin = reinterpret_cast<char*>(this + 1);
+std::string_view Blob::Data(uint64_t blockSize) const {
+  const char* dataBegin = reinterpret_cast<const char*>(this + 1);
   return std::string_view(dataBegin, blockSize - sizeof(Blob));
+}
+
+char* Blob::DataBegin() {
+  return reinterpret_cast<char*>(this + 1);
 }
 
 

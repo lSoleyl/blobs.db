@@ -38,6 +38,10 @@ public:
    */
   virtual uint64_t CalculateRequiredSize() const override;
 
+  /** Serialize the blob into a buffer for writing it to file
+   */
+  virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
+
 
   const blob_id id;
   const commit_id commitId; // id of commit/transaction when this blob was created/written

@@ -15,6 +15,9 @@ struct MemoryBlock {
    */
   virtual uint64_t CalculateRequiredSize() const = 0;
 
+  /** This method should serialize the memory block object into the provided buffer to write it into file.
+   */
+  virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const = 0;
 
   /** Where in the file this object is allcoated
    */

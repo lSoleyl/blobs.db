@@ -117,8 +117,46 @@ uint64_t Segment::CalculateRequiredSize() const {
   size += sizeof(file::BlockReference) * clusters.size();
 
   return size;
+}
 
-  TODO("When writing the segment into file, assert that we don't write past the calculated required size");
+
+void Segment::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
+  // Assume the memory block has been correctly sized before calling this method
+  assert(CalculateRequiredSize() == fileLocation.size);
+  targetBuffer.resize(fileLocation.size);
+
+  auto fileSegment = reinterpret_cast<file::Segment*>(targetBuffer.data());
+  fileSegment->commitId = commitId;
+  fileSegment->nextFreeClusterId = nextFreeClusterId;
+  fileSegment->id = id;
+
+
+  auto rangePos = fileSegment->begin();
+
+  auto clustersPos = clusters.begin();
+  auto clustersEnd = clusters.end();
+  while (clustersPos != clustersEnd) {
+    // Find the next group of contiguous clusters
+    auto startId = clustersPos->first;
+    auto endId = rangePos->startId;
+
+    auto writePos = rangePos->begin();
+    *writePos++ = clustersPos->second->fileLocation; // store the block reference
+
+    // Find the end of the contiguous clusters
+    while (++clustersPos != clustersEnd && clustersPos->first == endId + 1) {
+      ++endId;
+      *writePos++ = clustersPos->second->fileLocation; // store the block reference
+    }
+
+    // Set the range of contiguous clusters and advance the ranges iterator
+    rangePos->startId = startId;
+    rangePos->endId = endId + 1;
+    ++rangePos;
+  }
+
+  // After writing the last cluster range, we should end up at the end position
+  assert(rangePos == fileSegment->end(fileLocation.size));
 }
 
 
