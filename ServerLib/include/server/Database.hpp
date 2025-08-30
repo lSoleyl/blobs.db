@@ -8,6 +8,7 @@
 #include "Segment.hpp"
 #include "Lock.hpp"
 #include "File.hpp"
+#include "MemoryBlockDelta.hpp"
 
 #include "win_include.hpp"
 
@@ -76,7 +77,7 @@ public:
 
   class CommitResult {
   public:
-    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList);
+    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta);
 
     /** Applies the snapshot to the database and returns the commit id of that snapshot
      */
@@ -86,6 +87,7 @@ public:
     Database& database;
     std::unique_ptr<Snapshot> snapshot;
     std::unique_ptr<FreeList> freeList;
+    std::unique_ptr<MemoryBlockDelta> delta;
   };
 
 
@@ -346,6 +348,7 @@ private:
   bool loaded;       // true if the the FILE database has been fully loaded and is ready to be used by clients
   std::vector<client_id> clientsWaitingForLoading; // Clients to notify once the database has completed loading to complete their OpenDatabse requests
   HANDLE fileHandle;
+  file::Database fileHeader; // The current database file header (this is stored here to avoid having to read it to update the database) - the header state is undefined for in memory databases
   int useCount;      // How many clients are currently using this database - the Database is closed once this count reaches 0
 
   static std::map<std::string, Database, std::less<>> databases;

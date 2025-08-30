@@ -2,7 +2,6 @@
 #include "include/server/Database.hpp"
 #include "include/server/Server.hpp"
 #include "include/server/File.hpp"
-#include "include/server/MemoryBlockDelta.hpp"
 
 namespace blobs {
 namespace server {
@@ -65,8 +64,7 @@ void Database::Release() {
 
 
 void Database::Close() {
-  TODO("If DB IO-Thread is still running -> mark the database as to-delete and return immediately performing a delayed deletion.");
-  
+  TODO("In some scenarios the database load thread may not be done yet.");
   if (fileHandle != INVALID_HANDLE_VALUE) {
     CloseHandle(fileHandle);
     fileHandle = INVALID_HANDLE_VALUE;
@@ -92,6 +90,9 @@ void Database::InitializeInMemory() {
 
 
 void Database::LoadFromFile() {
+  TODO("Maybe we should just load the database in the main thread... I mean how often do we open a new database? Is it really worth it?");
+
+
   TODO("Maybe this should be the Database-Thread and we simply create one thread per database, which exclusively performs read/write operations on the database");
   TODO("This could become the main IO thread for the database and we could also post tasks to it via an IOCompletionPort to process if the thread is idle");
   std::thread loadThread([this]() {
@@ -221,6 +222,7 @@ void Database::InitializeDatabaseFile() {
   }
 
   FlushFileBuffers(fileHandle);
+  std::memcpy(&fileHeader, dbStruct, sizeof(fileHeader));
 }
 
 namespace {
@@ -231,7 +233,7 @@ namespace {
 bool ReadIntoMemory(HANDLE fileHandle, char* buffer, size_t bytes) {
   DWORD bytesRead;
   while (bytes > 0) {
-    if (!ReadFile(fileHandle, buffer, bytes, &bytesRead, NULL)) {
+    if (!ReadFile(fileHandle, buffer, static_cast<DWORD>(std::min<size_t>(std::numeric_limits<DWORD>::max(), bytes)), &bytesRead, NULL)) {
       // Read failed
       return false;
     }
@@ -265,6 +267,34 @@ std::unique_ptr<T> LoadFileReference(HANDLE fileHandle, const file::BlockReferen
   }
 }
 
+/** Writes the specified buffer into the specified file at the file's current position
+ */
+bool WriteFromMemory(HANDLE fileHandle, const char* buffer, size_t size) {
+  while (size > 0) {
+    DWORD bytesWritten;
+    if (!WriteFile(fileHandle, buffer, static_cast<DWORD>(std::min<size_t>(std::numeric_limits<DWORD>::max(), size)), &bytesWritten, nullptr)) {
+      // File write failed
+      return false;
+    }
+
+    size -= bytesWritten;
+    buffer += bytesWritten;
+  }
+}
+
+
+
+/** Writes the given memory block into the file and returns true if upon success
+ */
+bool WriteMemoryBlockToFile(HANDLE fileHandle, const MemoryBlock& memoryBlock, std::vector<char>& writeBuffer) {
+  memoryBlock.SerializeIntoBuffer(writeBuffer);
+
+  LARGE_INTEGER offset;
+  offset.QuadPart = memoryBlock.fileLocation.offset;
+  SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
+  return WriteFromMemory(fileHandle, writeBuffer.data(), writeBuffer.size());
+}
+
 
 }
 
@@ -275,19 +305,18 @@ void Database::ReadInitialFileDatabaseData() {
   LARGE_INTEGER offset = { 0 };
   SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
 
-  file::Database dbStruct;
-  if (!LoadStructFromFile(fileHandle, dbStruct)) {
+  if (!LoadStructFromFile(fileHandle, fileHeader)) {
     // Failed to read the databse header (file may not contain such a header)
     throw std::exception("Failed to load root database structure from database file");
   }
 
-  if (!dbStruct.header.IsValid()) {
+  if (!fileHeader.header.IsValid()) {
     // Invalid header, this may not be a blobs.db database -> don't open it
     throw std::exception("Database header is invalid");
   }
 
 
-  auto& root = dbStruct.roots[dbStruct.rootIndex];
+  auto& root = fileHeader.roots[fileHeader.rootIndex];
   auto fileSnapshot = LoadFileReference<file::Snapshot>(fileHandle, root.snapshot);
   if (!fileSnapshot) {
     throw std::exception("Failed to load snapshot reference");
@@ -423,16 +452,50 @@ void Database::AbortClientTransaction(client_id client, const std::vector<BlobLo
 }
 
 
-Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList) 
-  : database(database), snapshot(std::move(snapshot)), freeList(std::move(freeList)) 
+Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta)
+  : database(database), snapshot(std::move(snapshot)), freeList(std::move(freeList)), delta(std::move(delta))
 {}
 
 commit_id Database::CommitResult::ApplyToDatabase() {
+  
+  
+  if (delta) { 
+    // Delta is only specified for file databases
+    assert(database.fileDatabase);
+    assert(database.fileHandle != INVALID_HANDLE_VALUE);
+
+    std::vector<char> writeBuffer;
+    // First we write all newly allocated memory blocks into the file
+    for (auto memoryBlock : delta->GetAllocated()) {
+      if (!WriteMemoryBlockToFile(database.fileHandle, *memoryBlock, writeBuffer)) {
+        TODO("Handle file write errors somehow? This should abort the transaction commit");
+        assert(false);
+      }
+    }
+
+    // Flush all writes before the database header to disk
+    FlushFileBuffers(database.fileHandle);
+    
+    // Now update the database header itself
+    SetFilePointer(database.fileHandle, 0, 0, FILE_BEGIN);
+    database.fileHeader.rootIndex = database.fileHeader.rootIndex ^ 1; // flip the 1 bit value
+    auto& root = database.fileHeader.roots[database.fileHeader.rootIndex];
+    root.freeList = freeList->fileLocation;
+    root.snapshot = snapshot->fileLocation;
+
+
+    if (!WriteFromMemory(database.fileHandle, reinterpret_cast<const char*>(&database.fileHeader), sizeof(database.fileHeader))) {
+      TODO("Handle file write errors by aborting the transaction commit");
+      assert(false);
+      // Rollback the change to the datbase root
+      database.fileHeader.rootIndex = database.fileHeader.rootIndex ^ 1; // flip the 1 bit value
+    }
+
+    // And flush the file buffers BEFORE updating the transient state of the database
+    FlushFileBuffers(database.fileHandle);
+  }
+
   // As inner class we can directly access the database snapshot
-
-  TODO("Wait for the necessary file writes to finish before modifying this pointer!");
-
-
   database.snapshot = std::move(snapshot);
   database.freeList = std::move(freeList);
   return database.snapshot->commitId;
@@ -444,6 +507,13 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
   auto newFreeList = freeList ? std::make_unique<FreeList>(*freeList) : nullptr;
   auto delta = freeList ? std::make_unique<MemoryBlockDelta>() : nullptr;
 
+
+  if (delta) {
+    // Mark the new snapshot as allocated and the current one as released
+    delta->Allocated(newSnapshot.get());
+    delta->Released(snapshot.get());
+  }
+
   // Now apply the commit messages one by one to the snapshot modifying it in the process
   for (auto pos = commitPos, end = commitEnd; pos != end; ++pos) {
     newSnapshot->ApplyCommitMessage(**pos, delta.get());
@@ -451,10 +521,9 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
 
   if (newFreeList) {
     newFreeList->AllocateAndApplyDelta(*delta);
-    TODO("Schedule write freelist operation");
   }
   
-  return CommitResult(*this, std::move(newSnapshot), std::move(newFreeList));
+  return CommitResult(*this, std::move(newSnapshot), std::move(newFreeList), std::move(delta));
 }
 
 
@@ -490,6 +559,8 @@ Blob* Database::Snapshot::GetBlob(const BlobLocation& location) {
   
   // Otherwise perform regular lookup
   if (auto segment = GetSegment(location.segment)) {
+    TODO("If the segment isn't loaded yet, we must load it into memory here");
+    TODO("For that we must somehow pass in either the file handle or the database object itself");
     // Use GetBlob() to support `NextFreeClusterId`
     return segment->GetBlob(location.cluster, location.blob);
   }
@@ -569,8 +640,6 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
   for (auto pos = commitMessage.begin(), end = commitMessage.end(); pos != end; ++pos) {
     auto& update = *pos;
 
-    TODO("Keep track of deleted memory blocks");
-
     // Validate commit message already verified that the nextFreeXXXId updates are correctly structured, but 
     // we will validate them in debug mode using assertions anyway.
     if (update.segment == constants::NextFreeSegmentId) {
@@ -585,7 +654,6 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
     } else {
       // Fetch a copy of the segment this update refers to and create it if necessary
       auto segment = UpdateSegment(update.segment, delta);
-      TODO("Create the default cluster and blob in here too");
 
       if (update.cluster == constants::NextFreeClusterId) {
         // One or more clusters are being created in this segment -> update the next free cluster id of the segment
@@ -598,7 +666,6 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
       } else {
         // Fetch a copy of the cluster this update refers to and create it if necessary
         auto cluster = segment->UpdateCluster(update.cluster, delta);
-        TODO("Create the default blob in here too if necessary")
 
         if (update.blob == constants::NextFreeBlobId) {
           // One or more blobs are being created in this cluster -> update the next free blob id of the cluster

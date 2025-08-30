@@ -10,6 +10,11 @@ int main()
     std::cout << "Starting client\n";
     auto db = blobs::Database::Open("127.0.0.1", "test.db");
 
+    // Write some data into the initial blob and commit the txn
+    db->WriteString(0, 0, 0, "Hello blobs.db!");
+    blobs::Transaction::Commit();
+
+     
     TODO(
       "Once the server is operational, I should implement some nice example programs to verify the correct working of the database. "
       "99 bottles of beer for example where each transaction has to read through all previous messages (1 blob per message) and then add the next blob. "
