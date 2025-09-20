@@ -8,7 +8,7 @@ namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), fileHandle(INVALID_HANDLE_VALUE), useCount(0), loaded(false) {
+Database::Database(std::string name) : name(std::move(name)), useCount(0), loaded(false) {
   // In-Memory databases start with "mem:" prefix and are always loaded
   fileDatabase = !this->name._Starts_with("mem:");
 }
@@ -65,10 +65,7 @@ void Database::Release() {
 
 void Database::Close() {
   TODO("In some scenarios the database load thread may not be done yet.");
-  if (fileHandle != INVALID_HANDLE_VALUE) {
-    CloseHandle(fileHandle);
-    fileHandle = INVALID_HANDLE_VALUE;
-  }
+  file.Close();
 
   // Delete this object by removing it from the databases map
   databases.erase(name);
@@ -96,26 +93,15 @@ void Database::LoadFromFile() {
   TODO("Maybe this should be the Database-Thread and we simply create one thread per database, which exclusively performs read/write operations on the database");
   TODO("This could become the main IO thread for the database and we could also post tasks to it via an IOCompletionPort to process if the thread is idle");
   std::thread loadThread([this]() {
-    TODO("Support Unicode (UTF-8) paths later on");
-    fileHandle = CreateFileA(
-      name.c_str(),
-      GENERIC_READ | GENERIC_WRITE,
-      0 /*exclusive access*/,
-      NULL,
-      // for now no FILE_FLAG_OVERLAPPED as we want to perform serial reads/writes in this thread alone
-      // We don't specify FILE_FLAG_NO_BUFFERING as it requires us to always read/write whole sectors, which would only complicate things
-      // We don't specify FILE_FLAG_WRITE_THROUGH because we only need to flush the writes once we perform the final pointer update (or right before and right after).
-      OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS, 
-      NULL
-    );
-
     try {
-      if (fileHandle == INVALID_HANDLE_VALUE) {
+      bool exists;
+      file = FileBackend::OpenExclusive(name.c_str(), exists);
+      if (!file) {
         TODO("Check what the reason was and translate the most common ones into own error codes to return");
         throw std::exception("Failed to open/create database file");
       }
 
-      if (GetLastError() != ERROR_ALREADY_EXISTS) {
+      if (!exists) {
         // Database doesn't exist yet -> initialize it
         InitializeDatabaseFile();
       }
@@ -215,97 +201,21 @@ void Database::InitializeDatabaseFile() {
   freeBlock.offset = freeListReference.EndOffset();
   freeBlock.size = freeList->endOffset - freeListReference.EndOffset();
 
-  DWORD bytesWritten;
-  if (!WriteFile(fileHandle, fileBuffer.data(), fileBuffer.size(), &bytesWritten, NULL) || bytesWritten != fileBuffer.size()) {
+  if (!file.WriteFromMemory(fileBuffer.data(), fileBuffer.size())) {
     // Failed to write    
     throw std::exception("Failed to write initial database structure into the database file");
   }
 
-  FlushFileBuffers(fileHandle);
+  file.FlushFileBuffers();
   std::memcpy(&fileHeader, dbStruct, sizeof(fileHeader));
 }
-
-namespace {
-
-/** Returns true if the specified buffer could successfully be filled with the requested amount of bytes from the file
- *  This function will perform multiple reads if necessary
- */
-bool ReadIntoMemory(HANDLE fileHandle, char* buffer, size_t bytes) {
-  DWORD bytesRead;
-  while (bytes > 0) {
-    if (!ReadFile(fileHandle, buffer, static_cast<DWORD>(std::min<size_t>(std::numeric_limits<DWORD>::max(), bytes)), &bytesRead, NULL)) {
-      // Read failed
-      return false;
-    }
-
-    bytes -= bytesRead;
-    buffer += bytesRead;
-  }
-}
-
-
-
-template<typename T>
-bool LoadStructFromFile(HANDLE fileHandle, T& targetStruct) {
-  return ReadIntoMemory(fileHandle, reinterpret_cast<char*>(&targetStruct), sizeof(T));
-}
-
-
-
-template<typename T>
-std::unique_ptr<T> LoadFileReference(HANDLE fileHandle, const file::BlockReference& reference) {
-  std::unique_ptr<char[]> buffer(new char[reference.size]);
-  LARGE_INTEGER offset;
-  offset.QuadPart = reference.offset;
-  SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
-  
-  if (ReadIntoMemory(fileHandle, buffer.get(), reference.size)) {
-    return std::unique_ptr<T>(reinterpret_cast<T*>(buffer.release()));
-  } else {
-    // Otherwise we failed to read the specified amount of bytes -> return a nullptr to indicate that error
-    return std::unique_ptr<T>();
-  }
-}
-
-/** Writes the specified buffer into the specified file at the file's current position
- */
-bool WriteFromMemory(HANDLE fileHandle, const char* buffer, size_t size) {
-  while (size > 0) {
-    DWORD bytesWritten;
-    if (!WriteFile(fileHandle, buffer, static_cast<DWORD>(std::min<size_t>(std::numeric_limits<DWORD>::max(), size)), &bytesWritten, nullptr)) {
-      // File write failed
-      return false;
-    }
-
-    size -= bytesWritten;
-    buffer += bytesWritten;
-  }
-}
-
-
-
-/** Writes the given memory block into the file and returns true if upon success
- */
-bool WriteMemoryBlockToFile(HANDLE fileHandle, const MemoryBlock& memoryBlock, std::vector<char>& writeBuffer) {
-  memoryBlock.SerializeIntoBuffer(writeBuffer);
-
-  LARGE_INTEGER offset;
-  offset.QuadPart = memoryBlock.fileLocation.offset;
-  SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
-  return WriteFromMemory(fileHandle, writeBuffer.data(), writeBuffer.size());
-}
-
-
-}
-
 
 
 
 void Database::ReadInitialFileDatabaseData() {
-  LARGE_INTEGER offset = { 0 };
-  SetFilePointerEx(fileHandle, offset, NULL, FILE_BEGIN);
+  file.SetFilePosition(0);
 
-  if (!LoadStructFromFile(fileHandle, fileHeader)) {
+  if (!file.ReadStruct(fileHeader)) {
     // Failed to read the databse header (file may not contain such a header)
     throw std::exception("Failed to load root database structure from database file");
   }
@@ -317,7 +227,7 @@ void Database::ReadInitialFileDatabaseData() {
 
 
   auto& root = fileHeader.roots[fileHeader.rootIndex];
-  auto fileSnapshot = LoadFileReference<file::Snapshot>(fileHandle, root.snapshot);
+  auto fileSnapshot = file.LoadMemoryBlock<file::Snapshot>(root.snapshot);
   if (!fileSnapshot) {
     throw std::exception("Failed to load snapshot reference");
   }
@@ -338,7 +248,10 @@ void Database::ReadInitialFileDatabaseData() {
     }
   }
 
-  auto fileFreeList = LoadFileReference<file::FreeList>(fileHandle, root.freeList);
+  auto fileFreeList = file.LoadMemoryBlock<file::FreeList>(root.freeList);
+  if (!fileFreeList) {
+    throw std::exception("Failed to load free list reference");
+  }
   auto freeList = std::make_unique<FreeList>(fileFreeList->endOffset);
   freeList->fileLocation = root.freeList;
   
@@ -363,17 +276,8 @@ void Database::CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Resu
   }
 }
 
-
-void Database::LoadSegmentFromFile(Segment& segment) const {
-  assert(fileHandle != INVALID_HANDLE_VALUE); // cannot be called on an in memory database (or one that failed to open)
-  auto dbSegment = LoadFileReference<file::Segment>(fileHandle, segment.fileLocation);
-  segment.LoadFrom(*dbSegment, segment.fileLocation);
-}
-
-
-
 Blob* Database::GetBlob(const BlobLocation& location) {
-  return snapshot->GetBlob(location, *this);
+  return snapshot->GetBlob(location, file);
 }
 
 Segment* Database::GetSegment(segment_id segment) {
@@ -470,29 +374,29 @@ commit_id Database::CommitResult::ApplyToDatabase() {
   if (delta) { 
     // Delta is only specified for file databases
     assert(database.fileDatabase);
-    assert(database.fileHandle != INVALID_HANDLE_VALUE);
+    assert(database.file);
 
     std::vector<char> writeBuffer;
     // First we write all newly allocated memory blocks into the file
     for (auto memoryBlock : delta->GetAllocated()) {
-      if (!WriteMemoryBlockToFile(database.fileHandle, *memoryBlock, writeBuffer)) {
+      if (!database.file.StoreMemoryBlock(*memoryBlock, writeBuffer)) {
         TODO("Handle file write errors somehow? This should abort the transaction commit");
         assert(false);
       }
     }
 
     // Flush all writes before the database header to disk
-    FlushFileBuffers(database.fileHandle);
+    database.file.FlushFileBuffers();
     
     // Now update the database header itself
-    SetFilePointer(database.fileHandle, 0, 0, FILE_BEGIN);
+    database.file.SetFilePosition(0);
     database.fileHeader.rootIndex = database.fileHeader.rootIndex ^ 1; // flip the 1 bit value
     auto& root = database.fileHeader.roots[database.fileHeader.rootIndex];
     root.freeList = freeList->fileLocation;
     root.snapshot = snapshot->fileLocation;
 
 
-    if (!WriteFromMemory(database.fileHandle, reinterpret_cast<const char*>(&database.fileHeader), sizeof(database.fileHeader))) {
+    if (!database.file.WriteStruct(database.fileHeader)) {
       TODO("Handle file write errors by aborting the transaction commit");
       assert(false);
       // Rollback the change to the datbase root
@@ -500,7 +404,7 @@ commit_id Database::CommitResult::ApplyToDatabase() {
     }
 
     // And flush the file buffers BEFORE updating the transient state of the database
-    FlushFileBuffers(database.fileHandle);
+    database.file.FlushFileBuffers();
   }
 
   // As inner class we can directly access the database snapshot
@@ -559,7 +463,7 @@ Database::Snapshot::Snapshot(const Snapshot& other) : commitId(other.commitId+1)
 
 
 
-Blob* Database::Snapshot::GetBlob(const BlobLocation& location, const Database& db) {
+Blob* Database::Snapshot::GetBlob(const BlobLocation& location, const FileBackend& file) {
   if (location.segment == constants::NextFreeSegmentId && location.cluster == constants::NextFreeClusterId && location.blob == constants::NextFreeBlobId) {
     // Return special blob holding the next free segment id
     return &nextFreeSegmentIdBlob;
@@ -570,7 +474,7 @@ Blob* Database::Snapshot::GetBlob(const BlobLocation& location, const Database& 
     // Load the segment from file if it isn't loaded yet
     TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
     if (segment->status != Status::LOADED) {
-      db.LoadSegmentFromFile(*segment);
+      segment->LoadFrom(file);
       assert(segment->status == Status::LOADED);
     }
 

@@ -9,8 +9,7 @@
 #include "Lock.hpp"
 #include "File.hpp"
 #include "MemoryBlockDelta.hpp"
-
-#include "win_include.hpp"
+#include "FileBackend.hpp"
 
 
 namespace blobs::server {
@@ -141,12 +140,6 @@ private:
   void CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode);
 
 
-  /** Called by Snapshot::GetBlob() when encountering a not yet loaded segment to load it from the database file
-   *  into memory
-   */
-  void LoadSegmentFromFile(Segment& segment) const;
-
-
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
    *  The transaction is committed by simply replacing the snapshot pointer with another snapshot pointer.
    */
@@ -161,9 +154,9 @@ private:
     /** Returns the blob at the specified location or nullptr if it doesn't exist.
      * 
      * @param location the database location to retrieve the blob from (segment, cluster, blob)
-     * @param db the database to load the cluster from (only used for file databases)
+     * @param file the database file to load the segmnt/cluster/blob from (only used for file databases)
      */
-    Blob* GetBlob(const BlobLocation& location, const Database& db);
+    Blob* GetBlob(const BlobLocation& location, const FileBackend& file);
 
 
     /** Returns the segment with the specified segment id or nullptr if the segment doesn't exist.
@@ -357,7 +350,7 @@ private:
   bool fileDatabase; // true if the database is a file database (in contrast to a pure in-memory database)
   bool loaded;       // true if the the FILE database has been fully loaded and is ready to be used by clients
   std::vector<client_id> clientsWaitingForLoading; // Clients to notify once the database has completed loading to complete their OpenDatabse requests
-  HANDLE fileHandle;
+  FileBackend file;
   file::Database fileHeader; // The current database file header (this is stored here to avoid having to read it to update the database) - the header state is undefined for in memory databases
   int useCount;      // How many clients are currently using this database - the Database is closed once this count reaches 0
 

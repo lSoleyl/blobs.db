@@ -1,6 +1,7 @@
 #include "pch.hpp"
 #include "include/server/Segment.hpp"
 #include "include/server/MemoryBlockDelta.hpp"
+#include "include/server/FileBackend.hpp"
 
 
 namespace blobs {
@@ -161,13 +162,20 @@ void Segment::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
 
 
 
-void Segment::LoadFrom(file::Segment& fileSegment, const file::BlockReference& location) {
+void Segment::LoadFrom(const FileBackend& file) {
   assert(status != Status::LOADED); // We currently don't use the LOADING status, this will only be used once we migrate to async IO loading
+  assert(file); // cannot be called on an in memory database (or one that failed to open)
 
-  commitId = fileSegment.commitId;
-  SetNextFreeClusterId(fileSegment.nextFreeClusterId);
+  auto fileSegment = file.LoadMemoryBlock<file::Segment>(fileLocation);
+  if (!fileSegment) {
+    TODO("Better error handling?");
+    throw std::exception("Failed to load segment!");
+  }
 
-  for (auto it = fileSegment.begin(), end = fileSegment.end(location.size); it != end; ++it) {
+  commitId = fileSegment->commitId;
+  SetNextFreeClusterId(fileSegment->nextFreeClusterId);
+
+  for (auto it = fileSegment->begin(), end = fileSegment->end(fileLocation.size); it != end; ++it) {
     auto& range = *it;
     auto clusterId = range.startId;
     for (auto& clusterReference : range) {

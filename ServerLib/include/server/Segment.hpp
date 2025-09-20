@@ -6,6 +6,7 @@ namespace blobs {
 namespace server {
 
 struct MemoryBlockDelta;
+class FileBackend;
 
 class Segment : public MemoryBlock {
 public:
@@ -68,7 +69,7 @@ public:
   /** Called by Database::LoadSegmentFromFile() to initialize the segment's data and mark it as loaded
    *  This will load the map of clusters and initialize each cluster to a not yet loaded one
    */
-  void LoadFrom(file::Segment& fileSegment, const file::BlockReference& location);
+  void LoadFrom(const FileBackend& file);
 
   const segment_id id;
 
