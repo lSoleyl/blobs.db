@@ -256,7 +256,7 @@ void Database::ReadInitialFileDatabaseData() {
   freeList->fileLocation = root.freeList;
   
   // Simply enter all block references as free memory blocks into the free list
-  for (auto& blockReference : *freeList) {
+  for (auto& blockReference : *fileFreeList) {
     freeList->FreeMemoryBlock(blockReference);
   }
 
