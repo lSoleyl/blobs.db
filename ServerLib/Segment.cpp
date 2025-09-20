@@ -146,7 +146,7 @@ void Segment::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
   while (clustersPos != clustersEnd) {
     // Find the next group of contiguous clusters
     auto startId = clustersPos->first;
-    auto endId = rangePos->startId;
+    auto endId = startId;
 
     auto writePos = rangePos->begin();
     *writePos++ = clustersPos->second->fileLocation; // store the block reference

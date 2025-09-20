@@ -651,7 +651,7 @@ void Database::Snapshot::SerializeIntoBuffer(std::vector<char>& targetBuffer) co
   while (segmentsPos != segmentsEnd) {
     // Find the next group of contiguous segments
     auto startId = segmentsPos->first;
-    auto endId = rangePos->startId;
+    auto endId = startId;
 
     auto writePos = rangePos->begin();
     *writePos++ = segmentsPos->second->fileLocation; // store the block reference
@@ -736,7 +736,8 @@ uint64_t Database::FreeList::CalculateRequiredSize() const {
 
 void Database::FreeList::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
   // Assume the memory block has been correctly sized before calling this method
-  assert(CalculateRequiredSize() == fileLocation.size);
+  // It can be smaller than the allocated size due to reorganization
+  assert(CalculateRequiredSize() <= fileLocation.size);
   targetBuffer.resize(fileLocation.size);
 
   auto fileFreeList = reinterpret_cast<file::FreeList*>(targetBuffer.data());
@@ -776,6 +777,10 @@ void Database::FreeList::AllocateAndApplyDelta(MemoryBlockDelta& delta) {
   fileLocation.size = EstimateRequiredSize(delta.GetReleased().size() + 1); // +1 because we release this free list's old memory block too
   fileLocation.offset = AllocateMemoryBlock(fileLocation.size);
 
+  // Mark the free list's memory block as allocated now to not forget to write it back into the database file
+  // We cannot do this before as it would mess up the free list update
+  delta.Allocated(this);
+
   // Only now that we performed all allocations we can safely release all memory blocks, which were released during this commit
   // This is important to be done last as we DO NOT want to accidentially allocate from a memory block, which was released during the same
   // commit as this break the copy-on-write semantics for this database and lead to unrecoverable database corruptions.
@@ -786,7 +791,7 @@ void Database::FreeList::AllocateAndApplyDelta(MemoryBlockDelta& delta) {
   // And don't forget to release the memory block in which the previous version of this free list was allocated
   FreeMemoryBlock(previousListBlock);
 
-  // Finally reorganize the 
+  // Finally reorganize the free list entries
   Reorganize();
 }
 

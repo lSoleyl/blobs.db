@@ -127,7 +127,7 @@ void Cluster::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
   while (blobsPos != blobsEnd) {
     // Find the next group of contiguous blobs
     auto startId = blobsPos->first;
-    auto endId = rangePos->startId;
+    auto endId = startId;
 
     auto writePos = rangePos->begin();
     *writePos++ = blobsPos->second->fileLocation; // store the block reference
