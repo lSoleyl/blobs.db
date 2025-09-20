@@ -364,7 +364,7 @@ void Database::CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Resu
 }
 
 
-void Database::LoadSegmentFromFile(Segment& segment) {
+void Database::LoadSegmentFromFile(Segment& segment) const {
   assert(fileHandle != INVALID_HANDLE_VALUE); // cannot be called on an in memory database (or one that failed to open)
   auto dbSegment = LoadFileReference<file::Segment>(fileHandle, segment.fileLocation);
   segment.LoadFrom(*dbSegment, segment.fileLocation);
@@ -373,7 +373,7 @@ void Database::LoadSegmentFromFile(Segment& segment) {
 
 
 Blob* Database::GetBlob(const BlobLocation& location) {
-  return snapshot->GetBlob(location);
+  return snapshot->GetBlob(location, *this);
 }
 
 Segment* Database::GetSegment(segment_id segment) {
@@ -559,7 +559,7 @@ Database::Snapshot::Snapshot(const Snapshot& other) : commitId(other.commitId+1)
 
 
 
-Blob* Database::Snapshot::GetBlob(const BlobLocation& location) {
+Blob* Database::Snapshot::GetBlob(const BlobLocation& location, const Database& db) {
   if (location.segment == constants::NextFreeSegmentId && location.cluster == constants::NextFreeClusterId && location.blob == constants::NextFreeBlobId) {
     // Return special blob holding the next free segment id
     return &nextFreeSegmentIdBlob;
@@ -567,8 +567,13 @@ Blob* Database::Snapshot::GetBlob(const BlobLocation& location) {
   
   // Otherwise perform regular lookup
   if (auto segment = GetSegment(location.segment)) {
-    TODO("If the segment isn't loaded yet, we must load it into memory here");
-    TODO("For that we must somehow pass in either the file handle or the database object itself");
+    // Load the segment from file if it isn't loaded yet
+    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+    if (segment->status != Status::LOADED) {
+      db.LoadSegmentFromFile(*segment);
+      assert(segment->status == Status::LOADED);
+    }
+
     // Use GetBlob() to support `NextFreeClusterId`
     return segment->GetBlob(location.cluster, location.blob);
   }

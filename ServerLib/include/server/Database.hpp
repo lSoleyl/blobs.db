@@ -144,7 +144,7 @@ private:
   /** Called by Snapshot::GetBlob() when encountering a not yet loaded segment to load it from the database file
    *  into memory
    */
-  void LoadSegmentFromFile(Segment& segment);
+  void LoadSegmentFromFile(Segment& segment) const;
 
 
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
@@ -159,8 +159,11 @@ private:
     Snapshot(const Snapshot& other);
 
     /** Returns the blob at the specified location or nullptr if it doesn't exist.
+     * 
+     * @param location the database location to retrieve the blob from (segment, cluster, blob)
+     * @param db the database to load the cluster from (only used for file databases)
      */
-    Blob* GetBlob(const BlobLocation& location);
+    Blob* GetBlob(const BlobLocation& location, const Database& db);
 
 
     /** Returns the segment with the specified segment id or nullptr if the segment doesn't exist.
