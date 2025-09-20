@@ -4,6 +4,8 @@
 
 namespace blobs::server {
 
+class FileBackend;
+
 class Blob : public MemoryBlock {
 public:
   // Initialize an empty blob
@@ -42,9 +44,13 @@ public:
    */
   virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
 
+  /** Called by Cluster::GetBlob() if the blob wasn't loaded yet.
+   *  This will load the blob's commit id and data and mark it as loaded
+   */
+  void LoadFrom(const FileBackend& file);
 
   const blob_id id;
-  const commit_id commitId; // id of commit/transaction when this blob was created/written
+  commit_id commitId; // id of commit/transaction when this blob was created/written
 
 private:
   std::vector<uint8_t> data;

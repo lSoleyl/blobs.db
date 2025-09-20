@@ -7,7 +7,6 @@ namespace blobs {
 namespace server {
 
 class MemoryBlockDelta;
-class FileBackend;
 
 class Cluster : public MemoryBlock {
 public:
@@ -21,8 +20,11 @@ public:
   Cluster(const Cluster& other, commit_id commitId);
 
   /** Returns the blob or nullptr if it doesn't exist
+   * 
+   * @param blob the id of the blob to retrieve
+   * @param file the file to load the blob from if it isn't loaded yet (for file databases only)
    */
-  Blob* GetBlob(blob_id blob);
+  Blob* GetBlob(blob_id blob, const FileBackend& file);
 
 
   /** If the specified blob does not yet exist OR has not yet been modified in the same transaction as the clsuter 

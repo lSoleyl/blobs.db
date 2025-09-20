@@ -1,5 +1,6 @@
 #include "pch.hpp"
 #include "include/server/Blob.hpp"
+#include "include/server/FileBackend.hpp"
 
 namespace blobs {
 namespace server {
@@ -32,6 +33,22 @@ void Blob::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
   std::copy(data.begin(), data.end(), fileBlob->DataBegin());
 }
 
+
+void Blob::LoadFrom(const FileBackend& file) {
+  assert(status != Status::LOADED); // We currently don't use the LOADING status, this will only be used once we migrate to async IO loading
+  assert(file); // cannot be called on an in memory database (or one that failed to open)
+
+  auto fileBlob = file.LoadMemoryBlock<file::Blob>(fileLocation);
+  if (!fileBlob) {
+    TODO("Better error handling?");
+    throw std::exception("Failed to load blob!");
+  }
+
+  commitId = fileBlob->commitId;
+  SetContent(fileBlob->Data(fileLocation.size));
+  
+  status = Status::LOADED;
+}
 
 
 }}

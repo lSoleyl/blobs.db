@@ -87,7 +87,7 @@ Blob* Segment::GetBlob(cluster_id cluster, blob_id blob, const FileBackend& file
       assert(clusterObj->status == Status::LOADED);
     }
 
-    return clusterObj->GetBlob(blob);
+    return clusterObj->GetBlob(blob, file);
   }
   return nullptr;
 }

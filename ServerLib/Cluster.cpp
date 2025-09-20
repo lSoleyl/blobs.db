@@ -15,7 +15,7 @@ Cluster::Cluster(const Cluster& other, commit_id commitId) : id(other.id), commi
   nextFreeBlobIdBlob.SetIdContent(nextFreeBlobId);
 }
 
-Blob* Cluster::GetBlob(blob_id blob) {
+Blob* Cluster::GetBlob(blob_id blob, const FileBackend& file) {
   if (blob == constants::NextFreeBlobId) {
     // special blob holding the next free blob id
     TODO("Ensure the blob is always up to date with the actual `nextFreeBlobId`");
@@ -24,7 +24,17 @@ Blob* Cluster::GetBlob(blob_id blob) {
 
 
   auto pos = blobs.find(blob);
-  return (pos != blobs.end()) ? pos->second.get() : nullptr;
+  auto blobObj = (pos != blobs.end()) ? pos->second.get() : nullptr;
+  if (blobObj) {
+    // Load the blob from file if it isn't loaded yet
+    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+    if (blobObj->status != Status::LOADED) {
+      blobObj->LoadFrom(file);
+      assert(blobObj->status == Status::LOADED);
+    }
+  }
+
+  return blobObj;
 }
 
 Blob* Cluster::UpdateBlob(blob_id blob, MemoryBlockDelta* delta) {
