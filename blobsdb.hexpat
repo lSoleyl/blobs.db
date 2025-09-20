@@ -155,6 +155,12 @@ namespace Database {
       FreeListReference freeList;        // File offset and size to the free list block
       DummyReference transactionLog;     // File offset and size to the transaction log block
     };
+    
+    struct DummyRoot {
+      DummyReference snapshot;
+      DummyReference freeList;
+      DummyReference transactionLog;
+    };
 }
 
 
@@ -163,7 +169,20 @@ struct Database {
   Database::Header header;
   u8 rootIndex;     // Index of the currently active database root in our copy on write update
   u8 unused[2];
-  Database::Root roots[2];    // Two root datastructures (one active, one inactive to support copy-on-write)
+  
+  // Two root datastructures (one active, one inactive to support copy-on-write)
+  // Comment in the following line instead of the if-else to inspect the previous transaction's state
+  //Database::Root roots[2];    
+  
+  // Only one database root is valid at a time
+  if (rootIndex == 0) {
+    Database::Root activeRoot;
+    Database::DummyRoot inactiveRoot;
+  } else {
+    Database::DummyRoot inactiveRoot;  
+    Database::Root activeRoot;
+  }
+  
 };
 
 
