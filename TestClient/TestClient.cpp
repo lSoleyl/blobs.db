@@ -10,8 +10,16 @@ int main()
     std::cout << "Starting client\n";
     auto db = blobs::Database::Open("127.0.0.1", "test.db");
 
+    // First read content at blob 0
+    auto content = db->ReadString(0, 0, 0);
+    std::cout << "Content at (0,0,0): '" << content << "'\n";
+
     // Write some data into the initial blob and commit the txn
-    db->WriteString(0, 0, 0, "Hello blobs.db!");
+    if (content.empty()) {
+      db->WriteString(0, 0, 0, "Hello blobs.db!");
+    } else {
+      db->WriteString(0, 0, 0, content + " (modified)");
+    }
     blobs::Transaction::Commit();
 
      
@@ -25,6 +33,7 @@ int main()
     blobs::Shutdown();
 
     std::cout << "Exiting client\n";
+    system("PAUSE");
   } catch (blobs::Exception& ex) {
     std::cerr << "[ERR] Exiting client with exception: " << ex.what() << "\n";
   }

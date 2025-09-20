@@ -64,6 +64,13 @@ public:
     WriteBlob(segment, cluster, blob, string.data(), string.size() * sizeof(CharT));
   }
 
+  /** Convenience method to store string typed content in a blob
+   */
+  template<typename CharT = char>
+  void WriteString(segment_id segment, cluster_id cluster, blob_id blob, const std::basic_string<CharT>& string) {
+    WriteBlob(segment, cluster, blob, string.data(), string.size() * sizeof(CharT));
+  }
+
   /** Convenience overload to allow the compiler to determine the template type from the argument
    */
   template<typename CharT = char>
