@@ -479,7 +479,7 @@ Blob* Database::Snapshot::GetBlob(const BlobLocation& location, const FileBacken
     }
 
     // Use GetBlob() to support `NextFreeClusterId`
-    return segment->GetBlob(location.cluster, location.blob);
+    return segment->GetBlob(location.cluster, location.blob, file);
   }
   return nullptr;
 }

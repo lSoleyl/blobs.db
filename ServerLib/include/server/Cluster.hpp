@@ -7,6 +7,7 @@ namespace blobs {
 namespace server {
 
 class MemoryBlockDelta;
+class FileBackend;
 
 class Cluster : public MemoryBlock {
 public:
@@ -72,12 +73,24 @@ public:
    */
   virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
 
+  /** Called by Segment::GetBlob() if the cluster wasn't loaded yet to initialize the cluster's data and mark it as loaded
+   *  This will load the map of blobs and initialize each blob to a not yet loaded one
+   */
+  void LoadFrom(const FileBackend& file);
+
   const cluster_id id;
 
   /** The commit id of the transaction when this cluster's blob table has been last modified
+   *  We cannot mark it const anymore, because when loading a cluster from file on demand we must change the 
+   *  commitId, which we do now know beforehand unless we would also store it in the block reference, which would be absurd.
    */
-  const commit_id commitId;
+  commit_id commitId;
 private:
+
+  /** Used when loading a cluster to mark the blob as exisitng, but not yet loaded from file
+   */
+  void DelayLoadBlob(blob_id blob, const file::BlockReference& fileLocation);
+
   blob_id nextFreeBlobId;
 
   // We allow holes in blob numbering due to deletion, so we need a map to hold all blobs of a cluster

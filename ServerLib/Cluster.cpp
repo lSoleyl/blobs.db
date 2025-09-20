@@ -1,6 +1,7 @@
 #include "pch.hpp"
 #include "include/server/Cluster.hpp"
 #include "include/server/MemoryBlockDelta.hpp"
+#include "include/server/FileBackend.hpp"
 
 namespace blobs {
 namespace server {
@@ -138,5 +139,42 @@ void Cluster::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
 }
 
 
+
+void Cluster::LoadFrom(const FileBackend& file) {
+  assert(status != Status::LOADED); // We currently don't use the LOADING status, this will only be used once we migrate to async IO loading
+  assert(file); // cannot be called on an in memory database (or one that failed to open)
+
+  auto fileCluster = file.LoadMemoryBlock<file::Cluster>(fileLocation);
+  if (!fileCluster) {
+    TODO("Better error handling?");
+    throw std::exception("Failed to load cluster!");
+  }
+
+  commitId = fileCluster->commitId;
+  SetNextFreeBlobId(fileCluster->nextFreeBlobId);
+
+  for (auto it = fileCluster->begin(), end = fileCluster->end(fileLocation.size); it != end; ++it) {
+    auto& range = *it;
+    auto blobId = range.startId;
+    for (auto& blobReference : range) {
+      DelayLoadBlob(blobId, blobReference);
+      ++blobId;
+    }
+  }
+
+  status = Status::LOADED;
+}
+
+
+void Cluster::DelayLoadBlob(blob_id blob, const file::BlockReference& fileLocation) {
+  auto& blobPtr = blobs[blob];
+
+  // This operation is not allowed for already existing/loaded clusters
+  assert(!blobPtr);
+
+  blobPtr = std::make_shared<Blob>(blob, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the blob's memory block, so we cannot know it yet */);
+  blobPtr->status = MemoryBlock::Status::NOT_LOADED;
+  blobPtr->fileLocation = fileLocation;
+}
 
 }}

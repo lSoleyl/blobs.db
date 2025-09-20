@@ -6,7 +6,6 @@ namespace blobs {
 namespace server {
 
 struct MemoryBlockDelta;
-class FileBackend;
 
 class Segment : public MemoryBlock {
 public:
@@ -46,8 +45,12 @@ public:
   void ReleaseAllClusters(MemoryBlockDelta* delta);
 
   /** Returns the specified cluster's blob or nullptr if it doesn't exist
+   * 
+   * @param cluster the cluster id within the segment
+   * @param blob the blob id within the cluster
+   * @param file the file to load the cluster from in case it isn't loaded yet (only for file databases)
    */
-  Blob* GetBlob(cluster_id cluster, blob_id blob);
+  Blob* GetBlob(cluster_id cluster, blob_id blob, const FileBackend& file);
 
   /** Returns the next free cluster id for this segment
    *  This is the value, which can be read from the (`NextFreeClusterId`, `NextFreeBlobId`) blob
@@ -66,7 +69,7 @@ public:
    */
   virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
 
-  /** Called by Database::LoadSegmentFromFile() to initialize the segment's data and mark it as loaded
+  /** Called by Snapshot::GetBlob() if the segment wasn't loaded yet to initialize the segment's data and mark it as loaded
    *  This will load the map of clusters and initialize each cluster to a not yet loaded one
    */
   void LoadFrom(const FileBackend& file);

@@ -73,13 +73,20 @@ void Segment::ReleaseAllClusters(MemoryBlockDelta* delta) {
 }
 
 
-Blob* Segment::GetBlob(cluster_id cluster, blob_id blob) {
+Blob* Segment::GetBlob(cluster_id cluster, blob_id blob, const FileBackend& file) {
   if (cluster == constants::NextFreeClusterId && blob == constants::NextFreeBlobId) {
     // Special blob holding the next free cluster id for cluster creation
     return &nextFreeClusterIdBlob;
   }
 
   if (auto clusterObj = GetCluster(cluster)) {
+    // Load the cluster from file if it isn't loaded yet
+    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+    if (clusterObj->status != Status::LOADED) {
+      clusterObj->LoadFrom(file);
+      assert(clusterObj->status == Status::LOADED);
+    }
+
     return clusterObj->GetBlob(blob);
   }
   return nullptr;
@@ -195,7 +202,7 @@ void Segment::DelayLoadCluster(cluster_id cluster, const file::BlockReference& f
   // This operation is not allowed for already existing/loaded clusters
   assert(!clusterPtr);
 
-  clusterPtr = std::make_shared<Cluster>(cluster, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the segment's memory block, so we cannot know it yet */);
+  clusterPtr = std::make_shared<Cluster>(cluster, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the cluster's memory block, so we cannot know it yet */);
   clusterPtr->status = MemoryBlock::Status::NOT_LOADED;
   clusterPtr->fileLocation = fileLocation;
 }
