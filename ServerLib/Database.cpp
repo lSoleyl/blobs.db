@@ -364,6 +364,14 @@ void Database::CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Resu
 }
 
 
+void Database::LoadSegmentFromFile(Segment& segment) {
+  assert(fileHandle != INVALID_HANDLE_VALUE); // cannot be called on an in memory database (or one that failed to open)
+  auto dbSegment = LoadFileReference<file::Segment>(fileHandle, segment.fileLocation);
+  segment.LoadFrom(*dbSegment, segment.fileLocation);
+}
+
+
+
 Blob* Database::GetBlob(const BlobLocation& location) {
   return snapshot->GetBlob(location);
 }
@@ -615,9 +623,6 @@ void Database::Snapshot::DelayLoadSegment(segment_id segment, file::BlockReferen
   segmentPtr->status = MemoryBlock::Status::NOT_LOADED;
   segmentPtr->fileLocation = fileReference;
 }
-
-
-
 
 void Database::Snapshot::DeleteSegment(segment_id segment, MemoryBlockDelta* delta) {
   auto pos = segments.find(segment);

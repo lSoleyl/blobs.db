@@ -140,6 +140,13 @@ private:
    */
   void CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode);
 
+
+  /** Called by Snapshot::GetBlob() when encountering a not yet loaded segment to load it from the database file
+   *  into memory
+   */
+  void LoadSegmentFromFile(Segment& segment);
+
+
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
    *  The transaction is committed by simply replacing the snapshot pointer with another snapshot pointer.
    */

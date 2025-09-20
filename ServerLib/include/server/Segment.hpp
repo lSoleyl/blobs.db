@@ -65,12 +65,25 @@ public:
    */
   virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
 
+  /** Called by Database::LoadSegmentFromFile() to initialize the segment's data and mark it as loaded
+   *  This will load the map of clusters and initialize each cluster to a not yet loaded one
+   */
+  void LoadFrom(file::Segment& fileSegment, const file::BlockReference& location);
+
   const segment_id id;
 
   /** The commit id of the transaction when the cluster map has been modified last time
+   *  We cannot mark it const anymore, because when loading a segment from file on demand we must change the 
+   *  commitId, which we do now know beforehand unless we would also store it in the block reference, which would be absurd.
    */
-  const commit_id commitId;
+  commit_id commitId;
 private:
+
+  /** Used when loading a segmnt to mark the cluster as exisitng, but not yet loaded from file
+   */
+  void DelayLoadCluster(cluster_id cluster, const file::BlockReference& fileLocation);
+
+
   cluster_id nextFreeClusterId;
   sorted_flat_map<cluster_id, std::shared_ptr<Cluster>> clusters;
 

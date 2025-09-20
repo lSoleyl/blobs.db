@@ -160,4 +160,39 @@ void Segment::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
 }
 
 
+
+void Segment::LoadFrom(file::Segment& fileSegment, const file::BlockReference& location) {
+  assert(status != Status::LOADED); // We currently don't use the LOADING status, this will only be used once we migrate to async IO loading
+
+  commitId = fileSegment.commitId;
+  SetNextFreeClusterId(fileSegment.nextFreeClusterId);
+
+  for (auto it = fileSegment.begin(), end = fileSegment.end(location.size); it != end; ++it) {
+    auto& range = *it;
+    auto clusterId = range.startId;
+    for (auto& clusterReference : range) {
+      DelayLoadCluster(clusterId, clusterReference);
+      ++clusterId;
+    }
+  }
+
+  status = Status::LOADED;
+}
+
+
+
+void Segment::DelayLoadCluster(cluster_id cluster, const file::BlockReference& fileLocation) {
+  auto& clusterPtr = clusters[cluster];
+
+  // This operation is not allowed for already existing/loaded clusters
+  assert(!clusterPtr);
+
+  clusterPtr = std::make_shared<Cluster>(cluster, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the segment's memory block, so we cannot know it yet */);
+  clusterPtr->status = MemoryBlock::Status::NOT_LOADED;
+  clusterPtr->fileLocation = fileLocation;
+}
+
+
+
+
 }}
