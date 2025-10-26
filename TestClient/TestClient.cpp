@@ -1,4 +1,4 @@
-#include <blobs/Blobs.hpp>
+﻿#include <blobs/Blobs.hpp>
 
 #include <iostream>
 
@@ -8,7 +8,7 @@ int main()
     blobs::Initialize();
 
     std::cout << "Starting client\n";
-    auto db = blobs::Database::Open("127.0.0.1", "test.db");
+    auto db = blobs::Database::Open("127.0.0.1", L"でた.db"); // server shows DatabaseOpen(??.db) in the console only because Consolas font doesn't support Hiragana glyphs
 
     // First read content at blob 0
     auto content = db->ReadString(0, 0, 0);

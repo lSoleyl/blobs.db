@@ -2,6 +2,8 @@
 #include "include/server/FileBackend.hpp"
 #include "include/server/MemoryBlock.hpp"
 
+#include <common/Encoding.hpp>
+
 namespace blobs::server {
 
 
@@ -24,10 +26,12 @@ FileBackend::~FileBackend() noexcept {
 
 
 FileBackend FileBackend::OpenExclusive(const char* filePath, bool& exists) {
-  TODO("Support Unicode (UTF-8) paths later on");
+  
+  auto utf16Path = encoding::ToUTF16(filePath);
+
   FileBackend result;
-  result.handle = CreateFileA(
-    filePath,
+  result.handle = CreateFileW(
+    utf16Path.c_str(),
     GENERIC_READ | GENERIC_WRITE,
     0 /*exclusive access*/,
     NULL,

@@ -97,8 +97,8 @@ void Database::LoadFromFile() {
       bool exists;
       file = FileBackend::OpenExclusive(name.c_str(), exists);
       if (!file) {
-        TODO("Check what the reason was and translate the most common ones into own error codes to return");
-        throw std::exception("Failed to open/create database file");
+        TODO("Check what the reason was and translate the most common ones into own error codes/messages to return");
+        throw std::exception("Failed to open/create database file for exclusive writing");
       }
 
       if (!exists) {
@@ -109,8 +109,6 @@ void Database::LoadFromFile() {
       // Now the database file exists -> read it and convert it into memory objects
       ReadInitialFileDatabaseData();
 
-      
-      TODO("Process any outstanding transaction log entries?");
 
       // Notify the server about the completed database load
       Server::Instance().GetCompletionPort().PostSimpleTask([this]() { CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::SUCCESS); });

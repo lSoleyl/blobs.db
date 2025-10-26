@@ -1,9 +1,12 @@
 #include "pch.hpp"
 #include "include/server/Server.hpp"
 #include "include/server/Client.hpp"
+
 #include <network/Factory.hpp>
+#include <common/Encoding.hpp>
 
 #include <iostream>
+#include <sstream>
 
 namespace blobs {
 namespace server {
@@ -28,7 +31,7 @@ void Server::ServerMain() {
       ioCompletionPort.ProcessIOCompletionPacket();
     }
   } catch (network::IOCompletionPort::Stopped&) {
-    std::cout << "Shutdown signal received, exiting Server::ServerMain()\n";
+    std::cout << "Shutdown signal received, exiting Server::ServerMain()" << std::endl;
     return;
   }
 }
@@ -564,7 +567,7 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
 
 void Server::LogMessage(const network::message::Message& message) {
   FIXME("This should be disabled in production code as it probably slows down the server as the windows console is known to be slow");
-  std::cout << "Client[" << message.clientId << "]: " << message << "\n";
+  std::cout << "Client[" << message.clientId << "]: " << message << std::endl;
 }
 
 

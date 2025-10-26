@@ -5,6 +5,8 @@
 #include <network/SocketFactory.hpp>
 
 #include <iostream>
+#include <io.h>
+#include <fcntl.h>
 
 using namespace blobs;
 
@@ -24,21 +26,23 @@ int main(int argc, char** argv) {
   }
 #endif
 
+  // Enable unicode console output
+  SetConsoleOutputCP(CP_UTF8);
 
-  std::cout << "Server initializing\n";
+  // Enable buffering on stdio for faster writes... It also results in us having to flush the output using std::endl
+  setvbuf(stdout, nullptr, _IOFBF, 1000);
 
-  TODO("process outstanding transactions from the server log if any"); 
-  // But to do this, the server log would need to be stored separately from the databse
-  // Alternatively process the transaction log when opening a database for the first time.
+  std::cout << "Server initializing" << std::endl;;
 
+  
   // Use the regular network socket factory for the server.
   network::SocketFactory::Use();
 
   server::Server server;
-  std::cout << "Server ready\n";
+  std::cout << "Server ready" << std::endl;
 
   server.ServerMain();
 
-  std::cout << "Server exiting\n";
+  std::cout << "Server exiting" << std::endl;
   return 0;
 }

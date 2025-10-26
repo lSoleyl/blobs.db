@@ -108,6 +108,9 @@
     <ClCompile Include="IOCPReceiveMessageQueue.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="common\Encoding.cpp">
+      <Filter>Quelldateien\common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -208,6 +211,9 @@
     </ClInclude>
     <ClInclude Include="include\network\IOCPReceiveMessageQueue.hpp">
       <Filter>Headerdateien\network</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Encoding.hpp">
+      <Filter>Headerdateien\common</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

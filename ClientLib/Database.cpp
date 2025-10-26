@@ -7,6 +7,7 @@
 
 #include <network/message/All.hpp>
 #include <common/BlobLocation.hpp>
+#include <common/Encoding.hpp>
 
 #include <charconv>
 
@@ -139,6 +140,12 @@ Database* Database::Open(const char* connectionStringBegin, size_t connectionStr
 }
 
 
+Database* Database::Open(const wchar_t* connectionString, size_t connectionStringLen) {
+  // Simply encode into UTF-8 and then call the regular version
+  std::string u8ConnectionString = encoding::ToUTF8(std::wstring_view(connectionString, connectionStringLen));
+  return Open(u8ConnectionString.data(), u8ConnectionString.length());
+}
+
 
 Database* Database::Open(const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, int port) {
   std::string_view hostName(hostNameData, hostNameLen);
@@ -167,6 +174,13 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
   // not reached
   return nullptr;
 }
+
+Database* Database::Open(const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, int port) {
+  // Simply convert the UTF-16 database name into UTF-8 and call the regular Open() function
+  auto u8DatabaseName = encoding::ToUTF8(std::wstring_view(databaseName, databaseNameLen));
+  return Database::Open(hostName, hostNameLen, u8DatabaseName.data(), u8DatabaseName.length(), port);
+}
+
 
 
 std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {

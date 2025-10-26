@@ -23,7 +23,7 @@ public:
   /** Opens the file at the specified path for exclusive RW access and returns
    *  the file backend object. 
    *  
-   * @param filePath the file to open
+   * @param filePath the utf-8 encoded file path to open
    * @param exists out parameter, which is set to true if the file alredy exists
    * 
    * @return the file backend or an uninitialized file backend if opening the file failed
