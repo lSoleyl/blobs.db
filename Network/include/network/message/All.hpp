@@ -11,6 +11,8 @@
 #include "ConnectionClosed.hpp"
 #include "NetworkException.hpp"
 
+#include "TransactionBegin.hpp"
+#include "TransactionBeginResponse.hpp"
 #include "TransactionAbort.hpp"
 #include "TransactionCommit.hpp"
 #include "TransactionCommitResponse.hpp"

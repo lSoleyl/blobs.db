@@ -81,6 +81,11 @@ void Server::ProcessReceivedMessages() {
         HandleBlobsRead(message.Cast<network::message::BlobsRead>());
         break;
 
+
+      case network::message::Type::TransactionBegin:
+        HandleTransactionBegin(message.Cast<network::message::TransactionBegin>());
+        break;
+
       case network::message::Type::TransactionAbort:
         HandleTransactionAbort(message.Cast<network::message::TransactionAbort>());
         break;
@@ -190,6 +195,25 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
 }
 
 
+void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::TransactionBegin> message) {
+  auto& client = server::Client::Get(message->clientId);
+
+  if (client.IsInsideTransaction()) {
+    // Cannot start a transaction if the client is already inside one
+    SendMessageToClient(client.id, network::message::TransactionBeginResponse::CreateError(network::message::TransactionBeginResponse::Result::ERROR_ALREADY_IN_TRANSACTION));
+    return;
+  }
+
+  TODO("Support a MVCC transaction in the future by fixing a snapshot of the database");
+  client.BeginTransaction();
+
+  //FIXME STICKY Client may request to release additional locks... we should merge
+
+  //FIXME STICKY Actually check, which sticky locks have been revoked for the client instead of revoking all
+  SendMessageToClient(client.id, network::message::TransactionBeginResponse::Create());
+}
+
+
 void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message) {
   AbortTransaction(server::Client::Get(message->clientId));
 }
@@ -200,6 +224,13 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
 
   // For now only handle simple case with a single commit message
   auto& client = server::Client::Get(message->clientId);
+
+
+  if (!client.IsInsideTransaction()) {
+    // Cannot commit if no transaction is in progress -> respond with error message and ignore the message
+    server->SendMessageToClient(client.id, network::message::TransactionCommitResponse::CreateError(network::message::TransactionCommitResponse::Result::NO_TRANSACTION_IN_PROGRESS));
+    return;
+  }
 
   // To handle multi message commits we push the messages into a commit message vector, which will also
   // make the server reject any other messages for this client.
@@ -525,6 +556,12 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   auto database = client.GetDatabase(message.databaseId);
   if (!database) {
     SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED));
+    return true;
+  }
+
+  // Client has to explicitly start a transaction before being able to read anything
+  if (!client.IsInsideTransaction()) {
+    SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::NO_TRANSACTION_IN_PROGRESS));
     return true;
   }
 

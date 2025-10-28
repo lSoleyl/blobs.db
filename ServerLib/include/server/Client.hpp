@@ -48,6 +48,10 @@ public:
    */
   database_id GetMaxDatabaseId() const;
 
+  /** Marks the client as being inside a transaction
+   */
+  void BeginTransaction();
+
   /** Aborts the client's current transaction and releases all held locks
    *  
    * @return true if there was actually a transaction running for that client
@@ -83,6 +87,7 @@ private:
   struct DatabaseLocks {
     Database* database;
     std::vector<BlobLocation> locks; // All locks held by this client in the database (vector for more memory efficient storage)
+    //FIXME STICKY we need a list of locks released by the server while the client was not inside a transaction
   };
 
   /** All databases opened and locks held by this client. The index is the database id and 

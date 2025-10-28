@@ -8,6 +8,8 @@
 
 namespace blobs {
 struct BlobLocation;
+class Transaction;
+
 namespace network::message { 
   struct BlobsReadResponse;
 }
@@ -230,6 +232,12 @@ private:
   /** Performs error handling when reading blobs, which just comes down to dispatching the correct exception and sometimes aborting a running transaction
    */
   void HandleReadBlobErrorResponse(const network::message::BlobsReadResponse& response);
+
+
+  /** Returns the currently active transaction (if active) otherwise attempts to start a new transaction and
+   *  returns the new transaction object upon success. Throws an exception if starting the transaction fails.
+   */
+  Transaction& GetTransaction() const;
 
 
   Database(std::string name, database_id id, connection_id connectionId);

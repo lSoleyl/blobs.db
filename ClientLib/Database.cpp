@@ -204,21 +204,21 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   TODO("Add synchronization: Only one thread may communicate with the database at any given time.");
 
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(connectionId, true);
+  auto& transaction = GetTransaction();
 
   BlobLocation location(segment, cluster, blob);
 
   // First check whether we have already written this blob in the current transaction and return the written data if so
   // This will also ensure that we don't read an already deleted blob and throw an exception if so
-  if (auto blobContent = transaction->ReadBlob(this, location)) {
+  if (auto blobContent = transaction.ReadBlob(this, location)) {
     return *blobContent;
   }
 
   auto cachedBlob = cache->Get(location);
 
-  if (cachedBlob && cachedBlob->transactionId == transaction->id) {
+  if (cachedBlob && cachedBlob->transactionId == transaction.id) {
     // We already read this blob. Now if we also aready hold a compatible lock to the requested one, then we can simply return the cached blob
-    auto currentLock = transaction->GetLockType(this, location);
+    auto currentLock = transaction.GetLockType(this, location);
     if (currentLock >= (writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read)) {
       // Our current lock is already sufficient to fullfill the request -> return the cached blob content
       return cachedBlob->Data();
@@ -242,13 +242,13 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
     if (cachedBlob && response->nBlobs == 0) {
       // Our cached blob is up to date, but we still successfully acquired the lock -> notify the transaction of the lock
-      transaction->AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
+      transaction.AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
       return cachedBlob->Data();
     } else if (response->nBlobs == 1) {
       // Server has responded with a newer version of the blob, or we don't have it in our cache yet
       auto& blobData = *response->begin();
-      auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction->id);
-      transaction->AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
+      auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction.id);
+      transaction.AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
       return cachedBlob.Data();
     } else {
       assert(false); // server repsonsed with an illegal number of blobs!
@@ -286,11 +286,11 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
   }
 
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(connectionId, true);
+  auto& transaction = GetTransaction();
   BlobLocation location(segment, cluster, blob);
 
 
-  if (transaction->GetLockType(this, location) != Transaction::LockMode::Write) {
+  if (transaction.GetLockType(this, location) != Transaction::LockMode::Write) {
     // We don't have the write lock yet -> acquire it
     // Since we want to write the blob, we don't have to read the content, we just want the write lock
     WriteLockNoContent(location);
@@ -298,7 +298,7 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
 
   // Store the new blob data for the transaction commit in the transaction state.
   // The following call will throw an exception if we attempt to write a blob, which has been deleted in this transaction.
-  transaction->WriteBlob(this, location, blobData, static_cast<blob_size>(blobSize));
+  transaction.WriteBlob(this, location, blobData, static_cast<blob_size>(blobSize));
 }
 
 
@@ -348,7 +348,7 @@ cluster_id Database::CreateCluster(segment_id segment) {
   WriteBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, &nextFreeClusterId, sizeof(nextFreeClusterId));
 
   // The cluster is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction
+  auto transaction = Transaction::Get(connectionId); // ReadBlobInternal() has already started a transaction
 
   // Through creation we implicitly hold write locks to the cluster's special blobs
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
@@ -388,7 +388,7 @@ segment_id Database::CreateSegment() {
 
 
   // The segment is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction
+  auto transaction = Transaction::Get(connectionId); // ReadBlobInternal() has already started a transaction
 
   // Through creation we implicitly hold write locks to the segment's special blobs
   transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
@@ -411,16 +411,16 @@ segment_id Database::CreateSegment() {
 
 void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) {
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(connectionId, true);
+  auto& transaction = GetTransaction();
   BlobLocation location(segment, cluster, blob);
 
   // Acquire a write lock for deletion of the blob if we don't already hold one.
-  if (transaction->GetLockType(this, location) != Transaction::LockMode::Write) {
+  if (transaction.GetLockType(this, location) != Transaction::LockMode::Write) {
     WriteLockNoContent(location); // no need to fetch the blob content -> we delete the blob anyway
   }
 
   // Validate that the cluster isn't deleted yet and then mark the blob for deletion upon transaction commit
-  transaction->DeleteBlob(this, location);
+  transaction.DeleteBlob(this, location);
 
   // Remove the blob from our blob cache
   cache->RemoveBlob(location);
@@ -429,17 +429,17 @@ void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) 
 
 void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(connectionId, true);
+  auto& transaction = GetTransaction();
   BlobLocation lockLocation(segment, cluster, constants::ClusterDeleteId);
 
   // Acquire a write lock for deletion of the cluster if we don't already hold one (which is unlikely)
-  if (transaction->GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
+  if (transaction.GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
   }
 
   // Validate that the segment isn't deleted yet and then mark the cluster with all its segments
   // for deletion upon transaction commit
-  transaction->DeleteCluster(this, segment, cluster);
+  transaction.DeleteCluster(this, segment, cluster);
 
   // Remove all cached blobs for that cluster
   cache->RemoveCluster(segment, cluster);
@@ -448,16 +448,16 @@ void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
 
 void Database::DeleteSegment(segment_id segment) {
   // Get the currently running transaction or start a new one if no is running yet
-  auto transaction = Transaction::Get(connectionId, true);
+  auto& transaction = GetTransaction();
   BlobLocation lockLocation(segment, constants::SegmentDeleteId, constants::ClusterDeleteId);
 
   // Acquire a write lock for deletion of the segment if we don't already hold one (which is unlikely)
-  if (transaction->GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
+  if (transaction.GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
   }
 
   // Mark the segment for deletion upon transaction commit
-  transaction->DeleteSegment(this, segment);
+  transaction.DeleteSegment(this, segment);
 
   // Remove all cached blobs for that segment
   cache->RemoveSegment(segment);
@@ -521,7 +521,7 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   WriteBlobInternal(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
 
   // The blob is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(connectionId, false); // ReadBlobInternal() has already started a transaction if not already
+  auto transaction = Transaction::Get(connectionId); // ReadBlobInternal() has already started a transaction if not already
   transaction->AcquiredLock(this, newLocation, Transaction::LockMode::Write);
 
   // Now we logically created the blob and we implicitly created the write lock, now the caller just has to actually write some
@@ -532,7 +532,7 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
 
 void Database::WriteLockNoContent(const BlobLocation& location) {
   // Create the request for this blob
-  auto transaction = Transaction::Get(connectionId, true);
+  auto& transaction = GetTransaction();
   auto& client = internal::Network::Get(connectionId);
   auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
   auto& address = *request->begin();
@@ -546,7 +546,7 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
     assert(response->nBlobs == 0); // The server should never respond with a blob to a Delete request
     // Nothing to enter into the cache, but update the held lock type in the transaction
-    transaction->AcquiredLock(this, location, Transaction::LockMode::Write);
+    transaction.AcquiredLock(this, location, Transaction::LockMode::Write);
   } else {
     // Handle error response
     HandleReadBlobErrorResponse(*response);
@@ -568,12 +568,16 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
       // This should never happen unless the client lib doesn't track database open/closes correctly
       throw Exception("internal error: Database not opened!");
 
+    case network::message::BlobsReadResponse::Result::NO_TRANSACTION_IN_PROGRESS:
+      // This should never happen as the client lib will always start a transaction before requesting any blobs
+      throw Exception("internal error: No transaction in progress!");
+
     case network::message::BlobsReadResponse::Result::LOCK_TIMEOUT:
       TODO("somehow add more detail to this error...");
       throw exception::LockTimeout();
 
     case network::message::BlobsReadResponse::Result::DEADLOCK:
-      if (auto transaction = Transaction::Get(connectionId, false)) {
+      if (auto transaction = Transaction::Get(connectionId)) {
         // Delete the currently running transaction and if we are connected to other servers -> notify them about the transaction abort of this client
         transaction->AbortDeadlock();
       } else {
@@ -590,6 +594,43 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
   }
 }
 
+
+
+Transaction& Database::GetTransaction() const {
+  if (auto transaction = Transaction::Get(connectionId)) {
+    // tranaction already in progress
+    return *transaction;
+  }
+
+  // Start new transaction
+  auto& client = internal::Network::Get(connectionId);
+  client.SendMessageToServer(network::message::TransactionBegin::Create());
+  
+  // Wait for response from server
+  auto response = internal::Network::ExpectMessage<network::message::TransactionBeginResponse>(client);
+  
+  if (!response->IsSuccess()) {
+    switch (response->result) {
+      case network::message::TransactionBeginResponse::Result::ERROR_ALREADY_IN_TRANSACTION:
+        throw exception::TransactionAlreadyOpen();
+
+      default:
+        throw Exception("Unexpected TransactionBegin error response");
+        assert(false); // unhandled error message
+    }
+  }
+
+
+  bool keep = (response->result == network::message::TransactionBeginResponse::Result::SUCCESS_KEEP_LOCKS);
+  for (auto& lock : *response) {
+    //FIXME STICKY filter if keep, erase otherwise
+  }
+  
+  //FIXME STICKY check, which locks to keep/revoke
+  //FIXME STICKY the database must hold the last held locks somewhere for this and pass them to Create
+  //FIXME STICKY but how without polluting the whole interface?
+  return *Transaction::Create(connectionId);
+}
 
 
 }

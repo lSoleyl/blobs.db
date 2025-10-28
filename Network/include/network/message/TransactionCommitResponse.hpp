@@ -19,6 +19,7 @@ struct TransactionCommitResponse : public Message {
     DATABASE_NOT_OPENED,          // Passed a database id, which the server doesn't recognize for this client
     DATABASE_ORDER_VIOLATED,      // Commit messages for multiple databases must be groupd by databses, not mixed
     MISSING_WRITE_LOCK,           // A blob has been committed without acquiring a write lock for it
+    NO_TRANSACTION_IN_PROGRESS,   // Attempting to commit without starting a transaction
     SEGMENT_DOES_NOT_EXIST,       // A segment specified in a blob commit does not exist
     CLUSTER_DOES_NOT_EXIST,       // A cluster specified in a blob commit does not exist
     BLOB_DOES_NOT_EXIST,          // A blob specified in a blob commit does not exist

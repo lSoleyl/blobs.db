@@ -38,10 +38,13 @@ public:
 
   /** Returns the currently running transaction or nullptr if no transaction is running.
    *  This is only used from within the ClientLib itself
-   *
-   * @param startIfNotActive if true implicitly starts a new transaction if now transaction is already running
    */
-  static Transaction* Get(connection_id connectionId, bool startIfNotActive);
+  static Transaction* Get(connection_id connectionId);
+
+  /** Creates a new transaction for the given connection ID without checking for an already existing one. This 
+   *  function is only used from within CLientLib itself.
+   */
+  static Transaction* Create(connection_id connectionId);
 
 
   enum class LockMode { None, Read, Write };

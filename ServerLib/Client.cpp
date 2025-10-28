@@ -75,6 +75,14 @@ database_id Client::GetMaxDatabaseId() const {
   return openDatabases.empty() ? 0 : static_cast<database_id>(openDatabases.size() - 1);
 }
 
+void Client::BeginTransaction() {
+  TODO("Accept a parameter to determine the kind of transaction");
+  transaction = Transaction::Write;
+
+
+  TODO("Also clear the list of revoked locks here?");
+}
+
 bool Client::AbortTransaction() {
   if (transaction != Transaction::None) { // Nothing to do if no transaction is in progress
 
@@ -83,6 +91,7 @@ bool Client::AbortTransaction() {
       if (dbEntry.database) {
         // Release all locks held by this client and remove any queued up read operation
         dbEntry.database->AbortClientTransaction(id, dbEntry.locks);
+        // FIXME STICKY only clear the locks if the client requested this in the abort!
         dbEntry.locks.clear();
       }
     }
@@ -103,14 +112,10 @@ bool Client::IsInsideTransaction() const {
 bool Client::AcquireLocks(const network::message::BlobsRead& message) {
   // The caller should ensure this is not called with an invalid database id
   assert(openDatabases.size() > message.databaseId && openDatabases[message.databaseId].database != nullptr);
+  assert(IsInsideTransaction()); // Cannot acquire locks if no transaction is in progress (the caller must ensure that)
   auto& openDb = openDatabases[message.databaseId]; 
 
   if (openDb.database->AcquireLocks(message)) {
-    // Implicitly start a transaction upon acquiring the first lock
-    if (transaction == Transaction::None) {
-      transaction = Transaction::Write;
-    }
-
     // All locks could be acquired -> enter them into the database entry to mark down all our lock locations
     for (auto& location : message) {
       auto pos = std::find(openDb.locks.begin(), openDb.locks.end(), location);

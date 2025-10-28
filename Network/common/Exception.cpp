@@ -51,19 +51,19 @@ SegmentDeleted::SegmentDeleted() : Exception("Attempt to access a cluster in an 
 
 
 BlobLimitReached::BlobLimitReached(segment_id segment, cluster_id cluster) : Exception(
-  "Cannot create any more blobs in segment " + std::to_string(segment) + 
-  ", cluster " + std::to_string(cluster) + ". Blob limit reached."
+  "Cannot create any more blobs in segment " + std::to_string(segment) +  ", cluster " + std::to_string(cluster) + ". Blob limit reached.",
+  ExceptionCode::BlobLimitReached
 ) {}
 
 ClusterLimitReached::ClusterLimitReached(segment_id segment) : Exception(
-  "Cannot create any more clusters in segment " + std::to_string(segment) +
-  ". Cluster limit reached."
+  "Cannot create any more clusters in segment " + std::to_string(segment) + ". Cluster limit reached.",
+  ExceptionCode::ClusterLimitReached
 ) {}
 
-SegmentLimitReached::SegmentLimitReached() : Exception("Cannot create any more segments in this database. Segment limit reahced.") {}
+SegmentLimitReached::SegmentLimitReached() : Exception("Cannot create any more segments in this database. Segment limit reached.", ExceptionCode::SegmentLimitReached) {}
 
 
-
+TransactionAlreadyOpen::TransactionAlreadyOpen() : Exception("Cannot start a new transaction, a transaction is already in progress.", ExceptionCode::TransactionAlreadyOpen) {}
 
 
 

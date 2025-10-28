@@ -15,7 +15,8 @@ struct BlobsReadResponse : public Message {
   enum class Result : uint8_t {
     SUCCESS,
     BLOB_DOES_NOT_EXIST,
-    DATBASE_NOT_OPENED, // passed a database id, which the server doesn't recognize for this client
+    DATBASE_NOT_OPENED,         // passed a database id, which the server doesn't recognize for this client
+    NO_TRANSACTION_IN_PROGRESS, // trying to read blobs before explicitly starting a transaction
     LOCK_TIMEOUT,
     DEADLOCK
   };

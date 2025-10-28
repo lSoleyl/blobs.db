@@ -21,6 +21,7 @@ struct Transaction::State {
   struct DatabaseState {
     DatabaseState(Database* database) : database(database) {}
 
+    //FIXME STICKY we must move out the last held locks into the database state when a transaction ends
     struct HeldLocks {
       std::set<BlobLocation> read, write;
     };
@@ -364,14 +365,13 @@ void Transaction::AbortDeadlock() {
 }
 
 
-Transaction* Transaction::Get(connection_id connectionId, bool startIfNotActive) {
+Transaction* Transaction::Get(connection_id connectionId) {
   auto pos = active.find(connectionId);
-
-  if (pos == active.end() && startIfNotActive) {
-    pos = active.emplace(connectionId, Transaction(connectionId)).first;
-  }
-
   return (pos != active.end()) ? &pos->second : nullptr;
+}
+
+Transaction* Transaction::Create(connection_id connectionId) {
+  return &active.emplace(connectionId, Transaction(connectionId)).first->second;
 }
 
 

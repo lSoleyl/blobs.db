@@ -23,7 +23,8 @@ enum class Type : uint8_t {
   BlobsRead,
   BlobsReadResponse,
 
-  TransactionBegin,  // Only here for clients, which explcitily want to start a new transaction in a specific tranaction mode
+  TransactionBegin,         // Each transaction has to be started by the client
+  TransactionBeginResponse, // The server notifies the client about successful start of transaction and which sticky locks to release/keep
   TransactionAbort,
   TransactionCommit, // Client transmits blobs in this message to the server (it has a continuation flag in case we need multiple messages)
   TransactionCommitResponse, // Response sent by the server after processing a commit to notify about whether the commit was accepted or not

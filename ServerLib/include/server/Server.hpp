@@ -58,6 +58,7 @@ private:
 
   void HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRead> message);
 
+  void HandleTransactionBegin(network::MessagePointer_T<network::message::TransactionBegin> message);
   void HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message);
   void HandleTransactionCommit(network::MessagePointer_T<network::message::TransactionCommit> message);
 

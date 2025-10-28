@@ -59,6 +59,10 @@ std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& mes
       out << "MISSING_WRITE_LOCK";
       break;
 
+    case Result::NO_TRANSACTION_IN_PROGRESS:
+      out << "NO_TRANSACTION_IN_PROGRESS";
+      break;
+
     case Result::SEGMENT_DOES_NOT_EXIST:
       out << "SEGMENT_DOES_NOT_EXIST";
       break;

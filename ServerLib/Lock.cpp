@@ -25,6 +25,11 @@ bool Lock::operator<(const BlobLocation& location) const {
 
 
 bool Lock::CanAcquire(client_id client, bool writeLock) const {
+
+  //FIXME STICKY CanAcquire should also check whether the client actually is inside a transaction (aka. is actually holding that lock)
+  //FIXME STICKY if not, then the lock can in fact be acquried
+  //FIXME STICKY but how do we perform this check efficiently? A set/vector of clients currently inside a transaction would probably be most efficient
+
   if (!writeLock) {
     // A read lock can be acquired if no write lock is held or the write lock is being held by this client
     return !write || *write == client;
@@ -42,6 +47,9 @@ bool Lock::CanAcquire(client_id client, bool writeLock) const {
 }
 
 void Lock::Acquire(client_id client, bool writeLock) {
+  //FIXME STICKY also acquire locks, which are held by clients, which are not inside transactions
+  //FIXME STICKY and mark these locks in the clients somehow so the server can notify the client about the now released locks
+
   if (writeLock) {
     // Set write lock and potentially upgrade read lock
     write = client;

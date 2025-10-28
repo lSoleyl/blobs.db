@@ -94,6 +94,8 @@
     <ClCompile Include="common\Encoding.cpp" />
     <ClCompile Include="IOCPReceiveMessageQueue.cpp" />
     <ClCompile Include="message\DatabaseCloseResponse.cpp" />
+    <ClCompile Include="message\TransactionBegin.cpp" />
+    <ClCompile Include="message\TransactionBeginResponse.cpp" />
     <ClCompile Include="SocketClient.cpp" />
     <ClCompile Include="common\BlobLocation.cpp" />
     <ClCompile Include="Factory.cpp" />
@@ -144,6 +146,8 @@
     <ClInclude Include="include\network\message\BlobsRead.hpp" />
     <ClInclude Include="include\network\message\NetworkException.hpp" />
     <ClInclude Include="include\network\message\TransactionAbort.hpp" />
+    <ClInclude Include="include\network\message\TransactionBegin.hpp" />
+    <ClInclude Include="include\network\message\TransactionBeginResponse.hpp" />
     <ClInclude Include="include\network\message\TransactionCommit.hpp" />
     <ClInclude Include="include\network\message\TransactionCommitResponse.hpp" />
     <ClInclude Include="include\network\ReceiveMessageQueue.hpp" />

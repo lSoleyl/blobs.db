@@ -7,20 +7,21 @@
 namespace blobs {
 
 enum class ExceptionCode {
-  Generic,              // Generic error
-  DbAlreadyOpen,        // Attempt to open a already opened database a second time without closing it first
-  DbCloseDuringTxn,     // Attempt to close a databse while a transaction is active
-  DbNotOpen,            // Attempt to close a database, which wasn't opened or was already closed
-  LockTimeout,          // Lock timeout while waiting for attempting to read/write lock a blob
-  Deadlock,             // Deadlock while attempting to read/write a blob
-  BlobTooLarge,         // Attempted to write a blob, which is too large to write into the database
-  BlobDoesNotExist,     // Attempt to read/write a blob, which doesn't exist in the database
-  BlobDeleted,          // Attempted to read/write a blob, which has been deleted in the current transaction
-  ClusterDeleted,       // Attempt to read/write/create/delete a blob in a cluster, which has already been deleted
-  SegmentDeleted,       // Attempt to read/write/create/delete a blob/cluster in a segment, which has already been deleted
-  BlobLimitReached,     // Cannot create more blobs in the cluster
-  ClusterLimitReached,  // Cannot create more clusters in the segment
-  SegmentLimitReached,  // Cannot create more segments in the database
+  Generic,                // Generic error
+  DbAlreadyOpen,          // Attempt to open a already opened database a second time without closing it first
+  DbCloseDuringTxn,       // Attempt to close a databse while a transaction is active
+  DbNotOpen,              // Attempt to close a database, which wasn't opened or was already closed
+  LockTimeout,            // Lock timeout while waiting for attempting to read/write lock a blob
+  Deadlock,               // Deadlock while attempting to read/write a blob
+  BlobTooLarge,           // Attempted to write a blob, which is too large to write into the database
+  BlobDoesNotExist,       // Attempt to read/write a blob, which doesn't exist in the database
+  BlobDeleted,            // Attempted to read/write a blob, which has been deleted in the current transaction
+  ClusterDeleted,         // Attempt to read/write/create/delete a blob in a cluster, which has already been deleted
+  SegmentDeleted,         // Attempt to read/write/create/delete a blob/cluster in a segment, which has already been deleted
+  BlobLimitReached,       // Cannot create more blobs in the cluster
+  ClusterLimitReached,    // Cannot create more clusters in the segment
+  SegmentLimitReached,    // Cannot create more segments in the database
+  TransactionAlreadyOpen, // Attempted to start a new transaction with a transaction already in progress
 };
 
 
@@ -109,6 +110,11 @@ public:
 class SegmentLimitReached : public Exception {
 public:
   SegmentLimitReached();
+};
+
+class TransactionAlreadyOpen : public Exception {
+public:
+  TransactionAlreadyOpen();
 };
 
 }
