@@ -80,7 +80,7 @@ void Client::BeginTransaction() {
   transaction = Transaction::Write;
 
 
-  TODO("Also clear the list of revoked locks here?");
+  //FIXME STICKY Also clear the list of revoked locks here?
 }
 
 bool Client::AbortTransaction() {

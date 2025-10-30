@@ -9,6 +9,10 @@ namespace blobs {
 struct BlobLocation;
 class Database;
 
+namespace internal {
+  struct HeldLocks;
+}
+
 /** Instances of this class represent a single global transaction.
  */
 class Transaction {
@@ -52,6 +56,13 @@ public:
   /** Returns the type of lock, which the client holds for the specified database location in the current transaction
    */
   LockMode GetLockType(Database* database, const BlobLocation& location) const;
+
+
+  /** This method should be called when a database attempts to perform the first data access inside a new transaction.
+   *  It should pass its sticky locks to the transaction to carry them over from a previous one.
+   *  The transaction will take ownership of the passed locks.
+   */
+  void UseStickyLocks(Database* database, std::unique_ptr<internal::HeldLocks> stickyLocks);
 
   /** Stores the acquired lock type for the specified blob in this transaction. This method must be internally called to
    *  correctly keep track of all currently held locks. This method ensures that locking invariants are followed. 
@@ -98,6 +109,16 @@ public:
    */
   const uint64_t id;
 private:
+
+  /** Used as final step in a transaction commit/abort. This will transfer all held locks as sticky locks into the corresponding databases to be
+   *  used for the next transaction and finally clean up all transaction state, which will implicitly destroy all transaction objects.
+   */
+  static void TransferAndClearState();
+
+  /** This method is used as part of TransferAndClearState() to transfer out all sticky locks from one transaction into their corresponding databases
+   */
+  void TransferStickyLocks();
+
 
   static std::map<connection_id, Transaction> active; // the currently active transactions (up to one per server connection)
   static uint64_t nextId;

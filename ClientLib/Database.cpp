@@ -3,6 +3,7 @@
 #include <blobs/Exception.hpp>
 #include <blobs/Transaction.hpp>
 #include <internal/Network.hpp>
+#include <internal/HeldLocks.hpp>
 #include <network/ClientInterface.hpp>
 
 #include <network/message/All.hpp>
@@ -503,6 +504,13 @@ void Database::UpdateCacheForCommittedBlob(const BlobLocation& location, std::ve
   cache->Update(location, std::move(data), commitId, transactionId);
 }
 
+void Database::AssignStickyLocks(std::unique_ptr<internal::HeldLocks> stickyLocks) {
+  // The following assertion should never trigger as receiving sticky locks means that the database accessed in the current transaction, but then
+  // it should have transfered its sticky locks into the transaction.
+  assert(!this->stickyLocks);
+  this->stickyLocks = std::move(stickyLocks);
+}
+
 
 blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster and
@@ -596,9 +604,17 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
 
 
 
-Transaction& Database::GetTransaction() const {
+Transaction& Database::GetTransaction() {
   if (auto transaction = Transaction::Get(connectionId)) {
-    // tranaction already in progress
+    if (stickyLocks) {
+      // We already started a new transaction for an action in an other database, but we
+      // didn't yet transfer the sticky locks associated with this database into the transaction
+      // -> Do it now.
+      transaction->UseStickyLocks(this, std::move(stickyLocks));
+    }
+
+
+    // Transaction already in progress
     return *transaction;
   }
 
@@ -621,15 +637,42 @@ Transaction& Database::GetTransaction() const {
   }
 
 
-  bool keep = (response->result == network::message::TransactionBeginResponse::Result::SUCCESS_KEEP_LOCKS);
-  for (auto& lock : *response) {
-    //FIXME STICKY filter if keep, erase otherwise
-  }
+  //FIXME STICKY the response must actually a list of locks PER DATABASE since we can have multiple open and we have 
+  //             cross db transactions
+
+
   
-  //FIXME STICKY check, which locks to keep/revoke
-  //FIXME STICKY the database must hold the last held locks somewhere for this and pass them to Create
-  //FIXME STICKY but how without polluting the whole interface?
-  return *Transaction::Create(connectionId);
+  if (stickyLocks) {
+    // We are holding on to some sticky locks -> check which ones we should release/keep
+
+    if (response->result == network::message::TransactionBeginResponse::Result::SUCCESS_KEEP_LOCKS) {
+      // Keep the specified locks
+      internal::HeldLocks allLocks = std::move(*stickyLocks);
+
+      for (auto& lock : *response) {
+        if (allLocks.read.count(lock)) {
+          stickyLocks->read.insert(lock);
+        } else if (allLocks.write.count(lock)) {
+          stickyLocks->write.insert(lock);
+        }
+      }
+
+    } else {
+      // Erase the specified locks
+      for (auto& lock : *response) {
+        stickyLocks->read.erase(lock);
+        stickyLocks->write.erase(lock);
+      }
+    }
+  }
+
+  // Finally create the transaction and transfer the sticky locks into it
+  auto transaction = Transaction::Create(connectionId);
+  if (stickyLocks) {
+    // Transfer the sticky locks of this database into the transaction
+    transaction->UseStickyLocks(this, std::move(stickyLocks));
+  }
+  return *transaction;
 }
 
 

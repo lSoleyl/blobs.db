@@ -14,6 +14,10 @@ namespace network::message {
   struct BlobsReadResponse;
 }
 
+namespace internal {
+  struct HeldLocks;
+}
+
 
 class Database {
 public:
@@ -174,6 +178,11 @@ public:
   void UpdateCacheForCommittedBlob(const BlobLocation& location, std::vector<uint8_t> data, commit_id commitId, uint64_t transactionId);
 
   
+  /** Internal method called during transaction commit to transfer ownership of sticky locks from the transaction into the database to be able
+   *  to reuse them in the next transaction.
+   */
+  void AssignStickyLocks(std::unique_ptr<internal::HeldLocks> stickyLocks);
+
 
   const std::string name;
   const connection_id connectionId;
@@ -237,7 +246,7 @@ private:
   /** Returns the currently active transaction (if active) otherwise attempts to start a new transaction and
    *  returns the new transaction object upon success. Throws an exception if starting the transaction fails.
    */
-  Transaction& GetTransaction() const;
+  Transaction& GetTransaction();
 
 
   Database(std::string name, database_id id, connection_id connectionId);
@@ -247,6 +256,7 @@ private:
 
   class BlobCache;
   std::unique_ptr<BlobCache> cache;
+  std::unique_ptr<internal::HeldLocks> stickyLocks; // Locks held past the end of the last transaction
 };
 
 

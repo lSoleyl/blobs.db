@@ -4,6 +4,7 @@
 #include <blobs/Exception.hpp>
 #include <common/BlobLocation.hpp>
 #include <internal/Network.hpp>
+#include <internal/HeldLocks.hpp>
 #include <network/message/All.hpp>
 #include <network/ClientInterface.hpp>
 
@@ -19,14 +20,16 @@ namespace blobs {
  */
 struct Transaction::State {
   struct DatabaseState {
-    DatabaseState(Database* database) : database(database) {}
+    DatabaseState(Database* database, std::unique_ptr<internal::HeldLocks> stickyLocks) : database(database), heldLocks(std::move(stickyLocks)) {
+      if (!heldLocks) {
+        // No sticky locks passed from previous transaction
+        heldLocks.reset(new internal::HeldLocks);
+      }
+    }
 
-    //FIXME STICKY we must move out the last held locks into the database state when a transaction ends
-    struct HeldLocks {
-      std::set<BlobLocation> read, write;
-    };
+    
 
-    HeldLocks heldLocks;
+    std::unique_ptr<internal::HeldLocks> heldLocks;
     std::map<BlobLocation, std::vector<uint8_t>> writtenBlobs;
     std::set<BlobLocation> deletedBlobs;
     std::set<std::pair<segment_id, cluster_id>> deletedClusters;
@@ -229,10 +232,12 @@ struct Transaction::State {
   /** Fetch or initialize the transaction state for the specified database, which will be used to keep track of
    *  all writes during the transaction and will be used to construct the commit message from
    */
-  DatabaseState& AccessDatabaseState(Database* database) {
+  DatabaseState& AccessDatabaseState(Database* database, std::unique_ptr<internal::HeldLocks> stickyLocks = nullptr) {
     auto pos = forDatabase.find(database->id);
     if (pos == forDatabase.end()) {
-      pos = forDatabase.emplace(database->id, database).first;
+      pos = forDatabase.emplace(std::piecewise_construct, std::make_tuple(database->id), std::make_tuple(database, std::move(stickyLocks))).first;
+    } else {
+      assert(!stickyLocks); // Otherwise we are trying to initialize the database's transaction state after it has already been initialized!
     }
     return pos->second;
   }
@@ -321,7 +326,7 @@ bool Transaction::Commit() {
 
 
   // Reset all transaction state for all connections
-  active.clear();
+  TransferAndClearState();
 
   TODO("Throw error if any");
 
@@ -341,7 +346,7 @@ bool Transaction::Abort() {
   }
 
   // Then delete all transaction state to prevent any future commit if the aborted transaction
-  active.clear();
+  TransferAndClearState();
 
   
   // We don't expect a confirmation from the server for a transaction abort message, which is fine since
@@ -361,7 +366,7 @@ void Transaction::AbortDeadlock() {
   }
 
   // Finally clear all transaction state (This will delete `this`!)
-  Transaction::active.clear();
+  Transaction::TransferAndClearState();
 }
 
 
@@ -377,7 +382,7 @@ Transaction* Transaction::Create(connection_id connectionId) {
 
 Transaction::LockMode Transaction::GetLockType(Database* database, const BlobLocation& location) const {
   if (auto dbState = state->GetDatabaseState(database->id)) {
-    auto& locks = dbState->heldLocks;
+    auto& locks = *dbState->heldLocks;
     if (locks.write.find(location) != locks.write.end()) {
       return LockMode::Write;
     } 
@@ -393,9 +398,16 @@ Transaction::LockMode Transaction::GetLockType(Database* database, const BlobLoc
   return LockMode::None;
 }
 
+
+void Transaction::UseStickyLocks(Database* database, std::unique_ptr<internal::HeldLocks> stickyLocks) {
+  // Initialize the database state and assign the sticky locks to it upon construction
+  state->AccessDatabaseState(database, std::move(stickyLocks));
+}
+
+
 void Transaction::AcquiredLock(Database* database, const BlobLocation& location, LockMode lock) {
   assert(lock != LockMode::None); // Why would anyone call it like this!?
-  auto& dbLocks = state->AccessDatabaseState(database).heldLocks;
+  auto& dbLocks = *state->AccessDatabaseState(database).heldLocks;
   
   // We simply insert without checking for any invariants. Having both a write and read lock will be recognized as simply
   // having a write lock by GetLockType() we thus don't have to worry about removing a read lock when upgrading to a write lock
@@ -505,6 +517,22 @@ std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(Database*
 }
 
 
+
+void Transaction::TransferAndClearState() {
+  for (auto& [connectionId, transaction] : active) {
+    transaction.TransferStickyLocks();
+  }
+
+  // Reset any transaction state implicitly deleting all Transaction objects
+  active.clear();
+}
+
+
+void Transaction::TransferStickyLocks() {
+  for (auto& [databaseId, dbState] : state->forDatabase) {
+    dbState.database->AssignStickyLocks(std::move(dbState.heldLocks));
+  }
+}
 
 }
 

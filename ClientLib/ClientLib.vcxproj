@@ -101,6 +101,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Database.cpp" />
+    <ClCompile Include="HeldLocks.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -123,6 +124,7 @@
     <ClInclude Include="include\blobs\Blobs.hpp" />
     <ClInclude Include="include\blobs\Initialization.hpp" />
     <ClInclude Include="include\blobs\Transaction.hpp" />
+    <ClInclude Include="include\internal\HeldLocks.hpp" />
     <ClInclude Include="include\internal\Network.hpp" />
     <ClInclude Include="pch.hpp" />
   </ItemGroup>

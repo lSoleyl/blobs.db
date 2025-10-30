@@ -33,6 +33,9 @@
     <ClCompile Include="Transaction.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="HeldLocks.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="ClientLib.md" />
@@ -61,6 +64,9 @@
     </ClInclude>
     <ClInclude Include="include\blobs\Initialization.hpp">
       <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\internal\HeldLocks.hpp">
+      <Filter>Headerdateien\internal</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
