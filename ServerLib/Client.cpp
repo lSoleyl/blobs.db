@@ -71,6 +71,17 @@ Database* Client::GetDatabase(database_id id) const {
   return (id < openDatabases.size()) ? openDatabases[id].database : nullptr;
 }
 
+uint32_t Client::GetOpenDatabaseCount() const {
+  uint32_t databases = 0;
+  for (auto& entry : openDatabases) {
+    if (entry.database) {
+      ++databases;
+    }
+  }
+  return databases;
+}
+
+
 database_id Client::GetMaxDatabaseId() const {
   return openDatabases.empty() ? 0 : static_cast<database_id>(openDatabases.size() - 1);
 }
@@ -134,6 +145,31 @@ bool Client::AcquireLocks(const network::message::BlobsRead& message) {
 
 bool Client::CommitInProcess() const {
   return !commitMessages.empty();
+}
+
+
+
+network::MessagePointer_T<network::message::TransactionBeginResponse> Client::ConstructTransactionBeginResponse() {
+  //FIXME STICKY we should first count all the locks we want to transmit and THEN allocate a message with enough space
+  auto message = network::message::TransactionBeginResponse::Create(GetOpenDatabaseCount());
+  auto writePos = message->begin();
+  
+  database_id dbId = 0;
+  for (auto& dbEntry : openDatabases) {
+    if (auto db = dbEntry.database) {
+      auto& entry = *writePos;
+      ++writePos;
+
+      //FIXME STICKY write the actual locks to keep/release into this header
+      entry.databaseId = dbId;
+      entry.keep = true;
+      entry.nLocks = 0;
+      //FIXME STICKY after releasing the locks also clear the list of revoked locks (we just transfered this information)
+    }
+    ++dbId;
+  }
+
+  return message;
 }
 
 

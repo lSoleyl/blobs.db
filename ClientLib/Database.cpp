@@ -14,6 +14,9 @@
 
 namespace blobs {
 
+std::map<database_id, Database*> Database::databases;
+
+
 class Database::BlobCache {
 public:
   struct CachedBlob {
@@ -107,9 +110,13 @@ private:
 
 
 
-Database::Database(std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache) {}
+Database::Database(std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache) {
+  databases.emplace(id, this);
+}
 
-Database::~Database() {}
+Database::~Database() {
+  databases.erase(id);
+}
 
 
 Database* Database::Open(const char* connectionStringBegin, size_t connectionStringLen) {
@@ -637,36 +644,22 @@ Transaction& Database::GetTransaction() {
   }
 
 
-  //FIXME STICKY the response must actually a list of locks PER DATABASE since we can have multiple open and we have 
-  //             cross db transactions
 
-
-  
-  if (stickyLocks) {
-    // We are holding on to some sticky locks -> check which ones we should release/keep
-
-    if (response->result == network::message::TransactionBeginResponse::Result::SUCCESS_KEEP_LOCKS) {
-      // Keep the specified locks
-      internal::HeldLocks allLocks = std::move(*stickyLocks);
-
-      for (auto& lock : *response) {
-        if (allLocks.read.count(lock)) {
-          stickyLocks->read.insert(lock);
-        } else if (allLocks.write.count(lock)) {
-          stickyLocks->write.insert(lock);
-        }
+  // Now check all the locks to release (for all databases)
+  for (auto& dbLockEntry : *response) {
+    auto pos = databases.find(dbLockEntry.databaseId);
+    if (auto database = (pos != databases.end()) ? pos->second : nullptr) {
+      if (database->stickyLocks) {
+        database->stickyLocks->UpdateLocks(dbLockEntry.keep, dbLockEntry.begin(), dbLockEntry.end());
       }
-
     } else {
-      // Erase the specified locks
-      for (auto& lock : *response) {
-        stickyLocks->read.erase(lock);
-        stickyLocks->write.erase(lock);
-      }
+      // Should never happen... But if it does, how does the client recover from this? The easiest would be to just ignore it... right?
+      throw Exception("internal error: Server responded with unknown database id in TransactionBeginResponse");
     }
   }
 
-  // Finally create the transaction and transfer the sticky locks into it
+  // Finally create the transaction and transfer the sticky locks from this database (not all) into it
+  // The other databases' sticky locks will be transferred the moment they are accessed the first time in this new transaction.
   auto transaction = Transaction::Create(connectionId);
   if (stickyLocks) {
     // Transfer the sticky locks of this database into the transaction
@@ -674,6 +667,8 @@ Transaction& Database::GetTransaction() {
   }
   return *transaction;
 }
+
+
 
 
 }

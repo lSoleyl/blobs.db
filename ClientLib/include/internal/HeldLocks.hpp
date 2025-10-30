@@ -11,6 +11,11 @@ namespace blobs::internal {
  */
 struct HeldLocks {
   std::set<BlobLocation> read, write;
+
+  /** Updates the list of held locks by either keeping only the locks specified in the range (if keep = true)
+   *  Or by removing all locks specified in the range (if keep = false);
+   */
+  void UpdateLocks(bool keep, const BlobLocation* begin, const BlobLocation* end);
 };
 
 

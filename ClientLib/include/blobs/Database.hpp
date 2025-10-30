@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
 
 namespace blobs {
 struct BlobLocation;
@@ -257,6 +258,7 @@ private:
   class BlobCache;
   std::unique_ptr<BlobCache> cache;
   std::unique_ptr<internal::HeldLocks> stickyLocks; // Locks held past the end of the last transaction
+  static std::map<database_id, Database*> databases; // We internally keep track of all currently opened databases
 };
 
 

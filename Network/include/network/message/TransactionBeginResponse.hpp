@@ -15,30 +15,61 @@ namespace blobs::network::message {
  */
 struct TransactionBeginResponse : public Message {
   enum class Result : uint8_t {
-    SUCCESS_KEEP_LOCKS,           // Success: The message contains the locks the client may keep from its previous transaction
-    SUCCESS_RELEASE_LOCKS,        // Success: The message contains the locks which have been revoked since the client's previous transaction
-
+    SUCCESS,                      // Success
     ERROR_ALREADY_IN_TRANSACTION  // Already inside a transaction
   };
 
   Result result;
 
-  BlobLocation* begin();
-  BlobLocation* end();
+  /** For EACH opened database this message contains one of the following structure specifying the database, the the mode keep/release and
+   *  how many locks to keep/release. Each of this is followed by the specified number of locks
+   */
+  struct DatabaseStickyLocks {
+    uint8_t databaseId;
+    bool keep; // true = keep specified locks / false = release specified locks
+    uint16_t nLocks; // number of locks to keep/release (may also be 0)
 
-  const BlobLocation* begin() const;
-  const BlobLocation* end() const;
+    BlobLocation* begin();
+    BlobLocation* end();
+  };
 
-  /** True if the message holds any of the two success status codes
+
+
+  class iterator {
+    public:
+      using value_type = DatabaseStickyLocks;
+      using pointer = value_type*;
+      using reference = value_type&;
+
+      iterator(DatabaseStickyLocks* pos = nullptr);
+
+      reference operator*() const;
+      pointer operator->() const;
+
+      iterator& operator++();
+
+      bool operator==(const iterator& other) const;
+      bool operator!=(const iterator& other) const;
+    private:
+      DatabaseStickyLocks* pos;
+  };
+
+
+  iterator begin();
+  iterator end();
+
+  /** True if the transaction has been successfully started
    */
   bool IsSuccess() const;
 
-  /** Constructs a successful response
+  /** Constructs a successful response. 
+   *  After constructing it the caller must still fill the locks to keep/release for each database.
    *
-   * @param keepLocks if true the result will be set to SUCCESS_KEEP_LOCKS, otherwise to SUCCESS_RELEASE_LOCKS
-   * @param nLocks how many locks to keep/release (number of BlobLocations in this message)
+   * @param nDatabases the number of databases the client has opened on this server. The message will contain
+   *                   one section stating all locks, which should be released/kept PER DATABASE.
+   * @param nLocks how many locks to keep/release (number of BlobLocations in this message - total for all databases)
    */
-  static MessagePointer_T<TransactionBeginResponse> Create(bool keepLocks = true, uint16_t nLocks = 0);
+  static MessagePointer_T<TransactionBeginResponse> Create(uint32_t nDatabases, uint16_t nLocks = 0);
 
   /** Constructs an error response
    */

@@ -207,10 +207,9 @@ void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::
   TODO("Support a MVCC transaction in the future by fixing a snapshot of the database");
   client.BeginTransaction();
 
-  //FIXME STICKY Client may request to release additional locks... we should merge
+  //FIXME STICKY Client may request to release additional locks... we should merge this info
 
-  //FIXME STICKY Actually check, which sticky locks have been revoked for the client instead of revoking all
-  SendMessageToClient(client.id, network::message::TransactionBeginResponse::Create());
+  SendMessageToClient(client.id, client.ConstructTransactionBeginResponse());
 }
 
 

@@ -2,6 +2,7 @@
 
 #include "Database.hpp"
 #include <network/message/TransactionCommit.hpp>
+#include <network/message/TransactionBeginResponse.hpp>
 
 namespace blobs {
 namespace server {
@@ -43,6 +44,12 @@ public:
    */
   Database* GetDatabase(database_id id) const;
 
+
+  /** Returns the number of currently opened database by this client. The return type is chosen to be larger than
+   *  database_id to also be able to encode 256 opened databases.
+   */
+  uint32_t GetOpenDatabaseCount() const;
+
   /** Returns the highest ever used database id of this client.
    *  Returns 0 if no database has ever been opened.
    */
@@ -73,6 +80,12 @@ public:
   /** True if the client sent the first commit message, but not yet the final commit message.
    */
   bool CommitInProcess() const;
+
+  
+  /** This method is used by the server to construct the TransactionBeginResponse message for this client.
+   *  This message will contain all locks to keep/release across all databases opened by this client.
+   */
+  network::MessagePointer_T<network::message::TransactionBeginResponse> ConstructTransactionBeginResponse();
 
 
   const client_id id;
