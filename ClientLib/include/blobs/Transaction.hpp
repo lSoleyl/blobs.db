@@ -45,6 +45,9 @@ public:
    */
   static Transaction* Get(connection_id connectionId);
 
+  // FIXME STICKY NO! Since Commit() always applies to all server connections, so should Create()
+  //              If we start a transaction we must notify ALL connected server about the TransactionBegin and process responses from them.
+
   /** Creates a new transaction for the given connection ID without checking for an already existing one. This 
    *  function is only used from within CLientLib itself.
    */

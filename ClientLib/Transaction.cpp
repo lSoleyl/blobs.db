@@ -224,6 +224,16 @@ struct Transaction::State {
         auto& commitMessage = *pos;
         commitMessage->hasFollowMessage = (++pos != end);
       }
+    } else {
+      // No writes to any database on this server connection.
+      // We must still send at least one empty commit message to the server. 
+      // Otherwise the server and client's transaction state will get out of sync leading to follup errors.
+      for (auto& [dbId, state] : forDatabase) {
+        // Simply generate an empty commit message for the first database we know
+        // The database used is not really relevant, but it should be a valid database as the server checks this
+        commitMessages.push_back(network::message::TransactionCommit::Create(dbId, 0, 0));
+        break;
+      } 
     }
 
     return commitMessages;
@@ -275,18 +285,19 @@ bool Transaction::Commit() {
   // Construct the commit messages for each server connection
   for (auto& [connectionId, transaction] : active) {
     auto commitMessages = transaction.state->ConstructCommitMessages();
-    if (!commitMessages.empty()) {
 
-      // Send all commit messages to the client
-      auto& client = internal::Network::Get(connectionId);
-      for (auto& message : commitMessages) {
-        TODO("Implement a batch send to send a range of messages to the server to avoid synchronization overhead");
-        client.SendMessageToServer(std::move(message));
-      }
+    assert(!commitMessages.empty()); // We must send at least an empty commit message to each server otherwise the states will be out of sync
 
-      // We sent a commit message so note down that we have to wait for a commit response
-      waitForReplies.push_back({ &client, &transaction });
+
+    // Send all commit messages to the client
+    auto& client = internal::Network::Get(connectionId);
+    for (auto& message : commitMessages) {
+      TODO("Implement a batch send to send a range of messages to the server to avoid synchronization overhead");
+      client.SendMessageToServer(std::move(message));
     }
+
+    // We sent a commit message so note down that we have to wait for a commit response
+    waitForReplies.push_back({ &client, &transaction });
   }
 
 
