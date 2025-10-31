@@ -2,13 +2,14 @@
 #include "include/server/Database.hpp"
 #include "include/server/Server.hpp"
 #include "include/server/File.hpp"
+#include "include/server/Client.hpp"
 
 namespace blobs {
 namespace server {
 
 std::map<std::string, Database, std::less<>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), useCount(0), loaded(false) {
+Database::Database(std::string name) : name(std::move(name)), useCount(0), loaded(false), stickyLockHandler(*this) {
   // In-Memory databases start with "mem:" prefix and are always loaded
   fileDatabase = !this->name._Starts_with("mem:");
 }
@@ -322,7 +323,7 @@ bool Database::CanClientAcquireLock(client_id client, const BlobLocation& locati
   }
 
   // Check the lock whether the client can acquire the specified access
-  return pos->CanAcquire(client, write);
+  return pos->CanAcquire(client, write, stickyLockHandler);
 }
 
 
@@ -334,7 +335,7 @@ void Database::AcquireClientLock(client_id client, const BlobLocation& location,
   } else {
     // Lock already exists
     auto& lock = const_cast<Lock&>(*pos); // const_cast is safe here, because we don't modify the ordering criterion
-    lock.Acquire(client, write);
+    lock.Acquire(client, write, stickyLockHandler);
   }
 }
 
@@ -440,12 +441,32 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
 void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& locations) {
   for (auto& location : locations) {
     auto lock = locks.find(location);
-    assert(lock != locks.end()); // This would indicate a programming error as the client assumes a lock which he doesn't has.
+    assert(lock != locks.end()); // This would indicate a programming error as the client assumes a lock which he doesn't have.
     // The const_cast here is valid as we do not modify the sorting order in any respect
     bool empty = const_cast<Lock&>(*lock).Release(client);
     // Should we delete this Lock object now or keep it in memory forever? What is worse performance wise?
   }
 }
+
+
+Database::StickyLockHandler::StickyLockHandler(const Database& db) : db(db) {}
+
+bool Database::StickyLockHandler::CanRevokeStickyLock(client_id id) const {
+  auto& client = Client::Get(id);
+  return !client.IsInsideTransaction();
+}
+
+void Database::StickyLockHandler::RevokeStickyLock(client_id id, const BlobLocation& location) {
+  auto& client = Client::Get(id);
+  auto dbId = client.LookupDatabase(db);
+
+  // Programming error if we try to revoke a database lock for a client, which didn't open this database... 
+  // could also be caused by not properly cleaning up the held locks after the client closes the database/connection
+  assert(dbId); 
+  client.RevokeStickyLock(*dbId, location);
+}
+
+
 
 
 

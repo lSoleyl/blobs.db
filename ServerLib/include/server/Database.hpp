@@ -333,6 +333,27 @@ private:
    */
   void ReleaseLocks(client_id client, const std::vector<BlobLocation>& locks);
 
+
+  /** Implements the check of whether certain locks can be revoked (are sticky locks)
+   *  and revokation of said locks
+   */
+  class StickyLockHandler : public StickyLockInterface {
+    public:
+      StickyLockHandler(const Database& db);
+
+      /** Should return true if the client is not currently inside a transaction and thus a sticky lock
+       *  can be revoked from it
+       */
+      virtual bool CanRevokeStickyLock(client_id id) const override;
+
+      /** Revokes a sticky lock from a currently inactive client
+       */
+      virtual void RevokeStickyLock(client_id id, const BlobLocation& location) override;
+
+      const Database& db;
+  };
+
+
   std::string name;
 
   /** The database snapshot that is currently valid and updated each transaction
@@ -353,6 +374,8 @@ private:
   FileBackend file;
   file::Database fileHeader; // The current database file header (this is stored here to avoid having to read it to update the database) - the header state is undefined for in memory databases
   int useCount;      // How many clients are currently using this database - the Database is closed once this count reaches 0
+
+  StickyLockHandler stickyLockHandler;
 
   static std::map<std::string, Database, std::less<>> databases;
 

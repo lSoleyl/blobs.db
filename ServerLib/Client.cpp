@@ -71,6 +71,12 @@ Database* Client::GetDatabase(database_id id) const {
   return (id < openDatabases.size()) ? openDatabases[id].database : nullptr;
 }
 
+
+std::optional<database_id> Client::LookupDatabase(const Database& database) const {
+  auto pos = std::find_if(openDatabases.begin(), openDatabases.end(), [&database](const DatabaseLocks& dbState) { return dbState.database == &database; });
+  return pos != openDatabases.end() ? std::optional<database_id>(static_cast<database_id>(std::distance(openDatabases.begin(), pos))) : std::nullopt;
+}
+
 uint32_t Client::GetOpenDatabaseCount() const {
   uint32_t databases = 0;
   for (auto& entry : openDatabases) {
@@ -145,6 +151,14 @@ bool Client::AcquireLocks(const network::message::BlobsRead& message) {
 
 bool Client::CommitInProcess() const {
   return !commitMessages.empty();
+}
+
+
+void Client::RevokeStickyLock(database_id database, const BlobLocation& lockLocation) {
+  auto& dbState = openDatabases[database];
+  // We only remember that we revoked the lock here we don't filter out the lock location form `locks` as this is more
+  // effort to perform it on each revocation instead only once in ConstructTransactionBeginResponse()
+  dbState.revokedLocks.push_back(lockLocation);
 }
 
 

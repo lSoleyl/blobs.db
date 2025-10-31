@@ -45,6 +45,12 @@ public:
   Database* GetDatabase(database_id id) const;
 
 
+  /** Returns the databse id of the passed database for this client iff it has been opened by this client.
+   *  Otherwise returns nullopt
+   */
+  std::optional<database_id> LookupDatabase(const Database& database) const;
+
+
   /** Returns the number of currently opened database by this client. The return type is chosen to be larger than
    *  database_id to also be able to encode 256 opened databases.
    */
@@ -81,6 +87,13 @@ public:
    */
   bool CommitInProcess() const;
 
+
+  /** This method is called from inside Lock::AcquireLock() on clients, which are currently not inside a transaction, but hold sticky locks, which
+   *  conflict with a locking request of a currently active client. The lock is marked as revoked and will be transmitted to the client as revoked
+   *  on the next transaction start.
+   */
+  void RevokeStickyLock(database_id database, const BlobLocation& lockLocation);
+
   
   /** This method is used by the server to construct the TransactionBeginResponse message for this client.
    *  This message will contain all locks to keep/release across all databases opened by this client.
@@ -100,7 +113,7 @@ private:
   struct DatabaseLocks {
     Database* database;
     std::vector<BlobLocation> locks; // All locks held by this client in the database (vector for more memory efficient storage)
-    //FIXME STICKY we need a list of locks released by the server while the client was not inside a transaction
+    std::vector<BlobLocation> revokedLocks; // sticky locks, which have been revoked by the server, because other clients needed access to the locked ressource
   };
 
   /** All databases opened and locks held by this client. The index is the database id and 

@@ -5,6 +5,21 @@
 namespace blobs {
 namespace server {
 
+/** This interface must be implemented by callers of CanAcquire() and Acquire() to correctly implement sticky lock behavior
+ *  i.e. a lock can be revoked if the client holding the lock is currently not inside a transaction (it is a sticky lock, not an active lock).
+ */
+class StickyLockInterface {
+public:
+  /** Should return true if the client is not currently inside a transaction and thus a sticky lock 
+   *  can be revoked from it
+   */
+  virtual bool CanRevokeStickyLock(client_id id) const = 0;
+
+  /** Revokes a sticky lock from a currently inactive client
+   */
+  virtual void RevokeStickyLock(client_id id, const BlobLocation& location) = 0;
+};
+
 /** This class represents a single lock held by a client
  */
 class Lock {
@@ -23,15 +38,24 @@ public:
 
   /** Returns true if the client can acquire this lock with the specified access or can upgrade its access
    *  or already owns this lock with the specified access.
+   * 
+   * @param client the id of the client requesting a lock
+   * @param writeLock true = requesting a write lock / false = requesting a read lock
+   * @param stickyLocks the structure holding information about which clients are currently inside a transaction.
    */
-  bool CanAcquire(client_id client, bool writeLock) const;
+  bool CanAcquire(client_id client, bool writeLock, const StickyLockInterface& stickyLocks) const;
 
   /** Acquires this lock for the specified client in the given read/write mode.
    *  This method assumes that the lock can be acquired and performs no further checks.
+   *  This method also revokes other client's sticky locks if necessary.
    *  
    * @pre CanAcquire(client,writeLock) == true
+   * 
+   * @param client the client to acquire the lock for
+   * @param writeLock whether to acquire a write (true) or read (false) lock
+   * @param stickyLocks the interface, which is used to revoke sticky locks from inactive clients
    */
-  void Acquire(client_id client, bool writeLock);
+  void Acquire(client_id client, bool writeLock, StickyLockInterface& stickyLocks);
 
   /** Releases this lock for the specified client
    * 
