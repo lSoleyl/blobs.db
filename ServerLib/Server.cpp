@@ -144,6 +144,14 @@ void Server::HandleConnectionOpened(network::MessagePointer_T<network::message::
 
 void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::ConnectionClosed> message) {
   // A client closed the connection
+  auto& client = Client::Get(message->clientId);
+
+  // Abort any running transaction, release any held locks
+  client.AbortTransaction();
+
+  // Close all opened databases. This will also release any still held sticky locks
+  client.CloseAllDatabases();
+
   TODO("Remove from client map, release all held locks, release database references and close database if this was the last one");
 }
 

@@ -348,6 +348,7 @@ bool Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message
   
 
 void Database::AbortClientTransaction(client_id client, const std::vector<BlobLocation>& locksToRelease) {
+  //FIXME STICKY no, don't release all locks in AbortTransaction...
   ReleaseLocks(client, locksToRelease);
 
   for (auto pos = queuedReads.begin(); pos != queuedReads.end();) {
@@ -452,8 +453,12 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
 Database::StickyLockHandler::StickyLockHandler(const Database& db) : db(db) {}
 
 bool Database::StickyLockHandler::CanRevokeStickyLock(client_id id) const {
-  auto& client = Client::Get(id);
-  return !client.IsInsideTransaction();
+  //FIXME STICKY sticky locks disabled for now until we fully implement the correct logic in all components
+  //             since one component not handling them correctly can mess up the server's state.
+  return false;
+
+  // auto& client = Client::Get(id);
+  // return !client.IsInsideTransaction();
 }
 
 void Database::StickyLockHandler::RevokeStickyLock(client_id id, const BlobLocation& location) {

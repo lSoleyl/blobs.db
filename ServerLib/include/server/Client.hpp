@@ -40,6 +40,10 @@ public:
   bool CloseDatabase(database_id id);
 
 
+  /** Called by the server when the client closes its connection to clean up any referenced databases and held locks.
+   */
+  void CloseAllDatabases();
+
   /** Returns the open database or nullptr if the specified id doesn't correspond to an open database
    */
   Database* GetDatabase(database_id id) const;
