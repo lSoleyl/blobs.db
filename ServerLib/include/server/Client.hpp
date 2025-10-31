@@ -73,7 +73,7 @@ public:
    *  
    * @return true if there was actually a transaction running for that client
    */
-  bool AbortTransaction();
+  bool AbortTransaction(bool releaseAllLocks);
 
   /** Return true if the client has an active transaction
    */
@@ -86,6 +86,10 @@ public:
    */
   bool AcquireLocks(const network::message::BlobsRead& message);
 
+  /** This method is called during transaction commit to save all implicitly acquired locks (by creating the blobs)
+   *  in the client as sticky locks for the next transaction. This will also
+   */
+  void AcquireImplicitWriteLocks(database_id dbId, const std::vector<BlobLocation>& writeLocks);
 
   /** True if the client sent the first commit message, but not yet the final commit message.
    */
@@ -118,6 +122,11 @@ private:
     Database* database;
     std::vector<BlobLocation> locks; // All locks held by this client in the database (vector for more memory efficient storage)
     std::vector<BlobLocation> revokedLocks; // sticky locks, which have been revoked by the server, because other clients needed access to the locked ressource
+
+    /** This method will remove all locks, which are in revokedLocks from the `locks` vector.
+     *  IMPORTANT: for performance reasons the revokedLocks vector is NOT cleared afterwards, this is the caller's responsibility
+     */
+    void ApplyRevokedLocks();
   };
 
   /** All databases opened and locks held by this client. The index is the database id and 

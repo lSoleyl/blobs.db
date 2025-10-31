@@ -62,10 +62,16 @@ private:
   void HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message);
   void HandleTransactionCommit(network::MessagePointer_T<network::message::TransactionCommit> message);
 
+  
+  using ImplicitLocks = std::vector<std::pair<database_id, std::vector<BlobLocation>>>;
+
   /** Validates all commit message stored for that client and returns a result being either SUCCESS if the commit is
    *  valid or holding the reason for why this commit failed.
+   * 
+   * @param client the client whose accumulated commit messages should be validated
+   * @param implicitWriteLocks this data structure will collect write locks which the client implcitly hold by creating the said blobs
    */
-  network::message::TransactionCommitResponse::Result ValidateCommitMessages(const blobs::server::Client& client) const;
+  network::message::TransactionCommitResponse::Result ValidateCommitMessages(const blobs::server::Client& client, ImplicitLocks& implicitWriteLocks) const;
 
   /** Abort a currently running transaction commit and the corresponding transaction. 
    *  Either because the sent commit messages were invalid or because the client sent a wrong message during commit.
@@ -88,7 +94,7 @@ private:
   /** Releases the client's locks from all opened databases and removes all queued read requests and
    *  checks whether any client can now satisfy his outstanding read requests.
    */
-  void AbortTransaction(blobs::server::Client& clientId);
+  void AbortTransaction(blobs::server::Client& clientId, bool releaseAllLocks);
 
   /** Attempts to process as many queued read operations as possible for the specified database.
    */

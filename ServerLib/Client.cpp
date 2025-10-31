@@ -51,13 +51,21 @@ database_id Client::OpenDatabase(Database& db) {
 
 
 bool Client::CloseDatabase(database_id id) {
+  assert(transaction == Transaction::None); // We always first have to close a running transaction and only THEN we can close the database
+
   if (auto database = GetDatabase(id)) {
     // Database is actually opened
     auto& dbEntry = openDatabases[id];
 
-    //FIXME STICKY Release any still held sticky locks
-    //FIXME STICKY No, the below assertion doesn't hold for sticky locks
-    assert(openDatabases[id].locks.empty()); // since no transaction should be running
+    // We must release all still held sticky locks (in case there are any)
+    dbEntry.ApplyRevokedLocks();
+    dbEntry.revokedLocks.clear();
+    
+    // We abuse the AbortClientTransaction() method for releasing the locks here because we don't expose a pubic
+    // ReleaseLocks() method and AbortClientTransaction() doesn't perform any check for an active transaction.
+    database->AbortClientTransaction(this->id, dbEntry.locks);
+    dbEntry.locks.clear();
+
     dbEntry.database = nullptr;
 
 
@@ -72,8 +80,6 @@ bool Client::CloseDatabase(database_id id) {
 
 
 void Client::CloseAllDatabases() {
-  assert(transaction == Transaction::None); // We should not perform this while inside a transaction... right?
-
   database_id id = 0;
   for (auto& entry : openDatabases) {
     if (entry.database) {
@@ -115,18 +121,23 @@ void Client::BeginTransaction() {
   transaction = Transaction::Write;
 }
 
-bool Client::AbortTransaction() {
+bool Client::AbortTransaction(bool relaseAllLocks) {
   if (transaction != Transaction::None) { // Nothing to do if no transaction is in progress
 
     // Release the locks held in all databases
     for (auto& dbEntry : openDatabases) {
       if (dbEntry.database) {
-        // Release all locks held by this client and remove any queued up read operation
+        // Release all locks held by this client (if requested) and remove any queued up read operation
         
-        // FIXME STICKY only clear the locks if the client requested this in the abort message!
-        // FIXME STICKY if we actually clear the locks here, then we must however also consolidate&clear the revoked lock list
-        dbEntry.database->AbortClientTransaction(id, dbEntry.locks);
-        dbEntry.locks.clear();
+        assert(dbEntry.revokedLocks.empty()); // No lock can be revoked for a client INSIDE a transaction so this should be empty
+        if (relaseAllLocks) {
+          // Client wants to release all locks in transaction abort
+          dbEntry.database->AbortClientTransaction(id, dbEntry.locks);
+          dbEntry.locks.clear();
+        } else {
+          // Abort transaction, but don't release any locks -> keep them around as sticky locks for the next transaction
+          dbEntry.database->AbortClientTransaction(id, {});
+        }
       }
     }
 
@@ -165,6 +176,18 @@ bool Client::AcquireLocks(const network::message::BlobsRead& message) {
   return false;
 }
 
+void Client::AcquireImplicitWriteLocks(database_id dbId, const std::vector<BlobLocation>& writeLocks) {
+  auto& dbState = openDatabases[dbId];
+  // Set locks in database
+  dbState.database->AcquireImplicitWriteLocks(id, writeLocks);
+
+  // Set locks in client's lock list
+  for (auto& location : writeLocks) {
+    dbState.locks.push_back(location);
+  }
+}
+
+
 
 bool Client::CommitInProcess() const {
   return !commitMessages.empty();
@@ -178,6 +201,13 @@ void Client::RevokeStickyLock(database_id database, const BlobLocation& lockLoca
   dbState.revokedLocks.push_back(lockLocation);
 }
 
+void Client::DatabaseLocks::ApplyRevokedLocks() {
+  size_t keepLocks = locks.size() - revokedLocks.size();
+  std::unordered_set<BlobLocation> revokeSet(revokedLocks.begin(), revokedLocks.end());
+  locks.erase(std::remove_if(locks.begin(), locks.end(), [&](const BlobLocation& lock) { return revokeSet.count(lock) != 0; }), locks.end());
+  assert(locks.size() == keepLocks); // Otherwise the revoke list contained duplicate entries or entries, which the client held no lock for!
+  // DO NOT clear revokedLocks here (see logic in ConstructTransactionBeginResponse() on why not)
+}
 
 
 network::MessagePointer_T<network::message::TransactionBeginResponse> Client::ConstructTransactionBeginResponse() {
@@ -219,13 +249,9 @@ network::MessagePointer_T<network::message::TransactionBeginResponse> Client::Co
 
       entry.databaseId = dbId;
 
-      // Determine the locks to keep by filtering out all locks, which should be revoked
-      std::unordered_set<BlobLocation> revokeSet(dbEntry.revokedLocks.begin(), dbEntry.revokedLocks.end());
-      
       // Remove all locks, which are marked for revoke from the list of locks
-      size_t keepLocks = dbEntry.locks.size() - dbEntry.revokedLocks.size();
-      dbEntry.locks.erase(std::remove_if(dbEntry.locks.begin(), dbEntry.locks.end(), [&](const BlobLocation& lock) { return revokeSet.count(lock) != 0; }), dbEntry.locks.end());
-      assert(dbEntry.locks.size() == keepLocks); // Otherwise the revoke list contained duplicate entries or entries, which the client held no lock for!
+      dbEntry.ApplyRevokedLocks();
+      
 
       // Now enter the smaller number of locks into the message
       entry.keep = dbEntry.locks.size() <= dbEntry.revokedLocks.size();

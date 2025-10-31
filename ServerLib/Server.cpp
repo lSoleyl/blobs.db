@@ -147,7 +147,9 @@ void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::
   auto& client = Client::Get(message->clientId);
 
   // Abort any running transaction, release any held locks
-  client.AbortTransaction();
+  // We call Server::AbortTransaction(), not Client::AbortTransaction() to also check whether any outstanding reads
+  // can be satisfied now that the client's locks have been released.
+  AbortTransaction(client, true/*release all locks*/);
 
   // Close all opened databases. This will also release any still held sticky locks
   client.CloseAllDatabases();
@@ -197,7 +199,7 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
       SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
       // Abort the client's current transaction (this client is the deadlock victim)
       // Aborting the transaction will also trigger processing of any outstanding reads, which may now be possible to complete
-      AbortTransaction(client); 
+      AbortTransaction(client, false);
     }
   }
 }
@@ -215,14 +217,15 @@ void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::
   TODO("Support a MVCC transaction in the future by fixing a snapshot of the database");
   client.BeginTransaction();
 
-  //FIXME STICKY Client may request to release additional locks... we should merge this info
+  // FIXME STICKY Client may request to release additional locks... we should merge this info
 
   SendMessageToClient(client.id, client.ConstructTransactionBeginResponse());
 }
 
 
 void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message) {
-  AbortTransaction(server::Client::Get(message->clientId));
+  // FIXME STICKY the client should be able to specify in the TransactionAbort message whether to release all locks now or to keep them around
+  AbortTransaction(server::Client::Get(message->clientId), false);
 }
 
 
@@ -249,7 +252,11 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
     // does not expect any response to partial commit messages, as this would only slow down the commit process when commiting to multiple
     // databases at once.
 
-    auto result = ValidateCommitMessages(client);
+
+    // The client doesn't actually need to acquire a lock to own a lock. A client which creates a new blob implicitly holds a write lock onto it.
+    // This write lock must be preserved as sticky lock across transactions, so we ask ValidateCommitMessage() to track all these implicitly acquired (write) locks.
+    ImplicitLocks implicitWriteLocks;
+    auto result = ValidateCommitMessages(client, implicitWriteLocks);
     if (result == network::message::TransactionCommitResponse::Result::SUCCESS) {
       // Commit messages are valid
       
@@ -270,11 +277,16 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
       }
       
       
-      TODO("Post the commit messages into the transaction log");
-      TODO("This should also move ownership of the messages to the transaction log... for now we clear them here");
       client.commitMessages.clear();
       
       
+      // Grant the client all implicitly acquired write locks from creating blobs (they are preseved across transactions as sticky locks)
+      // The following method doesn't have to check for any lock conflicts as no other client could possibly hold locks to not yet created blobs.
+      for (auto& [dbId, locks] : implicitWriteLocks) {
+        client.AcquireImplicitWriteLocks(dbId, locks);
+      }
+
+
       // Allocate the response message with enough space to communicate all commit ids back to the client
       auto commitResponse = network::message::TransactionCommitResponse::Create(commitResults.size());
       auto writePos = commitResponse->begin();
@@ -291,7 +303,8 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
 
       // We committed all changes for this transaction and replied to the client,
       // Reset the transaction state and all locks held by the client, which may in turn trigger processing of outstanding reads
-      AbortTransaction(client);
+      // FIXME STICKY the client should be able to specify whether he wants to keep his locks at transaction commit (as sticky locks) or release them proactively
+      AbortTransaction(client, false);
     } else {
       // Commit not successful -> return error code to the client and abort its transaction commit (and active transaction)
       server->SendMessageToClient(client.id, network::message::TransactionCommitResponse::CreateError(result));
@@ -378,7 +391,7 @@ namespace {
 
 
 
-network::message::TransactionCommitResponse::Result Server::ValidateCommitMessages(const blobs::server::Client& client) const {
+network::message::TransactionCommitResponse::Result Server::ValidateCommitMessages(const blobs::server::Client& client, ImplicitLocks& implicitWriteLocks) const {
   using Result = network::message::TransactionCommitResponse::Result;
 
   // This vector is used to ensure that the commit messages are ordered by databases
@@ -398,6 +411,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
     if (pos == touchedDatabases.end()) {
       // This database has not yet been processed
       touchedDatabases.push_back(database);
+      implicitWriteLocks.push_back(std::make_pair(message.databaseId, std::vector<BlobLocation>{}));
     } else {
       // If the database was already mentioned in a previous commit message, then it must be the last mentioned one
       if (++pos != touchedDatabases.end()) {
@@ -405,6 +419,8 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
       }
     }
 
+    // Since we process databases in order we can track this database's write locks in the last entry
+    auto& implicitDbWriteLocks = implicitWriteLocks.back().second;
 
 
     // In case the client created some blobs, this vector will be filled with ranges of created blobs
@@ -421,6 +437,9 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
           // This blob has not been created in this transaction, which is not allowed.
           // This is an illegal commit.
           return Result::MISSING_WRITE_LOCK;
+        } else {
+          // The client holds a write lock, because he created this blob
+          implicitDbWriteLocks.push_back(location);
         }
       }
 
@@ -553,7 +572,9 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
 
 void Server::AbortTransactionCommit(blobs::server::Client& client) {
   client.commitMessages.clear();
-  AbortTransaction(client);
+  // A failed transaction commit indicates some kind of client side error, so we will release all locks now to reduce the 
+  // impact this faulty client can have on other clients connected to the server.
+  AbortTransaction(client, true); 
 }
 
 
@@ -616,8 +637,8 @@ void Server::LogMessage(const network::message::Message& message) {
 
 
 
-void Server::AbortTransaction(blobs::server::Client& client) {
-  if (client.AbortTransaction()) {
+void Server::AbortTransaction(blobs::server::Client& client, bool releaseAllLocks) {
+  if (client.AbortTransaction(releaseAllLocks)) {
     // We actually aborted a running transaction.
 
     // Now try to process any outstanding reads

@@ -7,7 +7,7 @@
 namespace blobs {
 namespace server {
 
-std::map<std::string, Database, std::less<>> Database::databases;
+std::map<std::string, std::unique_ptr<Database>, std::less<>> Database::databases;
 
 Database::Database(std::string name) : name(std::move(name)), useCount(0), loaded(false), stickyLockHandler(*this) {
   // In-Memory databases start with "mem:" prefix and are always loaded
@@ -16,7 +16,7 @@ Database::Database(std::string name) : name(std::move(name)), useCount(0), loade
 
 Database* Database::Get(std::string_view databaseName) {
   auto pos = databases.find(databaseName);
-  return (pos != databases.end()) ? &pos->second : nullptr;
+  return (pos != databases.end()) ? pos->second.get() : nullptr;
 }
 
 
@@ -28,7 +28,7 @@ Database& Database::Open(std::string_view databaseName, client_id clientId) {
   if (!database) {
     // Database wasn't opened yet -> enter new database
     std::string nameStr(databaseName.data(), databaseName.size());
-    database = &databases.emplace(nameStr, Database(nameStr)).first->second;
+    database = databases.emplace(nameStr, std::unique_ptr<Database>(new Database(nameStr))).first->second.get();
     // The newly created database may already be fully loaded in case of an in-memory database
 
     // Start the loading process if necessary
@@ -303,9 +303,19 @@ bool Database::AcquireLocks(const network::message::BlobsRead& message) {
     }
   }
 
+  // FIXME STICKY this is actually quite important as this could mess with implicit write lock semantics if another client
+  //              can acquire a read lock to a not yet created blob, which would then conflict with the client actually attempting to create that blob
   FIXME("what if the blobs we are trying to lock don't exist? This should be communicated back to the caller too!");
   return canAcquireLocks;
 }
+
+
+void Database::AcquireImplicitWriteLocks(client_id client, const std::vector<BlobLocation>& writeLocks) {
+  for (auto& location : writeLocks) {
+    AcquireClientLock(client, location, true);
+  }
+}
+
 
 bool Database::ClientOwnsWriteLock(client_id client, const BlobLocation& location) const {
   auto pos = locks.find(location);
@@ -348,7 +358,6 @@ bool Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message
   
 
 void Database::AbortClientTransaction(client_id client, const std::vector<BlobLocation>& locksToRelease) {
-  //FIXME STICKY no, don't release all locks in AbortTransaction...
   ReleaseLocks(client, locksToRelease);
 
   for (auto pos = queuedReads.begin(); pos != queuedReads.end();) {
@@ -360,7 +369,6 @@ void Database::AbortClientTransaction(client_id client, const std::vector<BlobLo
       ++pos;
     }
   }
-
 }
 
 
@@ -453,12 +461,8 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
 Database::StickyLockHandler::StickyLockHandler(const Database& db) : db(db) {}
 
 bool Database::StickyLockHandler::CanRevokeStickyLock(client_id id) const {
-  //FIXME STICKY sticky locks disabled for now until we fully implement the correct logic in all components
-  //             since one component not handling them correctly can mess up the server's state.
-  return false;
-
-  // auto& client = Client::Get(id);
-  // return !client.IsInsideTransaction();
+  auto& client = Client::Get(id);
+  return !client.IsInsideTransaction();
 }
 
 void Database::StickyLockHandler::RevokeStickyLock(client_id id, const BlobLocation& location) {

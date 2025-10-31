@@ -51,10 +51,20 @@ public:
   segment_id GetNextFreeSegmentId() const;
 
   /** Acquires the locks specified in the blobs read message and returns true if successful, false if not
-   *  IMPORTANT: This only sets the locks in the database... For proper bookeeping the client also needs to know, which locks it holds
+   *  IMPORTANT: This only sets the locks in the database... For proper bookkeeping the client also needs to know, which locks it holds
    *             Therefore locks should always be acquired via Client::AcquireLocks(), which calls this method.
    */
   bool AcquireLocks(const network::message::BlobsRead& message);
+
+
+  /** This method is called during transaction commit to assign implicitly acquired write locks (client created the blobs)
+   *  to this client to preserve these write locks across transaction end as sticky locks.
+   * 
+   *  IMPORTANT: This method performs NO checks whether the locks can actually be acquired due to the fact that the created blobs
+   *             should not exist before and thus no locks should exist for these blobs.
+   *             Also do not call this method directly, call Client::AcquireImplicitWriteLocks() instead to keep database and client state in sync
+   */
+  void AcquireImplicitWriteLocks(client_id client, const std::vector<BlobLocation>& writeLocks);
 
 
   /** Returns true if the specified client owns a write lock in this database for the specified location.
@@ -109,6 +119,8 @@ public:
 
 private:
   Database(std::string name);
+  Database(const Database&) = delete; // Not copyable, not movable
+  Database& operator=(const Database&) = delete;
 
 
   /** Initializes the database to an in memory database structure with one segment, one cluster and one blob
@@ -325,7 +337,7 @@ private:
 
   /** Sets a single lock at the specified location for the client and potentially upgrades a read lock into a write lock.
    *  The caller must ensure that there is no conflicting lock before calling this method (CanClientAcquireLock()) as this is not
-   *  check another time.
+   *  checked another time.
    */
   void AcquireClientLock(client_id client, const BlobLocation& location, bool write);
 
@@ -377,7 +389,7 @@ private:
 
   StickyLockHandler stickyLockHandler;
 
-  static std::map<std::string, Database, std::less<>> databases;
+  static std::map<std::string, std::unique_ptr<Database>, std::less<>> databases;
 
 
   friend class DatabaseDocTestAccess;
