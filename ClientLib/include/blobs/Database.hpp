@@ -249,6 +249,12 @@ private:
    */
   Transaction& GetTransaction();
 
+  /** This method will transfer the sticky locks held by this database (if any) into the new transaction passed in as argument
+   *  and will update all blobs in the internal blob cache for which sticky locks are held to the new transaction's id to make sure
+   *  the client will actually use the cache for blobs for which he hold sticky locks (as they couldn't have possibly changed since the last transaction).
+   */
+  void ApplyStickyLocksToTansaction(Transaction& transaction);
+
 
   Database(std::string name, database_id id, connection_id connectionId);
   Database(const Database&) = delete;

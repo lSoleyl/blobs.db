@@ -47,6 +47,25 @@ public:
   }
 
 
+  /** Updates the transaction id for all blob specified in locks to the passed transaction id. This is used when first accessing 
+   *  a database inside a new transaction to ensure that the blobs for which we kept sticky locks from the last transaction will be directly
+   *  read from cache in the next transaction instead of asking the server. (That is the whole point of sticky locks)
+   */
+  void UpdateTxnIdForHeldLocks(const internal::HeldLocks& locks, uint64_t transactionId) {
+    for (auto& lock : locks.read) {
+      if (auto blob = Get(lock)) {
+        blob->transactionId = transactionId;
+      }
+    }
+
+    for (auto& lock : locks.write) {
+      if (auto blob = Get(lock)) {
+        blob->transactionId = transactionId;
+      }
+    }
+  }
+
+
   /** Store/Update blob data in the cache and return a reference to the stored blob
    */
   CachedBlob& Set(const BlobLocation& location, const void* data, blob_size size, commit_id lastUpdated, uint64_t transactionId) {
@@ -617,7 +636,7 @@ Transaction& Database::GetTransaction() {
       // We already started a new transaction for an action in an other database, but we
       // didn't yet transfer the sticky locks associated with this database into the transaction
       // -> Do it now.
-      transaction->UseStickyLocks(this, std::move(stickyLocks));
+      ApplyStickyLocksToTansaction(*transaction);
     }
 
 
@@ -660,15 +679,22 @@ Transaction& Database::GetTransaction() {
 
   // Finally create the transaction and transfer the sticky locks from this database (not all) into it
   // The other databases' sticky locks will be transferred the moment they are accessed the first time in this new transaction.
-  auto transaction = Transaction::Create(connectionId);
+  auto& transaction = Transaction::Create(connectionId);
   if (stickyLocks) {
     // Transfer the sticky locks of this database into the transaction
-    transaction->UseStickyLocks(this, std::move(stickyLocks));
+    ApplyStickyLocksToTansaction(transaction);
   }
-  return *transaction;
+  return transaction;
 }
 
 
+
+void Database::ApplyStickyLocksToTansaction(Transaction& transaction) {
+  if (stickyLocks) {
+    cache->UpdateTxnIdForHeldLocks(*stickyLocks, transaction.id);
+    transaction.UseStickyLocks(this, std::move(stickyLocks));
+  }
+}
 
 
 }

@@ -48,7 +48,7 @@ public:
   /** Creates a new transaction for the given connection ID without checking for an already existing one. This 
    *  function is only used from within CLientLib itself.
    */
-  static Transaction* Create(connection_id connectionId);
+  static Transaction& Create(connection_id connectionId);
 
 
   enum class LockMode { None, Read, Write };

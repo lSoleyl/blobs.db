@@ -375,8 +375,8 @@ Transaction* Transaction::Get(connection_id connectionId) {
   return (pos != active.end()) ? &pos->second : nullptr;
 }
 
-Transaction* Transaction::Create(connection_id connectionId) {
-  return &active.emplace(connectionId, Transaction(connectionId)).first->second;
+Transaction& Transaction::Create(connection_id connectionId) {
+  return active.emplace(connectionId, Transaction(connectionId)).first->second;
 }
 
 
