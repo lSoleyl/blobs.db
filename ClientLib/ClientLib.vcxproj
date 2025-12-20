@@ -101,6 +101,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Database.cpp" />
+    <ClCompile Include="DatabasesState.cpp" />
     <ClCompile Include="HeldLocks.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="pch.cpp">
@@ -109,6 +110,7 @@
     </ClCompile>
     <ClCompile Include="Session.cpp" />
     <ClCompile Include="Transaction.cpp" />
+    <ClCompile Include="TransactionsState.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="ClientLib.md" />
@@ -126,8 +128,10 @@
     <ClInclude Include="include\blobs\Initialization.hpp" />
     <ClInclude Include="include\blobs\Session.hpp" />
     <ClInclude Include="include\blobs\Transaction.hpp" />
+    <ClInclude Include="include\internal\DatabasesState.hpp" />
     <ClInclude Include="include\internal\HeldLocks.hpp" />
     <ClInclude Include="include\internal\Network.hpp" />
+    <ClInclude Include="include\internal\TransactionsState.hpp" />
     <ClInclude Include="pch.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

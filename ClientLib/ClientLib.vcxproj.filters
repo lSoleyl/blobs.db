@@ -39,6 +39,12 @@
     <ClCompile Include="Session.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="TransactionsState.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="DatabasesState.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="ClientLib.md" />
@@ -73,6 +79,12 @@
     </ClInclude>
     <ClInclude Include="include\blobs\Session.hpp">
       <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\internal\TransactionsState.hpp">
+      <Filter>Headerdateien\internal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\internal\DatabasesState.hpp">
+      <Filter>Headerdateien\internal</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

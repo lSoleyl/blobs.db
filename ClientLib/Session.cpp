@@ -2,6 +2,10 @@
 
 #include <blobs/Session.hpp>
 #include <blobs/Exception.hpp>
+#include <blobs/Transaction.hpp>
+#include <internal/Network.hpp>
+#include <internal/TransactionsState.hpp>
+#include <internal/DatabasesState.hpp>
 
 #include <mutex>
 
@@ -16,11 +20,15 @@ struct Session::State {
   State() : refCount(1) {}
 
   std::atomic<int> refCount;
-  std::mutex mutex; // Do we need a recursive one?
+  std::mutex mutex;
+  std::atomic<std::thread::id> lockedBy;
+  internal::Network network;
+  internal::TransactionsState transactions; // Used by Transaction class
+  internal::DatabasesState databases; // used by Database class
 };
 
 Session::Handle::Handle() noexcept : session(nullptr) {}
-Session::Handle::Handle(Session* session) : session(session) {}
+Session::Handle::Handle(Session* session) noexcept : session(session) {}
 
 Session::Handle::Handle(const Handle& other) : session(other.session) {
   if (other.session) {
@@ -61,6 +69,45 @@ bool Session::Handle::Reset() {
 }
 
 
+
+Session::LockHandle::LockHandle() : session(nullptr) {}
+
+Session::LockHandle::LockHandle(Session* session) : session(session) {
+  if (session->state->lockedBy.load(std::memory_order::memory_order_acquire) == std::this_thread::get_id()) {
+    // Lock is already held by this thread, DO NOT re-acquire it (so we can avoid using a std::recursive_mutex)
+    // and still support reentrant calls of Lock() (eg. when Database::CreateCluster() calls Database::CreateBlob())
+    this->session = nullptr;
+  } else {
+    // Lock is either not held, or held by another thread -> lock it for this thread
+    session->state->mutex.lock();
+    session->state->lockedBy.store(std::this_thread::get_id(), std::memory_order::memory_order_release);
+  }
+}
+
+Session::LockHandle::~LockHandle() {
+  Unlock();
+}
+
+Session::LockHandle::LockHandle(LockHandle&& other) : session(other.session) {
+  other.session = nullptr;
+}
+
+Session::LockHandle& Session::LockHandle::operator=(LockHandle&& other) {
+  this->~LockHandle();
+  new (this) LockHandle(std::move(other));
+  return *this;
+}
+
+
+void Session::LockHandle::Unlock() {
+  if (session) {
+    session->state->lockedBy.store(std::thread::id(), std::memory_order::memory_order_release); // Reset to default id (no thread holds the mutex)
+    session->state->mutex.unlock();
+    session = nullptr;
+  }
+}
+
+
 Session::Session() : state(new State) {}
 Session::~Session() {}
 
@@ -68,8 +115,24 @@ Session::Handle Session::Create() {
   return Handle(new Session);
 }
 
-std::unique_lock<std::mutex> Session::Lock() {
-  return std::unique_lock<std::mutex>(state->mutex);
+Session::LockHandle Session::Lock() {
+  return LockHandle(this);
+}
+
+bool Session::OwnsLock() const {
+  return state->lockedBy.load(std::memory_order::memory_order_acquire) == std::this_thread::get_id();
+}
+
+internal::Network& Session::Network() {
+  return state->network;
+}
+
+internal::TransactionsState& Session::Transactions() {
+  return state->transactions;
+}
+
+internal::DatabasesState& Session::Databases() {
+  return state->databases;
 }
 
 Session::Handle Session::GetGlobalSession() {

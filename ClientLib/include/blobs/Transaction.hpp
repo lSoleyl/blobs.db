@@ -1,8 +1,9 @@
 #pragma once
 #include "Config.hpp"
+#include "Session.hpp"
+
 #include <memory>
 #include <optional>
-#include <map>
 
 
 namespace blobs {
@@ -16,21 +17,39 @@ namespace internal {
 /** Instances of this class represent a single global transaction.
  */
 class Transaction {
-  Transaction(connection_id connectionId);
+  Transaction(const Session::Handle& session, connection_id connectionId);
 public:
-  /** Returns true if a transaction is currently in progress
-   */
-  BLOBS_EXPORT static bool IsRunning();
+  ~Transaction();
+  Transaction(Transaction&&) = default; // needed only for active.emplace(....)
 
-  /** Commits the currently running transaction (if any). 
+  /** Returns true if a transaction is currently in progress in the specified session
+   */
+  BLOBS_EXPORT static bool IsRunning(const Session::Handle& session);
+
+  /** Returns true if a transaction is currently running in the global session
+   */
+  static bool IsRunning() { return IsRunning(Session::GetGlobalSession()); }
+
+  /** Commits the currently running transaction (if any in the specified session). 
    * @return true if a transaction was running and was commited.
    */
-  BLOBS_EXPORT static bool Commit();
+  BLOBS_EXPORT static bool Commit(const Session::Handle& session);
 
-  /** Aborts the currently running transaction (if any).
+
+  /** Commits the currently running transaction (if any) in the global session.
+   * @return true if a transaction was running and was commited.
+   */
+  static bool Commit() { return Commit(Session::GetGlobalSession()); }
+
+  /** Aborts the currently running transaction (if any in the specified session).
    * @return true if a transaction was running and was aborted.
    */
-  BLOBS_EXPORT static bool Abort();
+  BLOBS_EXPORT static bool Abort(const Session::Handle& session);
+
+  /** Aborts the currently running transaction (if any) in the global session.
+   * @return true if a transaction was running and was aborted.
+   */
+  static bool Abort() { return Abort(Session::GetGlobalSession()); }
 
 
   /** This method is called if a transaction is aborted by the server because of a deadlock.
@@ -41,17 +60,21 @@ public:
   void AbortDeadlock();
 
   /** Returns the currently running transaction or nullptr if no transaction is running.
-   *  This is only used from within the ClientLib itself
+   *  This is only used from within the ClientLib itself.
+   * 
+   * @param session the session to which the transaction belongs
    */
-  static Transaction* Get(connection_id connectionId);
+  static Transaction* Get(const Session::Handle& session, connection_id connectionId);
 
   // FIXME STICKY NO! Since Commit() always applies to all server connections, so should Create()
-  //              If we start a transaction we must notify ALL connected server about the TransactionBegin and process responses from them.
+  //              If we start a transaction we must notify ALL connected servers about the TransactionBegin and process responses from them.
 
   /** Creates a new transaction for the given connection ID without checking for an already existing one. This 
    *  function is only used from within CLientLib itself.
+   * 
+   * @param session the session to which the created transaction will belong (the session should already be locked before calling this function)
    */
-  static Transaction& Create(connection_id connectionId);
+  static Transaction& Create(const Session::Handle& session, connection_id connectionId);
 
 
   enum class LockMode { None, Read, Write };
@@ -107,6 +130,9 @@ public:
   std::optional<std::pair<const void* /*data*/, blob_size>> ReadBlob(Database* database, const BlobLocation& location) const;
 
 
+  
+
+
   /** Each transaction has an id, which is counted up. This is not the same as the commit id of the server, which is stored in the blobs.
    *  This id is only used to determine, whether a cached blob has been read in the current transaction or a previous one.
    */
@@ -116,23 +142,23 @@ private:
   /** Used as final step in a transaction commit/abort. This will transfer all held locks as sticky locks into the corresponding databases to be
    *  used for the next transaction and finally clean up all transaction state, which will implicitly destroy all transaction objects.
    */
-  static void TransferAndClearState();
+  static void TransferAndClearState(const Session::Handle& session);
 
   /** This method is used as part of TransferAndClearState() to transfer out all sticky locks from one transaction into their corresponding databases
    */
   void TransferStickyLocks();
 
-
-  static std::map<connection_id, Transaction> active; // the currently active transactions (up to one per server connection)
-  static uint64_t nextId;
-
   // I am not very fond of this additional indirection, but it is the best way to keep the whole implementation details from the client
   // and also to avoid moving too many headers into the ClientLib itself
   struct State;
   std::unique_ptr<State> state; // The transaction state (held locks, outstanding writes)
+  Session::Handle session; // This transaction's session
 
   const connection_id connectionId;
-};
 
+  // Not copyable
+  Transaction(const Transaction&) = delete;
+  Transaction& operator=(const Transaction&) = delete;
+};
 
 }

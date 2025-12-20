@@ -1,9 +1,14 @@
 #pragma once
 
-#include <mutex>
+#include <memory>
 
 namespace blobs {
 
+namespace internal {
+  class Network;
+  class TransactionsState;
+  class DatabasesState;
+}
 
 /** The session represents a client instance, inside the client. It allows one process to open multiple connections to the
  *  same database and operate in separate transactions. To the server this looks like multiple clients connecting from the same IP.
@@ -23,6 +28,7 @@ public:
    *  threads, simply copy the handle, this is cheap and thread safe.
    */
   class Handle {
+    friend class Session;
   public:
     BLOBS_EXPORT Handle() noexcept;
     BLOBS_EXPORT Handle(const Handle& other);
@@ -32,10 +38,6 @@ public:
     BLOBS_EXPORT Handle& operator=(const Handle& other);
     BLOBS_EXPORT Handle& operator=(Handle&& other);
     
-    /** Only used inside Session::Create()
-     */
-    Handle(Session* session);
-
     explicit operator bool() const { return session != nullptr; }
     Session* operator->() const { return session; }
 
@@ -47,6 +49,10 @@ public:
 
 
   private:
+    /** Only used inside Session::Create()
+     */
+    Handle(Session* session) noexcept;
+
     Session* session;
   };
 
@@ -55,10 +61,66 @@ public:
    */
   BLOBS_EXPORT static Handle Create();
 
+  /** An RAII lock implementation class similar to std::unique_lock. 
+   *  The main reason for using this class instead of std::unique_lock is to be able to 
+   *  store inside the Session whether the session is actually locked or not (for debugging purposes)
+   */
+  class LockHandle {
+    friend class Session;
+    public:
+      LockHandle();
+      ~LockHandle();
+
+      // Do NOT use the move operators to move lock ownership across threads, this does not work
+      LockHandle(LockHandle&& other);
+      LockHandle& operator=(LockHandle&& other);
+
+      /** Returns true if this lock currently holds a locked session
+       */
+      explicit operator bool() const { return session != nullptr; }
+
+      /** If the lock was held, then calling this method will release it
+       */
+      void Unlock();
+
+    private:
+      /** Locks the session's mutex and marks the session as locked by this thread.
+       *  This was done mainly for debugging purposes, but is now used to avoid using a std::recursive_mutex and still
+       *  support locking a session while already holding a lock.
+       */
+      LockHandle(Session* session);
+
+      // Not copyable
+      LockHandle(const LockHandle&) = delete;
+      LockHandle& operator=(const LockHandle&) = delete;
+
+      Session* session;
+  };
+
+
 
   /** Internally used method to acquire the session's lock for cross thread synchronization
+   *  The lock may be acquired recursively in which case the inner Lock() calls will simply return an empty LockHandle
+   *  and NOT perform any locking/unlocking of the mutex.
    */
-  std::unique_lock<std::mutex> Lock();
+  LockHandle Lock();
+
+  /** Returns true if this session is locked and the current thread owns the lock (acquired it)
+   *  This is mainly used for debugging/checking internal invariants
+   */
+  bool OwnsLock() const;
+
+  /** Access to the session's connection manager. Only call this AFTER locking the session through Lock()!
+   */
+  internal::Network& Network();
+
+  /** Access to the session's transaction state. Only call this AFTER locking the session through Lock()!
+   */
+  internal::TransactionsState& Transactions();
+
+  /** Access to the session's database state. Only call this AFTER locking the session through Lock()!
+   */
+  internal::DatabasesState& Databases();
 
   /** Returns a copy of the global session handle.
    */

@@ -4,12 +4,17 @@
 #include <network/message/NetworkException.hpp>
 #include <blobs/Exception.hpp>
 
+#include <algorithm>
 
 namespace blobs {
 namespace internal {
 
-std::vector<Network::Connection> Network::connections;
+Network::Network() {}
 
+Network::~Network() {
+  // Deleting the network while a connection is still in use means we did something wrong with the use count an have a connection resource leak!
+  assert(std::all_of(connections.begin(), connections.end(), [](const Connection& connection) { return !connection.client; }));
+}
 
 connection_id Network::Get(std::string_view host, int port) {
   if (port > std::numeric_limits<uint16_t>::max()) {

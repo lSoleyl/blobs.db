@@ -5,6 +5,7 @@
 #include <common/BlobLocation.hpp>
 #include <internal/Network.hpp>
 #include <internal/HeldLocks.hpp>
+#include <internal/TransactionsState.hpp>
 #include <network/message/All.hpp>
 #include <network/ClientInterface.hpp>
 
@@ -264,33 +265,34 @@ struct Transaction::State {
   std::map<database_id, DatabaseState> forDatabase;
 };
 
-uint64_t Transaction::nextId = 0;
-std::map<connection_id, Transaction> Transaction::active;
+Transaction::Transaction(const Session::Handle& session, connection_id connectionId) : id(session->Transactions().nextId++), state(new State), connectionId(connectionId), session(session) {}
+Transaction::~Transaction() {}
 
-Transaction::Transaction(connection_id connectionId) : id(nextId++), state(new State), connectionId(connectionId) {}
-
-
-bool Transaction::IsRunning() {
-  return !active.empty();
+bool Transaction::IsRunning(const Session::Handle& session) {
+  auto sessionLock = session->Lock();
+  return session->Transactions().IsRunning();
 }
 
-bool Transaction::Commit() {
-  if (!IsRunning()) {
+bool Transaction::Commit(const Session::Handle& session) {
+  auto sessionLock = session->Lock();
+  auto& transactions = session->Transactions();
+
+  if (!transactions.IsRunning()) {
     return false;
   }
 
   std::vector<std::pair<network::ClientInterface*, Transaction*>> waitForReplies;
 
-
+  auto& network = session->Network();
   // Construct the commit messages for each server connection
-  for (auto& [connectionId, transaction] : active) {
+  for (auto& [connectionId, transaction] : transactions.active) {
     auto commitMessages = transaction.state->ConstructCommitMessages();
 
     assert(!commitMessages.empty()); // We must send at least an empty commit message to each server otherwise the states will be out of sync
 
 
     // Send all commit messages to the client
-    auto& client = internal::Network::Get(connectionId);
+    auto& client = network.Get(connectionId);
     for (auto& message : commitMessages) {
       TODO("Implement a batch send to send a range of messages to the server to avoid synchronization overhead");
       client.SendMessageToServer(std::move(message));
@@ -337,7 +339,7 @@ bool Transaction::Commit() {
 
 
   // Reset all transaction state for all connections
-  TransferAndClearState();
+  TransferAndClearState(session);
 
   TODO("Throw error if any");
 
@@ -345,19 +347,23 @@ bool Transaction::Commit() {
 }
 
 
-bool Transaction::Abort() {
-  if (!IsRunning()) {
+bool Transaction::Abort(const Session::Handle& session) {
+  auto sessionLock = session->Lock();
+  auto& transactions = session->Transactions();
+
+  if (!transactions.IsRunning()) {
     return false;
   }
 
   // Send a transaction abort message to all server connections where we have active connections
-  for (auto& [connectionId, transaction] : active) {
-    auto& client = internal::Network::Get(connectionId);
+  auto& network = session->Network();
+  for (auto& [connectionId, transaction] : transactions.active) {
+    auto& client = network.Get(connectionId);
     client.SendMessageToServer(network::message::TransactionAbort::Create());
   }
 
   // Then delete all transaction state to prevent any future commit if the aborted transaction
-  TransferAndClearState();
+  TransferAndClearState(session);
 
   
   // We don't expect a confirmation from the server for a transaction abort message, which is fine since
@@ -367,31 +373,41 @@ bool Transaction::Abort() {
 
 
 void Transaction::AbortDeadlock() {
+  assert(session->OwnsLock()); // should only be called from inside AwaitMessage(), for which we already need to have a session lock
+
+  auto& network = session->Network();
+
   // Notify all other database servers with active connections to abort them
-  for (auto& [connectionId, transaction] : active) {
+  for (auto& [connectionId, transaction] : session->Transactions().active) {
     if (connectionId != this->connectionId) {
-      auto& client = internal::Network::Get(connectionId);
+      auto& client = network.Get(connectionId);
       client.SendMessageToServer(network::message::TransactionAbort::Create());
       // We don't expect any response to the abort message there is nothing to wait for
     }
   }
 
   // Finally clear all transaction state (This will delete `this`!)
-  Transaction::TransferAndClearState();
+  Transaction::TransferAndClearState(session);
 }
 
 
-Transaction* Transaction::Get(connection_id connectionId) {
+Transaction* Transaction::Get(const Session::Handle& session, connection_id connectionId) {
+  assert(session->OwnsLock());
+  auto& active = session->Transactions().active;
   auto pos = active.find(connectionId);
   return (pos != active.end()) ? &pos->second : nullptr;
 }
 
-Transaction& Transaction::Create(connection_id connectionId) {
-  return active.emplace(connectionId, Transaction(connectionId)).first->second;
+Transaction& Transaction::Create(const Session::Handle& session, connection_id connectionId) {
+  assert(session->OwnsLock());
+  auto& active = session->Transactions().active;
+  return active.emplace(connectionId, Transaction(session, connectionId)).first->second;
 }
 
 
 Transaction::LockMode Transaction::GetLockType(Database* database, const BlobLocation& location) const {
+  assert(session->OwnsLock());
+
   if (auto dbState = state->GetDatabaseState(database->id)) {
     auto& locks = *dbState->heldLocks;
     if (locks.write.find(location) != locks.write.end()) {
@@ -411,12 +427,15 @@ Transaction::LockMode Transaction::GetLockType(Database* database, const BlobLoc
 
 
 void Transaction::UseStickyLocks(Database* database, std::unique_ptr<internal::HeldLocks> stickyLocks) {
+  assert(session->OwnsLock());
+
   // Initialize the database state and assign the sticky locks to it upon construction
   state->AccessDatabaseState(database, std::move(stickyLocks));
 }
 
 
 void Transaction::AcquiredLock(Database* database, const BlobLocation& location, LockMode lock) {
+  assert(session->OwnsLock());
   assert(lock != LockMode::None); // Why would anyone call it like this!?
   auto& dbLocks = *state->AccessDatabaseState(database).heldLocks;
   
@@ -432,6 +451,7 @@ void Transaction::AcquiredLock(Database* database, const BlobLocation& location,
 
 
 void Transaction::WriteBlob(Database* database, const BlobLocation& location, const void* blobData, blob_size blobSize) {
+  assert(session->OwnsLock());
   auto& dbState = state->AccessDatabaseState(database);
   
   // Make sure, the blob hasn't already been marked for deletion
@@ -445,6 +465,7 @@ void Transaction::WriteBlob(Database* database, const BlobLocation& location, co
 
 
 void Transaction::DeleteBlob(Database* database, const BlobLocation& location) {
+  assert(session->OwnsLock());
   auto& dbState = state->AccessDatabaseState(database);
 
   // Make sure, the blob hasn't already been marked for deletion
@@ -461,6 +482,7 @@ void Transaction::DeleteBlob(Database* database, const BlobLocation& location) {
 
 
 void Transaction::DeleteCluster(Database* database, segment_id segment, cluster_id cluster) {
+  assert(session->OwnsLock());
   auto& dbState = state->AccessDatabaseState(database);
 
   // Make sure, the cluster hasn't already been marked for deletion
@@ -483,6 +505,7 @@ void Transaction::DeleteCluster(Database* database, segment_id segment, cluster_
 
 
 void Transaction::DeleteSegment(Database* database, segment_id segment) {
+  assert(session->OwnsLock());
   auto& dbState = state->AccessDatabaseState(database);
 
   // Make sure, the segment hasn't already been marked for deletion
@@ -511,6 +534,7 @@ void Transaction::DeleteSegment(Database* database, segment_id segment) {
 
 
 std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(Database* database, const BlobLocation& location) const {
+  assert(session->OwnsLock());
   if (auto dbState = state->GetDatabaseState(database->id)) {
   
     // Make sure, we don't attempt to read from a blob marked for deletion
@@ -529,13 +553,15 @@ std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(Database*
 
 
 
-void Transaction::TransferAndClearState() {
-  for (auto& [connectionId, transaction] : active) {
+void Transaction::TransferAndClearState(const Session::Handle& session) {
+  auto& transactions = session->Transactions();
+
+  for (auto& [connectionId, transaction] : transactions.active) {
     transaction.TransferStickyLocks();
   }
 
   // Reset any transaction state implicitly deleting all Transaction objects
-  active.clear();
+  transactions.active.clear();
 }
 
 
@@ -544,6 +570,8 @@ void Transaction::TransferStickyLocks() {
     dbState.database->AssignStickyLocks(std::move(dbState.heldLocks));
   }
 }
+
+
 
 }
 

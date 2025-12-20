@@ -4,6 +4,7 @@
 #include <blobs/Transaction.hpp>
 #include <internal/Network.hpp>
 #include <internal/HeldLocks.hpp>
+#include <internal/DatabasesState.hpp>
 #include <network/ClientInterface.hpp>
 
 #include <network/message/All.hpp>
@@ -13,9 +14,6 @@
 #include <charconv>
 
 namespace blobs {
-
-std::map<database_id, Database*> Database::databases;
-
 
 class Database::BlobCache {
 public:
@@ -129,16 +127,18 @@ private:
 
 
 
-Database::Database(Session::Handle&& session, std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(std::move(session)) {
-  databases.emplace(id, this);
+Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(session) {
+  assert(session->OwnsLock());
+  session->Databases().openedDatabases.emplace(id, this);
 }
 
 Database::~Database() {
-  databases.erase(id);
+  assert(!session->OwnsLock()); // because we unlock it right before deletion to avoid holding past the session's deletion (in case the database is the last object referencing the session)
+  session->Databases().openedDatabases.erase(id);
 }
 
 
-Database* Database::Open(const char* connectionStringBegin, size_t connectionStringLen) {
+Database* Database::Open(const Session::Handle& session, const char* connectionStringBegin, size_t connectionStringLen) {
   std::string_view connectionString(connectionStringBegin, connectionStringLen);
 
   auto slashPos = connectionString.find('/');
@@ -163,37 +163,40 @@ Database* Database::Open(const char* connectionStringBegin, size_t connectionStr
     }
   }
 
-  return Open(hostName, databaseName, port);
+  return Open(session, hostName, databaseName, port);
 }
 
 
-Database* Database::Open(const wchar_t* connectionString, size_t connectionStringLen) {
+Database* Database::Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen) {
   // Simply encode into UTF-8 and then call the regular version
   std::string u8ConnectionString = encoding::ToUTF8(std::wstring_view(connectionString, connectionStringLen));
-  return Open(u8ConnectionString.data(), u8ConnectionString.length());
+  return Open(session, u8ConnectionString.data(), u8ConnectionString.length());
 }
 
 
-Database* Database::Open(const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, int port) {
+Database* Database::Open(const Session::Handle& session, const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, int port) {
   std::string_view hostName(hostNameData, hostNameLen);
   std::string_view databaseName(databaseNameData, databaseNameLen);
 
-  auto session = Session::GetGlobalSession();
   auto sessionLock = session->Lock();
-
-  TODO("Move network into the session as well");
+  auto& network = session->Network();
   // Get the connection to the database server (open or reuse)
-  auto connectionId = internal::Network::Get(hostName, port);
+  auto connectionId = network.Get(hostName, port);
 
-  auto& client = internal::Network::Get(connectionId);
+  auto& client = network.Get(connectionId);
   client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName));
 
   // Await the DatabaseOpenResponse
-  auto message = internal::Network::ExpectMessage<network::message::DatabaseOpenResponse>(client);
+  auto message = network.ExpectMessage<network::message::DatabaseOpenResponse>(client);
   
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
     return new Database(std::move(session), std::string(databaseName), message->databaseId, connectionId);
-  } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED) {
+  }
+  
+  // Opening the database failed for some reason -> release the network connection to not leak it since
+  // no database has been created to hold on to it.
+  network.Release(connectionId);
+  if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED) {
     throw Exception("Failed to open database!");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {
     throw Exception("Too many databases already open. Close unused databases and retry.");
@@ -206,10 +209,10 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
   return nullptr;
 }
 
-Database* Database::Open(const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, int port) {
+Database* Database::Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, int port) {
   // Simply convert the UTF-16 database name into UTF-8 and call the regular Open() function
   auto u8DatabaseName = encoding::ToUTF8(std::wstring_view(databaseName, databaseNameLen));
-  return Database::Open(hostName, hostNameLen, u8DatabaseName.data(), u8DatabaseName.length(), port);
+  return Database::Open(session, hostName, hostNameLen, u8DatabaseName.data(), u8DatabaseName.length(), port);
 }
 
 
@@ -227,12 +230,14 @@ std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster
     throw Exception("Invalid blob id");
   }
 
+  // Only one thread at a time may read a blob
+  auto sessionLock = session->Lock();
   return ReadBlobInternal(segment, cluster, blob, writeLock);
 }
 
 
 std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
-  TODO("Add synchronization: Only one thread may communicate with the database at any given time.");
+  assert(session->OwnsLock());
 
   // Get the currently running transaction or start a new one if no is running yet
   auto& transaction = GetTransaction();
@@ -261,7 +266,8 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   }
 
   // Request the blob from the server
-  auto& client = internal::Network::Get(connectionId);
+  auto& network = session->Network();
+  auto& client = network.Get(connectionId);
   auto request = network::message::BlobsRead::Create(id, 1, writeLock ? network::message::BlobsRead::LockMode::Write : network::message::BlobsRead::LockMode::Read);
   auto& address = *request->begin();
   address = location;
@@ -269,7 +275,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   client.SendMessageToServer(std::move(request));
   
   // Wait for the response and handle it
-  auto response = internal::Network::ExpectMessage<network::message::BlobsReadResponse>(client);
+  auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
     if (cachedBlob && response->nBlobs == 0) {
       // Our cached blob is up to date, but we still successfully acquired the lock -> notify the transaction of the lock
@@ -306,15 +312,18 @@ void Database::WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, c
     throw Exception("Invalid blob id");
   }
 
+  if (blobSize > constants::MaxBlobSize) {
+    // Make sure, the client cannot write blobs, which are larger than the supported maximum
+    throw exception::BlobTooLarge(blobSize);
+  }
+
+  auto sessionLock = session->Lock();
   WriteBlobInternal(segment, cluster, blob, blobData, blobSize);
 }
 
 
 void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
-  if (blobSize > constants::MaxBlobSize) {
-    // Make sure, the client cannot write blobs, which are larger than the supported maximum
-    throw exception::BlobTooLarge(blobSize);
-  }
+  assert(session->OwnsLock());
 
   // Get the currently running transaction or start a new one if no is running yet
   auto& transaction = GetTransaction();
@@ -348,6 +357,9 @@ blob_id Database::CreateBlob(segment_id segment, cluster_id cluster, const void*
     throw Exception("Invalid cluster id");
   }
 
+  // Only one thread at a time may create a blob
+  auto sessionLock = session->Lock();
+
   // Create the new blob and directly write the data into it
   auto blobId = CreateBlobInternal(segment, cluster);
   WriteBlobInternal(segment, cluster, blobId, blobData, blobSize);
@@ -362,6 +374,9 @@ cluster_id Database::CreateCluster(segment_id segment) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");
   }
+
+  // Only one thread at a time may create a cluster
+  auto sessionLock = session->Lock();
 
   // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
   // also tell us the next cluster id to use
@@ -379,7 +394,7 @@ cluster_id Database::CreateCluster(segment_id segment) {
   WriteBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, &nextFreeClusterId, sizeof(nextFreeClusterId));
 
   // The cluster is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(connectionId); // ReadBlobInternal() has already started a transaction
+  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
 
   // Through creation we implicitly hold write locks to the cluster's special blobs
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
@@ -402,6 +417,9 @@ cluster_id Database::CreateCluster(segment_id segment) {
 
 
 segment_id Database::CreateSegment() {
+  // Only one thread at a time may create a segment
+  auto sessionLock = session->Lock();
+
   // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
   // also tell us the next cluster id to use
   auto [data, size] = ReadBlobInternal(constants::NextFreeSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
@@ -419,7 +437,7 @@ segment_id Database::CreateSegment() {
 
 
   // The segment is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(connectionId); // ReadBlobInternal() has already started a transaction
+  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
 
   // Through creation we implicitly hold write locks to the segment's special blobs
   transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
@@ -441,6 +459,8 @@ segment_id Database::CreateSegment() {
 }
 
 void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) {
+  auto sessionLock = session->Lock();
+
   // Get the currently running transaction or start a new one if no is running yet
   auto& transaction = GetTransaction();
   BlobLocation location(segment, cluster, blob);
@@ -459,6 +479,8 @@ void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) 
 
 
 void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
+  auto sessionLock = session->Lock();
+
   // Get the currently running transaction or start a new one if no is running yet
   auto& transaction = GetTransaction();
   BlobLocation lockLocation(segment, cluster, constants::ClusterDeleteId);
@@ -478,6 +500,8 @@ void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
 
 
 void Database::DeleteSegment(segment_id segment) {
+  auto sessionLock = session->Lock();
+
   // Get the currently running transaction or start a new one if no is running yet
   auto& transaction = GetTransaction();
   BlobLocation lockLocation(segment, constants::SegmentDeleteId, constants::ClusterDeleteId);
@@ -497,13 +521,16 @@ void Database::DeleteSegment(segment_id segment) {
 
 
 void Database::Close() {
-  if (Transaction::IsRunning()) {
+  auto sessionLock = session->Lock();
+
+  if (Transaction::IsRunning(session)) {
     throw exception::DbCloseDuringTxn(name);
   }
 
-  auto& client = internal::Network::Get(connectionId);
+  auto& network = session->Network();
+  auto& client = network.Get(connectionId);
   client.SendMessageToServer(network::message::DatabaseClose::Create(id));
-  auto message = internal::Network::AwaitMessage(client);
+  auto message = network.AwaitMessage(client);
   if (auto closeResponse = message.Get<network::message::DatabaseCloseResponse>()) {
     if (closeResponse->result == network::message::DatabaseCloseResponse::Result::TRANSACTION_IN_PROGRESS) {
       assert(false); // Apparently the server believes that this client a transaction running, while the client thinks he doesn't
@@ -518,13 +545,17 @@ void Database::Close() {
 
 
     // Server confirmed closing of this database -> release connection and delete this database instance
-    internal::Network::Release(connectionId);  
+    network.Release(connectionId);  
   } else if (auto closed = message.Get<network::message::ConnectionClosed>()) {
     // Server confirmed close of last database by simply closing the connection
-    internal::Network::ServerClosedConnection(connectionId);
+    network.ServerClosedConnection(connectionId);
   } else {
     throw Exception("Unexpected server response to DatabaseClose");
   }
+
+  // Important: We have to release the session lock BEFORE we delete this as this database may be the last object referencing the session,
+  //            which would in turn delete the session state and with it the mutex.
+  sessionLock.Unlock();
 
   delete this;
 }
@@ -559,7 +590,7 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   WriteBlobInternal(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
 
   // The blob is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(connectionId); // ReadBlobInternal() has already started a transaction if not already
+  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction if not already
   transaction->AcquiredLock(this, newLocation, Transaction::LockMode::Write);
 
   // Now we logically created the blob and we implicitly created the write lock, now the caller just has to actually write some
@@ -569,16 +600,18 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
 
 
 void Database::WriteLockNoContent(const BlobLocation& location) {
+  auto& network = session->Network();
+
   // Create the request for this blob
   auto& transaction = GetTransaction();
-  auto& client = internal::Network::Get(connectionId);
+  auto& client = network.Get(connectionId);
   auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
   auto& address = *request->begin();
   address = location;
 
   // Send it and await the server's response
   client.SendMessageToServer(std::move(request));
-  auto response = internal::Network::ExpectMessage<network::message::BlobsReadResponse>(client);
+  auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
   
   // Handle response
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
@@ -615,7 +648,7 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
       throw exception::LockTimeout();
 
     case network::message::BlobsReadResponse::Result::DEADLOCK:
-      if (auto transaction = Transaction::Get(connectionId)) {
+      if (auto transaction = Transaction::Get(session, connectionId)) {
         // Delete the currently running transaction and if we are connected to other servers -> notify them about the transaction abort of this client
         transaction->AbortDeadlock();
       } else {
@@ -635,7 +668,8 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
 
 
 Transaction& Database::GetTransaction() {
-  if (auto transaction = Transaction::Get(connectionId)) {
+  assert(session->OwnsLock());
+  if (auto transaction = Transaction::Get(session, connectionId)) {
     if (stickyLocks) {
       // We already started a new transaction for an action in an other database, but we
       // didn't yet transfer the sticky locks associated with this database into the transaction
@@ -649,11 +683,12 @@ Transaction& Database::GetTransaction() {
   }
 
   // Start new transaction
-  auto& client = internal::Network::Get(connectionId);
+  auto& network = session->Network();
+  auto& client = network.Get(connectionId);
   client.SendMessageToServer(network::message::TransactionBegin::Create());
   
   // Wait for response from server
-  auto response = internal::Network::ExpectMessage<network::message::TransactionBeginResponse>(client);
+  auto response = network.ExpectMessage<network::message::TransactionBeginResponse>(client);
   
   if (!response->IsSuccess()) {
     switch (response->result) {
@@ -669,6 +704,7 @@ Transaction& Database::GetTransaction() {
 
 
   // Now check all the locks to release (for all databases)
+  auto& databases = session->Databases().openedDatabases;
   for (auto& dbLockEntry : *response) {
     auto pos = databases.find(dbLockEntry.databaseId);
     if (auto database = (pos != databases.end()) ? pos->second : nullptr) {
@@ -683,7 +719,7 @@ Transaction& Database::GetTransaction() {
 
   // Finally create the transaction and transfer the sticky locks from this database (not all) into it
   // The other databases' sticky locks will be transferred the moment they are accessed the first time in this new transaction.
-  auto& transaction = Transaction::Create(connectionId);
+  auto& transaction = Transaction::Create(session, connectionId);
   if (stickyLocks) {
     // Transfer the sticky locks of this database into the transaction
     ApplyStickyLocksToTansaction(transaction);

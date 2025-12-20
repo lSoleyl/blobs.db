@@ -12,34 +12,37 @@ namespace internal {
 
 class Network {
 public:
+  Network();
+  ~Network();
+
   /** Opens a new client connection and returns a client id, which can be used to reference this client or 
    *  returns the id of an already existing connection if the connection parameters match.
    */
-  static connection_id Get(std::string_view host, int port);
+  connection_id Get(std::string_view host, int port);
 
   /** When a connection retrieved through Get(connectionString) is no longer needed, Release should be called to close it once
    *  the last user releases it.
    */
-  static void Release(connection_id connectionId);
+  void Release(connection_id connectionId);
 
   /** When receiving a close notification from the server, this should be called to properly deinitialize the client connection and thread.
    */
-  static void ServerClosedConnection(connection_id connectionId);
+  void ServerClosedConnection(connection_id connectionId);
 
   /** Returns the previously initialized client connection instance
    */
-  static network::ClientInterface& Get(connection_id connectionId);
+  network::ClientInterface& Get(connection_id connectionId);
 
 
   /** A wrapper around Client::AwaitMessage, which will automatically translate a NetworkException message into a thrown blobs::Exception
    */
-  static network::MessagePointer AwaitMessage(network::ClientInterface& connection);
+  network::MessagePointer AwaitMessage(network::ClientInterface& connection);
 
   /** A wrapper around AwaitMessage, which ensures that the returned message is of the correct type and casts it into the given message pointer.
    *  T should obviously be a type derived from network::Message
    */
   template<typename T>
-  static network::MessagePointer_T<T> ExpectMessage(network::ClientInterface& connection) {
+  network::MessagePointer_T<T> ExpectMessage(network::ClientInterface& connection) {
     auto message = AwaitMessage(connection);
     if (!message.Is<T>()) {
       std::ostringstream errorMsg;
@@ -63,7 +66,14 @@ private:
    *  This vector is not cleared as we assume that we will not constantly change the database servers
    *  and are more likely to resue previously closed connections
    */
-  static std::vector<Connection> connections;
+  std::vector<Connection> connections;
+
+
+  // Type is neither copyable not movable
+  Network(const Network&) = delete;
+  Network(Network&&) = delete;
+  Network& operator=(const Network&) = delete;
+  Network& operator=(Network&&) = delete;
 };
 
 
