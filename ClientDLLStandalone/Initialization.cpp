@@ -1,6 +1,7 @@
 #define BLOBS_EXPORT __declspec(dllexport)
 
 #include <blobs/Initialization.hpp>
+#include <blobs/Session.hpp>
 #include <network/StandaloneFactory.hpp>
 #include <server/Server.hpp>
 
@@ -49,10 +50,16 @@ void blobs::Initialize() {
   // Initialize and start the local server instance
   standaloneServer = std::make_unique<StandaloneServer>();
   standaloneServer->Start();
+
+  // Initialize the global session
+  Session::Initialize();
 }
 
 void blobs::Shutdown() {
   // Wait for server thread to complete shutdown
   standaloneServer.reset();
+
+  // Shutdown the global session
+  Session::Shutdown();
 }
 

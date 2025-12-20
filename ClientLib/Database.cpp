@@ -129,7 +129,7 @@ private:
 
 
 
-Database::Database(std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache) {
+Database::Database(Session::Handle&& session, std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(std::move(session)) {
   databases.emplace(id, this);
 }
 
@@ -178,6 +178,10 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
   std::string_view hostName(hostNameData, hostNameLen);
   std::string_view databaseName(databaseNameData, databaseNameLen);
 
+  auto session = Session::GetGlobalSession();
+  auto sessionLock = session->Lock();
+
+  TODO("Move network into the session as well");
   // Get the connection to the database server (open or reuse)
   auto connectionId = internal::Network::Get(hostName, port);
 
@@ -188,7 +192,7 @@ Database* Database::Open(const char* hostNameData, size_t hostNameLen, const cha
   auto message = internal::Network::ExpectMessage<network::message::DatabaseOpenResponse>(client);
   
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
-    return new Database(std::string(databaseName), message->databaseId, connectionId);
+    return new Database(std::move(session), std::string(databaseName), message->databaseId, connectionId);
   } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED) {
     throw Exception("Failed to open database!");
   } else if (message->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {

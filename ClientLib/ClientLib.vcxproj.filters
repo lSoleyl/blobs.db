@@ -36,6 +36,9 @@
     <ClCompile Include="HeldLocks.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="Session.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="ClientLib.md" />
@@ -67,6 +70,9 @@
     </ClInclude>
     <ClInclude Include="include\internal\HeldLocks.hpp">
       <Filter>Headerdateien\internal</Filter>
+    </ClInclude>
+    <ClInclude Include="include\blobs\Session.hpp">
+      <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

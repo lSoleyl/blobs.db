@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Config.hpp"
+#include "Session.hpp"
 
 #include <string>
 #include <vector>
@@ -256,7 +257,7 @@ private:
   void ApplyStickyLocksToTansaction(Transaction& transaction);
 
 
-  Database(std::string name, database_id id, connection_id connectionId);
+  Database(Session::Handle&& session, std::string name, database_id id, connection_id connectionId);
   Database(const Database&) = delete;
   ~Database();
   Database& operator=(const Database&) = delete;
@@ -264,6 +265,7 @@ private:
   class BlobCache;
   std::unique_ptr<BlobCache> cache;
   std::unique_ptr<internal::HeldLocks> stickyLocks; // Locks held past the end of the last transaction
+  Session::Handle session; // the session, in which this database was created
   static std::map<database_id, Database*> databases; // We internally keep track of all currently opened databases
 };
 
