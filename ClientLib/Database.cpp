@@ -560,6 +560,9 @@ void Database::Close() {
   delete this;
 }
 
+Session::Handle Database::GetSession() const {
+  return session;
+}
 
 void Database::UpdateCacheForCommittedBlob(const BlobLocation& location, std::vector<uint8_t> data, commit_id commitId, uint64_t transactionId) {
   cache->Update(location, std::move(data), commitId, transactionId);

@@ -207,8 +207,14 @@ public:
 
 
   /** Closes the connection to this database and deletes this object.
+   * 
+   * @throws blobs::Exception if a transaction is currently in progress
    */
   BLOBS_EXPORT void Close();
+
+  /** Returns a copy of the session handle, which identifies the session this database belongs to.
+   */
+  BLOBS_EXPORT Session::Handle GetSession() const;
 
 
   /** This method is called upon transaction commit to update the cached version of the blob, which has just been written to with the
