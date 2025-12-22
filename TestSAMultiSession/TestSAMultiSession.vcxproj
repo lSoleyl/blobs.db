@@ -158,6 +158,7 @@
     </ClCompile>
     <ClCompile Include="testCreateBlob.cpp" />
     <ClCompile Include="testOpenDatabase.cpp" />
+    <ClCompile Include="testVectorClock.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="parallel.hpp" />
