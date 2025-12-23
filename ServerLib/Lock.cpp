@@ -75,6 +75,7 @@ void Lock::Acquire(client_id client, bool writeLock, StickyLockInterface& sticky
     if (write) {
       // CanAcquire() has already verified that this lock is revokable
       stickyLocks.RevokeStickyLock(*write, location);
+      write.reset(); // clear the sticky write lock
     }
 
     auto pos = std::find(read.begin(), read.end(), client);
