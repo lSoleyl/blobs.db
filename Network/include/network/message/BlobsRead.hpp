@@ -41,6 +41,10 @@ struct BlobsRead : public Message {
   const BlobAddress* end() const;
 
 
+  /** Returns true if this blob read message sets a write or delete lock.
+   */
+  bool NeedsWriteLock() const;
+
   /** Create a new OpenDB message with sufficient space to hold nBlobsRequested number of blobs.
    *  The BlobAddresses are at this point not initialized and have to be initialized using the begin()/end() iterators
    */

@@ -27,6 +27,11 @@ const BlobsRead::BlobAddress* BlobsRead::end() const {
 }
 
 
+bool BlobsRead::NeedsWriteLock() const {
+  return lockMode != LockMode::Read;
+}
+
+
 MessagePointer_T<BlobsRead> BlobsRead::Create(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode) {
   auto messageSize = sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress);
   return MessagePointer_T<BlobsRead>(new (new char[messageSize]) BlobsRead(databaseId, nBlobsRequested, lockMode));

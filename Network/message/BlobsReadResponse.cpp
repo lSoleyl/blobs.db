@@ -11,7 +11,12 @@ static_assert(sizeof(BlobsReadResponse) + sizeof(BlobsReadResponse::BlobData) <=
 BlobsReadResponse::BlobsReadResponse(message_size messageSize, uint8_t nBlobs) : 
    Message(messageSize, BlobsReadResponse::type), result(Result::SUCCESS), nBlobs(nBlobs) {}
 
-BlobsReadResponse::BlobsReadResponse(Result result) : Message(sizeof(BlobsReadResponse), BlobsReadResponse::type), result(result), nBlobs(0) {}
+BlobsReadResponse::BlobsReadResponse(message_size messageSize, Result result, std::string_view errorDetails) : 
+  Message(messageSize, BlobsReadResponse::type), result(result), nBlobs(0) 
+{
+  // Copy the error details into the memory PAST the message (the caller of the constructor must make sure to allocate the sufficient memory for this operation
+  std::copy(errorDetails.begin(), errorDetails.end(), reinterpret_cast<char*>(this + 1));
+}
 
 MessagePointer_T<BlobsReadResponse> BlobsReadResponse::Create(size_t totalBlobsSize, uint8_t nBlobs) {
   auto messageSize = sizeof(BlobsReadResponse) + sizeof(BlobData) * nBlobs + totalBlobsSize;
@@ -20,8 +25,17 @@ MessagePointer_T<BlobsReadResponse> BlobsReadResponse::Create(size_t totalBlobsS
   return MessagePointer_T<BlobsReadResponse>(new (new char[messageSize]) BlobsReadResponse(static_cast<message_size>(messageSize), nBlobs));
 }
 
-MessagePointer_T<BlobsReadResponse> BlobsReadResponse::CreateError(Result result) {
-  return MessagePointer_T<BlobsReadResponse>(new BlobsReadResponse(result));
+MessagePointer_T<BlobsReadResponse> BlobsReadResponse::CreateError(Result result, std::string_view errorDetails) {
+  auto messageSize = sizeof(BlobsReadResponse) + errorDetails.size();
+  assert(messageSize <= std::numeric_limits<message_size>::max()); // Make sure the message is large enough to hold the error response
+
+  return MessagePointer_T<BlobsReadResponse>(new (new char[messageSize]) BlobsReadResponse(static_cast<message_size>(messageSize), result, errorDetails));
+}
+
+std::string_view BlobsReadResponse::GetErrorDetails() const {
+  // The error details are just like the data allocated behind the message in memory
+  assert(result != Result::SUCCESS); // Cannot retrieve the error details for a successful read
+  return std::string_view(reinterpret_cast<const char*>(this+1), size - sizeof(BlobsReadResponse));
 }
 
 

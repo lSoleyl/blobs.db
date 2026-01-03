@@ -46,6 +46,41 @@ bool Lock::CanAcquire(client_id client, bool writeLock, const StickyLockInterfac
   }
 }
 
+
+std::vector<client_id> Lock::CollectConflictingClients(client_id client, bool writeLock, const StickyLockInterface& stickyLocks) const {
+  std::vector<client_id> conflicts;
+
+  if (!writeLock) {
+    // A read lock can be acquired if no write lock is held or the write lock is being held by this client
+    // OR if the client holding the write lock is not currently inside a transaction (i.e. it is a sticky lock).
+    //    That sticky lock can then be revoked to acquire the lock.
+    if (write && *write != client && !stickyLocks.CanRevokeStickyLock(*write)) {
+      conflicts.push_back(*write);
+    }
+  } else {
+    // A write lock can only be acquired if this client is the only client holding the read lock (or no client)
+    if (write) {
+      // If this is already write locked, then acquiring can only work if this client is already holding the write lock
+      // OR if the client holding the write lock is not currently inside a transaction (i.e. it is a sticky lock).
+      //    That sticky lock can then be revoked to acquire the lock.
+      if (*write != client && !stickyLocks.CanRevokeStickyLock(*write)) {
+        conflicts.push_back(*write);
+      }
+    } else {
+      // Otherwise all held read locks must either be held by this client or by clients, whose locks we can revoke (i.e. inactive clients)
+      for (auto lock : read) {
+        if (lock != client && !stickyLocks.CanRevokeStickyLock(lock)) {
+          conflicts.push_back(lock);
+        }
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+
+
 void Lock::Acquire(client_id client, bool writeLock, StickyLockInterface& stickyLocks) {
   if (writeLock) {
     // Set write lock and potentially upgrade read lock

@@ -72,11 +72,22 @@ public:
   bool ClientOwnsWriteLock(client_id client, const BlobLocation& location) const;
 
 
+
+  struct DeadlockInfo {
+    struct Request {
+      BlobLocation location;
+      client_id client;
+      bool writeLock;
+    };
+
+    Request requests[2];
+  };
+
   /** Queues a read operation for this database to be completed as soon as the conflicting locks are released.
    *  This method will also check whether this read would cause a deadlock with any already held locks and queued reads
    *  and not queue the message and return false in that case so the server can notify the client about the deadlock.
    */
-  bool QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message);
+  std::optional<DeadlockInfo> QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message);
 
 
   /** This method will release the specified client locks and then remove all queued up read requests for this client from the queued reads
@@ -106,7 +117,7 @@ public:
   CommitResult CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitBegin, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd);
 
   /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to
-   *  other clients holding conflicting locks. These messages should be retried as soon as the conflicting reads are released.
+   *  other clients holding conflicting locks. These messages should be retried as soon as the conflicting locks are released.
    */
   std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
 
@@ -344,6 +355,26 @@ private:
   /** Releases the specified locks for the given client
    */
   void ReleaseLocks(client_id client, const std::vector<BlobLocation>& locks);
+
+  /** This structure is used when performing deadlock detection to collect all clients preventing 
+   *  the current message's lock acquisition
+   */
+  struct LockConflict {
+    LockConflict(const BlobLocation& location, client_id blockedBy);
+
+    BlobLocation location;
+    client_id blockedBy;
+  };
+
+
+  /** Collects all conflicting clients preventing lock acuisition for this message. Only used for deadlock detection.
+   */
+  std::vector<LockConflict> CollectLockConflicts(const network::message::BlobsRead& message) const;
+
+  /** If the given message has a lock conflict with the specified client then the location of that conflict (from this message)
+   *  will be returned, otherwise nullopt is returned. Only used for deadlock detection.
+   */
+  std::optional<BlobLocation> FindLockConflictWith(const network::message::BlobsRead& message, client_id conflictingClient) const;
 
 
   /** Implements the check of whether certain locks can be revoked (are sticky locks)

@@ -18,7 +18,7 @@ struct BlobsReadResponse : public Message {
     DATBASE_NOT_OPENED,         // passed a database id, which the server doesn't recognize for this client
     NO_TRANSACTION_IN_PROGRESS, // trying to read blobs before explicitly starting a transaction
     LOCK_TIMEOUT,
-    DEADLOCK
+    DEADLOCK                    // deadlocked with another client. The error message is allocated as string following this message.
   };
 
   Result result;
@@ -37,15 +37,19 @@ struct BlobsReadResponse : public Message {
     const void* Data() const;
   };
 
-
   /** Creates a new BlobsReadResponse message allocating enough memory to transmit the specified number of 
    *  blobs with the specified total blob size
    */
   static MessagePointer_T<BlobsReadResponse> Create(size_t totalBlobsSize, uint8_t nBlobs = 1);
 
   /** Creates an empty error response with only the Result value set.
+   *  If an error details message is supplied, it will be allocated behind the message and may be displayed by the client.
    */
-  static MessagePointer_T<BlobsReadResponse> CreateError(Result result);
+  static MessagePointer_T<BlobsReadResponse> CreateError(Result result, std::string_view errorDetails = "");
+
+  /** Returns the error details string for this error message.
+   */
+  std::string_view GetErrorDetails() const;
 
   /** This class is used to efficiently write/read the blob data into/from this message
    */
@@ -71,7 +75,7 @@ struct BlobsReadResponse : public Message {
   static constexpr Type type = Type::BlobsReadResponse;
 private:
   BlobsReadResponse(message_size messageSize, uint8_t nBlobs); 
-  BlobsReadResponse(Result result);
+  BlobsReadResponse(message_size messageSize, Result result, std::string_view errorDetails);
 };
 
 

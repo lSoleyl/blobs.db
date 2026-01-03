@@ -67,7 +67,7 @@ public:
 
 class Deadlock : public Exception {
 public:
-  Deadlock();
+  Deadlock(std::string_view details);
 };
 
 class BlobTooLarge : public Exception {

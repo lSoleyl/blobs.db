@@ -30,7 +30,7 @@ DbNotOpen::DbNotOpen(const std::string& dbName) :
 
 LockTimeout::LockTimeout() : Exception("Waiting for a lock timed out", ExceptionCode::LockTimeout) {}
 
-Deadlock::Deadlock() : Exception("Deadlock situation occurred while attemting to lock a blob", ExceptionCode::Deadlock) {}
+Deadlock::Deadlock(std::string_view details) : Exception(details, ExceptionCode::Deadlock) {}
 
 
 BlobTooLarge::BlobTooLarge(size_t blobSize) : Exception(

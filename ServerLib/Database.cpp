@@ -290,7 +290,7 @@ segment_id Database::GetNextFreeSegmentId() const {
 
 bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   auto client = message.clientId;
-  bool write = (message.lockMode != network::message::BlobsRead::LockMode::Read);
+  bool write = message.NeedsWriteLock();
 
   bool canAcquireLocks = std::all_of(message.begin(), message.end(), [=](const BlobLocation& location) {
     return CanClientAcquireLock(client, location, write);
@@ -325,8 +325,6 @@ bool Database::ClientOwnsWriteLock(client_id client, const BlobLocation& locatio
 
 
 bool Database::CanClientAcquireLock(client_id client, const BlobLocation& location, bool write) {
-  TODO("Also handle special locking rules: When client attempts to lock cluster's blob table, no write locks on any blob may exist in that cluster!");
-
   auto pos = locks.find(location);
   if (pos == locks.end()) {
     return true; // no lock yet at that location -> lock is possible
@@ -350,10 +348,43 @@ void Database::AcquireClientLock(client_id client, const BlobLocation& location,
 }
 
 
-bool Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message) {
-  TODO("Check for Deadlocks");
+std::optional<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message) {
+  // Collect all clients, whose locks conflict with this read message
+  auto conflicts = CollectLockConflicts(*message);
+  assert(!conflicts.empty()); // Why would we queue a read if there are no conflicts!?
+
+  // Now check the messages of all conflicting clients for conflicts with this message's client
+  auto client = message->clientId;
+  bool writeLock = message->NeedsWriteLock();
+
+  for (auto& queuedMessage : queuedReads) {
+    // Only check the messages of clients, which are preventing the current message's lock acquisition
+    auto lockConflict = std::find_if(conflicts.begin(), conflicts.end(), [&](const LockConflict& conflict) { return conflict.blockedBy == queuedMessage->clientId; });
+    if (lockConflict != conflicts.end()) {
+      if (auto conflictLocation = FindLockConflictWith(*queuedMessage, client)) {
+        // We have a bidirectional locking conflict (i.e. a deadlock!)
+        
+        // We still push the read into the read queue to have the flexibility of not always aborting the transaction of the client sending the last message.
+        queuedReads.push_back(std::move(message));
+        
+        // Now return an object containing the main deadlock information
+        TODO("Currently DeadlockInfo does not hold the information what kind of lock the conflicting client holds, this could be useful for error reporting/troubleshooting");
+        DeadlockInfo deadlock;
+        deadlock.requests[0].location = lockConflict->location;
+        deadlock.requests[0].client = client;
+        deadlock.requests[0].writeLock = writeLock;
+
+        deadlock.requests[1].location = *conflictLocation;
+        deadlock.requests[1].client = queuedMessage->clientId;
+        deadlock.requests[1].writeLock = queuedMessage->NeedsWriteLock();
+        return deadlock;
+      }
+    }
+  }
+  
+  // No deadlocks, simply queue the message and return an empty optional to indicate no deadlock
   queuedReads.push_back(std::move(message));
-  return true;
+  return std::nullopt;
 }
   
 
@@ -456,6 +487,49 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
     // Should we delete this Lock object now or keep it in memory forever? What is worse performance wise?
   }
 }
+
+Database::LockConflict::LockConflict(const BlobLocation& location, client_id blockedBy) : location(location), blockedBy(blockedBy) {}
+
+
+std::vector<Database::LockConflict> Database::CollectLockConflicts(const network::message::BlobsRead& message) const {
+  std::vector<Database::LockConflict> conflicts;
+  auto client = message.clientId;
+  bool write = message.NeedsWriteLock();
+
+  for (const BlobLocation& location : message) {
+    auto lock = locks.find(location);
+    if (lock != locks.end()) {
+      for (auto conflictingClient : lock->CollectConflictingClients(client, write, stickyLockHandler)) {
+        conflicts.push_back(LockConflict(location, conflictingClient));
+      }
+    }
+  }
+
+  return conflicts;
+}
+
+
+
+std::optional<BlobLocation> Database::FindLockConflictWith(const network::message::BlobsRead& message, client_id conflictingClient) const {
+  auto client = message.clientId;
+  bool write = message.NeedsWriteLock();
+
+  for (const BlobLocation& location : message) {
+    auto lock = locks.find(location);
+    if (lock != locks.end()) {
+      auto conflicts = lock->CollectConflictingClients(client, write, stickyLockHandler);
+      if (std::find(conflicts.begin(), conflicts.end(), conflictingClient) != conflicts.end()) {
+        // This location conflicts with the given conflicting client -> return it as a signal that we found the lock conflict we were looking for
+        return location;
+      }
+    }
+  }
+
+  // no conflict with specified client found
+  return std::nullopt;
+}
+
+
 
 
 Database::StickyLockHandler::StickyLockHandler(const Database& db) : db(db) {}

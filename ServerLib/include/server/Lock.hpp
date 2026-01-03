@@ -45,6 +45,18 @@ public:
    */
   bool CanAcquire(client_id client, bool writeLock, const StickyLockInterface& stickyLocks) const;
 
+
+  /** Performs the same check as CanAcquire, but instead of simply returning true/false, this method instead returns
+   *  all client ids, which prevent the lock's acquisition. This method is only used when checking for deadlocks.
+   * 
+   * @param client the id of the client requesting a lock
+   * @param writeLock true = requesting a write lock / false = requesting a read lock
+   * @param stickyLocks the structure holding information about which clients are currently inside a transaction.
+   * 
+   * @return list of all clients, which prevent this lock's acquisition
+   */
+  std::vector<client_id> CollectConflictingClients(client_id client, bool writeLock, const StickyLockInterface& stickyLocks) const;
+
   /** Acquires this lock for the specified client in the given read/write mode.
    *  This method assumes that the lock can be acquired and performs no further checks.
    *  This method also revokes other client's sticky locks if necessary.

@@ -194,10 +194,23 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
     assert(database); // <- TryHandleBlobsRead() would have returned true otherwise
 
     // Queue this message to the database to be processed as soon as the conflicting locks are released
-    if (!database->QueueReadCheckDeadlock(std::move(message))) {
-      // Deadlock detected -> cannot enqueue message
-      SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK));
-      // Abort the client's current transaction (this client is the deadlock victim)
+    if (auto deadlock = database->QueueReadCheckDeadlock(std::move(message))) {
+      // Deadlock detected -> one clients transaction must be terminated to continue.
+      TODO("Don't always kill the last client, support something like a transaction priority");
+      
+      TODO("Support a client display name, which should be used here instead of just the client id");
+      TODO("Fetch the hostname of the client and add it to the error description");
+
+      std::ostringstream details;
+      details << "Deadlock detected!\n"
+        << "Client " << deadlock->requests[0].client << " attempts to " << (deadlock->requests[0].writeLock ? "write" : "read") << " lock " << deadlock->requests[0].location
+        << " - conflicting lock held by Client " << deadlock->requests[1].client << "\n"
+        << "Client " << deadlock->requests[1].client << " attempts to " << (deadlock->requests[1].writeLock ? "write" : "read") << " lock " << deadlock->requests[1].location
+        << " - conflicting lock held by Client " << deadlock->requests[0].client << "\n"
+      ;
+
+      SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK, details.str()));
+      // Abort the client's current transaction (this client is the deadlock victim) - This will also remove any queued reads of that client from the queue
       // Aborting the transaction will also trigger processing of any outstanding reads, which may now be possible to complete
       AbortTransaction(client, false);
     }
@@ -601,8 +614,6 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
       SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
       return true;
     }
-
-    TODO("Handle not yet loaded blobs/clusters/segments");
 
     if (client.AcquireLocks(message)) {
       // Locks successfully acquired (no conflicts) -> send response

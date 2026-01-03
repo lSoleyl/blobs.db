@@ -660,8 +660,7 @@ void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResp
         // the other server responding to a previous request not yet knowing about the abort.
         assert(false);
       }
-      TODO("somehow add more detail to this error...");
-      throw exception::Deadlock();
+      throw exception::Deadlock(response.GetErrorDetails());
 
     default:
       throw Exception("Server sent unknown result code!");
