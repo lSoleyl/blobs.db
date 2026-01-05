@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <server/Server.hpp>
+#include <server/Logging.hpp>
 #include <network/SocketFactory.hpp>
 
 #include <iostream>
@@ -26,23 +27,21 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  // Enable unicode console output
-  SetConsoleOutputCP(CP_UTF8);
+  TODO("Make the log level and log file configurable through cmd line arguments");
+  server::logging::Initialize(server::logging::Level::INFO_LEVEL);
 
-  // Enable buffering on stdio for faster writes... It also results in us having to flush the output using std::endl
-  setvbuf(stdout, nullptr, _IOFBF, 1000);
-
-  std::cout << "Server initializing" << std::endl;;
+  BLOBS_LOG_INFO("Server initializing");
 
   
   // Use the regular network socket factory for the server.
   network::SocketFactory::Use();
 
   server::Server server;
-  std::cout << "Server ready" << std::endl;
+  BLOBS_LOG_INFO("Server ready");
 
   server.ServerMain();
 
-  std::cout << "Server exiting" << std::endl;
+  BLOBS_LOG_INFO("Server exiting");
+  server::logging::Shutdown();
   return 0;
 }

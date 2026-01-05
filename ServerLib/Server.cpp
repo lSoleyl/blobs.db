@@ -1,6 +1,7 @@
 #include "pch.hpp"
 #include "include/server/Server.hpp"
 #include "include/server/Client.hpp"
+#include "include/server/Logging.hpp"
 
 #include <network/Factory.hpp>
 #include <common/Encoding.hpp>
@@ -31,7 +32,7 @@ void Server::ServerMain() {
       ioCompletionPort.ProcessIOCompletionPacket();
     }
   } catch (network::IOCompletionPort::Stopped&) {
-    std::cout << "Shutdown signal received, exiting Server::ServerMain()" << std::endl;
+    BLOBS_LOG_DEBUG("Shutdown signal received, exiting Server::ServerMain()");
     return;
   }
 }
@@ -98,7 +99,7 @@ void Server::ProcessReceivedMessages() {
         //TODO: handle other messages
 
       default:
-        std::cerr << "[ERR] Server received message of unexpected type " << message->type << "(" << static_cast<int>(message->type) << ") from client " << message->clientId << "\n";
+        BLOBS_LOG_ERROR("Server received message of unexpected type " << message->type << "(" << static_cast<int>(message->type) << ") from client " << message->clientId);
         break;
     }
   }
@@ -139,11 +140,13 @@ void Server::SendMessageToClient(client_id clientId, network::MessagePointer mes
 
 void Server::HandleConnectionOpened(network::MessagePointer_T<network::message::ConnectionOpened> message) {
   // New client connected (initialize logical client data)
+  BLOBS_LOG_INFO("Client[" << message->clientId << "] connected from " << message->GetRemoteIp());
   Client::ClientConnected(message->clientId);
 }
 
 void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::ConnectionClosed> message) {
   // A client closed the connection
+  BLOBS_LOG_INFO("Client[" << message->clientId << "] disconnected");
   auto& client = Client::Get(message->clientId);
 
   // Abort any running transaction, release any held locks
@@ -153,8 +156,6 @@ void Server::HandleConnectionClosed(network::MessagePointer_T<network::message::
 
   // Close all opened databases. This will also release any still held sticky locks
   client.CloseAllDatabases();
-
-  TODO("Remove from client map, release all held locks, release database references and close database if this was the last one");
 }
 
 
@@ -642,8 +643,7 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
 }
 
 void Server::LogMessage(const network::message::Message& message) {
-  FIXME("This should be disabled in production code as it probably slows down the server as the windows console is known to be slow");
-  std::cout << "Client[" << message.clientId << "]: " << message << std::endl;
+  BLOBS_LOG_DEBUG("Client[" << message.clientId << "]: " << message);
 }
 
 

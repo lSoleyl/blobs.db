@@ -4,6 +4,7 @@
 #include <blobs/Session.hpp>
 #include <network/StandaloneFactory.hpp>
 #include <server/Server.hpp>
+#include <server/Logging.hpp>
 
 #include <thread>
 
@@ -55,11 +56,23 @@ void blobs::Initialize() {
   Session::Initialize();
 }
 
+void blobs::InitializeServerLogging(LogLevel level, const wchar_t* filePath) {
+  if (filePath) {
+    server::logging::Initialize(static_cast<server::logging::Level>(level), filePath);
+  } else {
+    server::logging::Initialize(static_cast<server::logging::Level>(level));
+  }
+}
+
+
 void blobs::Shutdown() {
   // Wait for server thread to complete shutdown
   standaloneServer.reset();
 
   // Shutdown the global session
   Session::Shutdown();
+
+  // Shutdown logging system (if initialized - to close any potentially opened log file)
+  server::logging::Shutdown();
 }
 
