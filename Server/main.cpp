@@ -5,30 +5,49 @@
 #include <server/Logging.hpp>
 #include <network/SocketFactory.hpp>
 
+#include <common/Encoding.hpp>
+
+#include "Args.hpp"
+
 #include <iostream>
 #include <io.h>
 #include <fcntl.h>
 
 using namespace blobs;
 
+
 /** Server main can be run with --test to run all unittest
  */
-int main(int argc, char** argv) {
+int wmain(int argc, wchar_t** argv) {
+  auto args = Args::Parse(argc, argv);
+  if (!args) {
+    return 1; // illegal arguments passed
+  }
+
+  if (args.help) {
+    // Print help and exit
+    args.PrintHelp();
+    return 0;
+  }
+
 #ifndef DOCTEST_CONFIG_DISABLE
-  if (argc >= 2 && std::string_view(argv[1]) == "--test") {
+  if (args.runTests) {
     // Run unittests
     doctest::Context context;
     //context.setOption("order-by", "name");            // sort the test cases by their name
 
-    context.applyCommandLine(argc, argv);
+    context.applyCommandLine(argc, Args::ToAsciiArgv(argc, argv));
     context.setOption("no-breaks", true);             // don't break in the debugger when assertions fail
 
     return context.run();
   }
 #endif
 
-  TODO("Make the log level and log file configurable through cmd line arguments");
-  server::logging::Initialize(server::logging::Level::INFO_LEVEL);
+  if (args.logFile) {
+    server::logging::Initialize(args.logLevel, args.logFile->c_str());
+  } else {
+    server::logging::Initialize(args.logLevel);
+  }
 
   BLOBS_LOG_INFO("Server initializing");
 
