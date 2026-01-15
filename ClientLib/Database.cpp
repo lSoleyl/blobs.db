@@ -5,6 +5,7 @@
 #include <internal/Network.hpp>
 #include <internal/HeldLocks.hpp>
 #include <internal/DatabasesState.hpp>
+#include <internal/TransactionsState.hpp>
 #include <network/ClientInterface.hpp>
 
 #include <network/message/All.hpp>
@@ -190,7 +191,7 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
   auto message = network.ExpectMessage<network::message::DatabaseOpenResponse>(client);
   
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
-    return new Database(std::move(session), std::string(databaseName), message->databaseId, connectionId);
+    return new Database(session, std::string(databaseName), message->databaseId, connectionId);
   }
   
   // Opening the database failed for some reason -> release the network connection to not leak it since
@@ -687,7 +688,7 @@ Transaction& Database::GetTransaction() {
   // Start new transaction
   auto& network = session->Network();
   auto& client = network.Get(connectionId);
-  client.SendMessageToServer(network::message::TransactionBegin::Create());
+  client.SendMessageToServer(network::message::TransactionBegin::Create(session->Transactions().useStickyLocks));
   
   // Wait for response from server
   auto response = network.ExpectMessage<network::message::TransactionBeginResponse>(client);

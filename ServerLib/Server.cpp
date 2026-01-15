@@ -228,10 +228,14 @@ void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::
     return;
   }
 
+  if (!message->keepStickyLocks) {
+    // Release all still held locks
+    client.ReleaseAllLocks();
+  }
+
+
   TODO("Support a MVCC transaction in the future by fixing a snapshot of the database");
   client.BeginTransaction();
-
-  // FIXME STICKY Client may request to release additional locks... we should merge this info
 
   SendMessageToClient(client.id, client.ConstructTransactionBeginResponse());
 }

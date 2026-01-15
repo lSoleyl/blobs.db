@@ -95,6 +95,10 @@ public:
    */
   bool CommitInProcess() const;
 
+  /** Releases all still held locks in all databases (only used when client requests a transaction begin without keeping sticky locks)
+   */
+  void ReleaseAllLocks();
+
 
   /** This method is called from inside Lock::AcquireLock() on clients, which are currently not inside a transaction, but hold sticky locks, which
    *  conflict with a locking request of a currently active client. The lock is marked as revoked and will be transmitted to the client as revoked

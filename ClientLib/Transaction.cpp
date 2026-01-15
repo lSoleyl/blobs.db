@@ -372,6 +372,13 @@ bool Transaction::Abort(const Session::Handle& session) {
 }
 
 
+bool Transaction::EnableStickyLocks(const Session::Handle& session, bool enable) {
+  auto sessionLock = session->Lock();
+  auto& transactions = session->Transactions();
+  return std::exchange(transactions.useStickyLocks, enable);
+}
+
+
 void Transaction::AbortDeadlock() {
   assert(session->OwnsLock()); // should only be called from inside AwaitMessage(), for which we already need to have a session lock
 

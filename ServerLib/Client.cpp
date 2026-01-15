@@ -194,6 +194,19 @@ bool Client::CommitInProcess() const {
 }
 
 
+void Client::ReleaseAllLocks() {
+  for (auto& dbEntry : openDatabases) {
+    // First remove all revoked locks from the list of locks (to not release a lock twice and trigger an assertion)
+    dbEntry.ApplyRevokedLocks();
+    dbEntry.revokedLocks.clear();
+
+    // Then release all remaining locks
+    dbEntry.database->ReleaseLocks(id, dbEntry.locks);
+    dbEntry.locks.clear();
+  }
+}
+
+
 void Client::RevokeStickyLock(database_id database, const BlobLocation& lockLocation) {
   auto& dbState = openDatabases[database];
   // We only remember that we revoked the lock here we don't filter out the lock location form `locks` as this is more

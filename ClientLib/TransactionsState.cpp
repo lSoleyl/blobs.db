@@ -4,7 +4,7 @@
 namespace blobs::internal {
 
 
-TransactionsState::TransactionsState() : nextId(0) {}
+TransactionsState::TransactionsState() : nextId(0), useStickyLocks(true) {}
 
 TransactionsState::~TransactionsState() {
   // This shouldn't be possible as each transaction holds a session handle to the session, so 

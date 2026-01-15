@@ -42,6 +42,9 @@
     <ClCompile Include="testDeadlock.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="testKeepStickyLocks.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.hpp">

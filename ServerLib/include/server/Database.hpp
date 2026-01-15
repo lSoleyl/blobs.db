@@ -94,7 +94,8 @@ public:
    */
   void AbortClientTransaction(client_id client, const std::vector<BlobLocation>& locksToRelease);
 
-
+  //FIXME: I am not quite happy with having this class publicly available... It should be private to the database, but the database needs to return a snapshot
+  //       smart pointer and the caller needs to be able to hold it...
   class CommitResult {
   public:
     CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta);
@@ -121,12 +122,11 @@ public:
    */
   std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
 
+ 
 
-
-  //FIXME: I am not quite happy with having this class publicly available... It should be private to the database, but the database needs to return a snapshot
-  //       smart pointer and the caller needs to be able to hold it...
-
-  
+  /** Releases the specified locks for the given client
+   */
+  void ReleaseLocks(client_id client, const std::vector<BlobLocation>& locks);
 
 private:
   Database(std::string name);
@@ -351,10 +351,6 @@ private:
    *  checked another time.
    */
   void AcquireClientLock(client_id client, const BlobLocation& location, bool write);
-
-  /** Releases the specified locks for the given client
-   */
-  void ReleaseLocks(client_id client, const std::vector<BlobLocation>& locks);
 
   /** This structure is used when performing deadlock detection to collect all clients preventing 
    *  the current message's lock acquisition

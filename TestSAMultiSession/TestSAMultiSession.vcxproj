@@ -158,6 +158,7 @@
     </ClCompile>
     <ClCompile Include="testCreateBlob.cpp" />
     <ClCompile Include="testDeadlock.cpp" />
+    <ClCompile Include="testKeepStickyLocks.cpp" />
     <ClCompile Include="testMultipleThreadsSingleSession.cpp" />
     <ClCompile Include="testOpenDatabase.cpp" />
     <ClCompile Include="testParallelWrite.cpp" />

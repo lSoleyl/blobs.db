@@ -14,7 +14,7 @@ namespace parallel {
   /** A parallel executor to run all the given functions in parallel while also allowing doctest assertions
    *  inside the executed functions. The thrown exceptions will be rethrown in the main thread (at most one).
    */
-  void run(std::vector<std::function<void()>>&& functions) {
+  inline void run(std::vector<std::function<void()>>&& functions) {
     std::exception_ptr exception_ptr = nullptr;
     std::mutex mutex;
 
