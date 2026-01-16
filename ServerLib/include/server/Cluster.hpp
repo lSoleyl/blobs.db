@@ -20,11 +20,12 @@ public:
   Cluster(const Cluster& other, commit_id commitId);
 
   /** Returns the blob or nullptr if it doesn't exist
+   *  This will also load the blob from the database file into memory if not already done.
    * 
    * @param blob the id of the blob to retrieve
    * @param file the file to load the blob from if it isn't loaded yet (for file databases only)
    */
-  Blob* GetBlob(blob_id blob, const FileBackend& file);
+  Blob* GetLoadedBlob(blob_id blob, const FileBackend& file);
 
 
   /** If the specified blob does not yet exist OR has not yet been modified in the same transaction as the clsuter 
@@ -80,6 +81,11 @@ public:
    */
   void LoadFrom(const FileBackend& file);
 
+  // iteration over all blobs (cluster must be loaded)
+  using iterator = typename sorted_flat_map<blob_id, std::shared_ptr<Blob>>::iterator;
+  iterator begin();
+  iterator end();
+
   const cluster_id id;
 
   /** The commit id of the transaction when this cluster's blob table has been last modified
@@ -87,9 +93,10 @@ public:
    *  commitId, which we do now know beforehand unless we would also store it in the block reference, which would be absurd.
    */
   commit_id commitId;
+
 private:
 
-  /** Used when loading a cluster to mark the blob as exisitng, but not yet loaded from file
+  /** Used when loading a cluster to mark the blob as existing, but not yet loaded from file
    */
   void DelayLoadBlob(blob_id blob, const file::BlockReference& fileLocation);
 

@@ -3,6 +3,7 @@
 #include "include/server/Server.hpp"
 #include "include/server/File.hpp"
 #include "include/server/Client.hpp"
+#include "include/server/LockUtil.hpp"
 
 namespace blobs {
 namespace server {
@@ -275,9 +276,14 @@ void Database::CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Resu
   }
 }
 
-Blob* Database::GetBlob(const BlobLocation& location) {
-  return snapshot->GetBlob(location, file);
+Blob* Database::GetLoadedBlob(const BlobLocation& location) {
+  return snapshot->GetLoadedBlob(location, file);
 }
+
+Cluster* Database::GetLoadedCluster(segment_id segment, cluster_id cluster, bool loadAllBlobs) {
+  return snapshot->GetLoadedCluster(segment, cluster, file, loadAllBlobs);
+}
+
 
 Segment* Database::GetSegment(segment_id segment) {
   return snapshot->GetSegment(segment);
@@ -292,21 +298,16 @@ bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   auto client = message.clientId;
   bool write = message.NeedsWriteLock();
 
-  bool canAcquireLocks = std::all_of(message.begin(), message.end(), [=](const BlobLocation& location) {
-    return CanClientAcquireLock(client, location, write);
-  });
   
-  if (canAcquireLocks) {
-    // Acquire all the locks at once
-    for (auto& location : message) {
-      AcquireClientLock(client, location, write);
-    }
+  if (!AllLocksInMessage(*this, message, [=](const BlobLocation& location) { return CanClientAcquireLock(client, location, write); })) {
+    // At least one lock cannot be acquired
+    return false;
   }
-
-  // FIXME STICKY this is actually quite important as this could mess with implicit write lock semantics if another client
-  //              can acquire a read lock to a not yet created blob, which would then conflict with the client actually attempting to create that blob
-  FIXME("what if the blobs we are trying to lock don't exist? This should be communicated back to the caller too!");
-  return canAcquireLocks;
+  
+  
+  // Acquire all the locks at once
+  ForEachLockInMessage(*this, message, [=](const BlobLocation& location) { AcquireClientLock(client, location, write); });
+  return true;
 }
 
 
@@ -321,7 +322,6 @@ bool Database::ClientOwnsWriteLock(client_id client, const BlobLocation& locatio
   auto pos = locks.find(location);
   return (pos != locks.end()) ? pos->OwnsWriteLock(client) : false;
 }
-
 
 
 bool Database::CanClientAcquireLock(client_id client, const BlobLocation& location, bool write) {
@@ -346,6 +346,7 @@ void Database::AcquireClientLock(client_id client, const BlobLocation& location,
     lock.Acquire(client, write, stickyLockHandler);
   }
 }
+
 
 
 std::optional<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message) {
@@ -485,48 +486,59 @@ void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& l
     // The const_cast here is valid as we do not modify the sorting order in any respect
     bool empty = const_cast<Lock&>(*lock).Release(client);
     // Should we delete this Lock object now or keep it in memory forever? What is worse performance wise?
+
+    FIXME(
+      "Actually I think we should delete the lock structures as this will also solve the issue of "
+      "not keeping around Lock objects for already deleted segments, clusters, blobs"
+    );
   }
 }
 
 Database::LockConflict::LockConflict(const BlobLocation& location, client_id blockedBy) : location(location), blockedBy(blockedBy) {}
 
 
-std::vector<Database::LockConflict> Database::CollectLockConflicts(const network::message::BlobsRead& message) const {
+std::vector<Database::LockConflict> Database::CollectLockConflicts(const network::message::BlobsRead& message) {
   std::vector<Database::LockConflict> conflicts;
   auto client = message.clientId;
   bool write = message.NeedsWriteLock();
 
-  for (const BlobLocation& location : message) {
+  ForEachLockInMessage(*this, message, [&](const BlobLocation& location) {
     auto lock = locks.find(location);
     if (lock != locks.end()) {
       for (auto conflictingClient : lock->CollectConflictingClients(client, write, stickyLockHandler)) {
         conflicts.push_back(LockConflict(location, conflictingClient));
       }
     }
-  }
+  });
 
   return conflicts;
 }
 
 
 
-std::optional<BlobLocation> Database::FindLockConflictWith(const network::message::BlobsRead& message, client_id conflictingClient) const {
+std::optional<BlobLocation> Database::FindLockConflictWith(const network::message::BlobsRead& message, client_id conflictingClient) {
   auto client = message.clientId;
   bool write = message.NeedsWriteLock();
 
-  for (const BlobLocation& location : message) {
+
+  std::optional<BlobLocation> conflictLocation;
+
+  AllLocksInMessage(*this, message, [&](const BlobLocation& location) {
     auto lock = locks.find(location);
     if (lock != locks.end()) {
       auto conflicts = lock->CollectConflictingClients(client, write, stickyLockHandler);
       if (std::find(conflicts.begin(), conflicts.end(), conflictingClient) != conflicts.end()) {
         // This location conflicts with the given conflicting client -> return it as a signal that we found the lock conflict we were looking for
-        return location;
+        conflictLocation = location;
+        return false; // abort iteration we found our conflict
       }
     }
-  }
 
-  // no conflict with specified client found
-  return std::nullopt;
+    return true; // continue iteration
+  });
+
+  // Return the conflict location if any has been found
+  return conflictLocation;
 }
 
 
@@ -565,14 +577,32 @@ Database::Snapshot::Snapshot(const Snapshot& other) : commitId(other.commitId+1)
 
 
 
-Blob* Database::Snapshot::GetBlob(const BlobLocation& location, const FileBackend& file) {
+Blob* Database::Snapshot::GetLoadedBlob(const BlobLocation& location, const FileBackend& file) {
   if (location.segment == constants::NextFreeSegmentId && location.cluster == constants::NextFreeClusterId && location.blob == constants::NextFreeBlobId) {
     // Return special blob holding the next free segment id
     return &nextFreeSegmentIdBlob;
   }
   
   // Otherwise perform regular lookup
-  if (auto segment = GetSegment(location.segment)) {
+  if (auto segment = GetLoadedSegment(location.segment, file)) {
+    // Use GetLoadedBlob() to support `NextFreeClusterId`
+    return segment->GetLoadedBlob(location.cluster, location.blob, file);
+  }
+  return nullptr;
+}
+
+
+Cluster* Database::Snapshot::GetLoadedCluster(segment_id segmentId, cluster_id clusterId, const FileBackend& file, bool loadAllBlobs) {
+  if (auto segment = GetLoadedSegment(segmentId, file)) {
+    return segment->GetLoadedCluster(clusterId, file, loadAllBlobs);
+  }
+
+  return nullptr;
+}
+
+
+Segment* Database::Snapshot::GetLoadedSegment(segment_id segmentId, const FileBackend& file, bool loadAllClusters) {
+  if (auto segment = GetSegment(segmentId)) {
     // Load the segment from file if it isn't loaded yet
     TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
     if (segment->status != Status::LOADED) {
@@ -580,9 +610,16 @@ Blob* Database::Snapshot::GetBlob(const BlobLocation& location, const FileBacken
       assert(segment->status == Status::LOADED);
     }
 
-    // Use GetBlob() to support `NextFreeClusterId`
-    return segment->GetBlob(location.cluster, location.blob, file);
+    if (loadAllClusters) {
+      // Loading of all clusters (and their blobs) requested
+      for (auto& [clusterId, cluster] : *segment) {
+        segment->GetLoadedCluster(clusterId, file, true);
+      }
+    }
+
+    return segment;
   }
+
   return nullptr;
 }
 
@@ -651,6 +688,9 @@ void Database::Snapshot::DeleteSegment(segment_id segment, MemoryBlockDelta* del
 
 void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta) {
   TODO("Maybe we should use if(constexpr) for the db-less path");
+
+
+  TODO("When deleting a blob,cluster,segment we must load them full from file IFF there exists an active MVCC snapshot of this database");
 
   // Apply each modification in sequence
   for (auto pos = commitMessage.begin(), end = commitMessage.end(); pos != end; ++pos) {

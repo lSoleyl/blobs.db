@@ -1,9 +1,9 @@
 #include "pch.hpp"
 #include "include/server/Client.hpp"
+#include "include/server/LockUtil.hpp"
 
 
-namespace blobs {
-namespace server {
+namespace blobs::server {
 
 std::unordered_map<client_id, Client> Client::clients;
 
@@ -162,19 +162,13 @@ bool Client::AcquireLocks(const network::message::BlobsRead& message) {
 
   if (openDb.database->AcquireLocks(message)) {
     // All locks could be acquired -> enter them into the database entry to mark down all our lock locations
-    for (auto& location : message) {
-      auto pos = std::find(openDb.locks.begin(), openDb.locks.end(), location);
-      if (pos == openDb.locks.end()) {
-        // A new lock
-        openDb.locks.push_back(location);
-      }
-    }
-    
+    ForEachLockInMessage(*openDb.database, message, [&](const BlobLocation& location) { openDb.AddLock(location); });
     return true;
   }
    
   return false;
 }
+
 
 void Client::AcquireImplicitWriteLocks(database_id dbId, const std::vector<BlobLocation>& writeLocks) {
   auto& dbState = openDatabases[dbId];
@@ -212,6 +206,15 @@ void Client::RevokeStickyLock(database_id database, const BlobLocation& lockLoca
   // We only remember that we revoked the lock here we don't filter out the lock location form `locks` as this is more
   // effort to perform it on each revocation instead only once in ConstructTransactionBeginResponse()
   dbState.revokedLocks.push_back(lockLocation);
+}
+
+
+void Client::DatabaseLocks::AddLock(const BlobLocation& lockLocation) {
+  auto pos = std::find(locks.begin(), locks.end(), lockLocation);
+  if (pos == locks.end()) {
+    // Lock not yet known
+    locks.push_back(lockLocation);
+  }
 }
 
 void Client::DatabaseLocks::ApplyRevokedLocks() {
@@ -288,4 +291,4 @@ network::MessagePointer_T<network::message::TransactionBeginResponse> Client::Co
 }
 
 
-}}
+}

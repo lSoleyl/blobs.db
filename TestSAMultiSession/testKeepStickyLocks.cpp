@@ -123,7 +123,7 @@ TEST_CASE("Synchronization with sticky locks disabled") {
       database_ptr db(Database::Open(session, "localhost", dbName));
       db->WriteString(0, 0, 0, "updated");
       Transaction::Commit(session);
-      Transaction::EnableStickyLocks(session, false);
+      CHECK_MESSAGE(Transaction::EnableStickyLocks(session, false) == true, "Sticky locks should be enabled by default");
 
       // Now start the second transaction by reading another blob (the write lock on 0,0,0 will be released now)
       db->ReadBlob(0, 0, 1);

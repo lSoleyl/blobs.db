@@ -39,10 +39,11 @@ BlobTooLarge::BlobTooLarge(size_t blobSize) : Exception(
   ExceptionCode::BlobTooLarge) {}
 
 
-BlobDoesNotExist::BlobDoesNotExist() : Exception("Attempted to read/write a blob, which does not exist", ExceptionCode::BlobDoesNotExist) {}
+BlobDoesNotExist::BlobDoesNotExist() : Exception("Attempt to read/write a blob, which does not exist", ExceptionCode::BlobDoesNotExist) {}
 
-BlobDeleted::BlobDeleted() : Exception("Attempted to read/write a blob, which has been deleted in the current transaction", ExceptionCode::BlobDeleted) {}
+BlobDeleted::BlobDeleted() : Exception("Attempt to read/write a blob, which has been deleted in the current transaction", ExceptionCode::BlobDeleted) {}
 
+ClusterDoesNotExist::ClusterDoesNotExist() : Exception("Attempt to delete a cluster, which does not exist", ExceptionCode::ClusterDoesNotExist) {}
 
 ClusterDeleted::ClusterDeleted() : Exception("Attempt to access a blob in an already deleted cluster", ExceptionCode::ClusterDeleted) {}
 

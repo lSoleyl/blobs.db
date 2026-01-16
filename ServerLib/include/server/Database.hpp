@@ -39,10 +39,19 @@ public:
   void Close();
 
   /** Returns a blob from this database (if it exists)
+   *  And loads it from disk if it hasn't yet been loaded
    */
-  Blob* GetBlob(const BlobLocation& location);
+  Blob* GetLoadedBlob(const BlobLocation& location);
+
+  /** Return the specified cluster from this database (if it exists) 
+   *  and loads it from disk if not yet done.
+   * 
+   * @param loadAllBlobs if true then also all blobs of that cluster are loaded from disk if not yet done
+   */
+  Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster, bool loadAllBlobs = false);
 
   /** Returns a segment from this databse (if it exists)
+   *  This may return a not yet loaded (delay loaded) Segment
    */
   Segment* GetSegment(segment_id segment);
 
@@ -175,15 +184,37 @@ private:
     Snapshot(const Snapshot& other);
 
     /** Returns the blob at the specified location or nullptr if it doesn't exist.
+     *  This will also load the segment, cluster, blob from the database file into memory if not already done.
      * 
      * @param location the database location to retrieve the blob from (segment, cluster, blob)
      * @param file the database file to load the segmnt/cluster/blob from (only used for file databases)
      */
-    Blob* GetBlob(const BlobLocation& location, const FileBackend& file);
+    Blob* GetLoadedBlob(const BlobLocation& location, const FileBackend& file);
+
+    /** Returns the cluster at the sepcified location or nullptr if it doesn't exist
+     *  This will also load the segment and cluster from the database file into memory if not already done.
+     * 
+     * @param segment the cluster's segment
+     * @param cluster the cluster to load
+     * @param file the database file to load the segment/cluster from (only used for file databases)
+     * @param loadAllBlobs if true then also all blobs of that cluster are loaded from disk into memory if not already done
+     */
+    Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster, const FileBackend& file, bool loadAllBlobs = false);
+
+
+    /** Returns the specified segment or nullptr if it doesn't exist
+     *  This will also load the segment from the database file into memory if not already done.
+     * 
+     * @param segment the segment to load
+     * @param file the database file to laod the segment/cluster from (only used for file databases)
+     * @param loadAllClusters if true then also all clusters and all blobs inside are loaded from disk into memory if not already done (expensive!)
+     */
+    Segment* GetLoadedSegment(segment_id segment, const FileBackend& file, bool loadAllClusters = false);
 
 
     /** Returns the segment with the specified segment id or nullptr if the segment doesn't exist.
      *  Beware: This method cannot handle `NextFreeSegmentId`!
+     *  This method may return a segment, which is not yet loaded from disk into memory.
      */
     Segment* GetSegment(segment_id segment);
 
@@ -343,6 +374,9 @@ private:
 
   /** Returns true if the client can acquire a lock at the specified location with the specified access.
    *  This will NOT acquire the lock itself.
+   * 
+   *  The special blob location DeleteClusterId is not handled here, it is handled by AcquireLocks(). This method will treat 
+   *  DeleteClusterId like any other blob
    */
   bool CanClientAcquireLock(client_id client, const BlobLocation& location, bool write);
 
@@ -351,6 +385,7 @@ private:
    *  checked another time.
    */
   void AcquireClientLock(client_id client, const BlobLocation& location, bool write);
+
 
   /** This structure is used when performing deadlock detection to collect all clients preventing 
    *  the current message's lock acquisition
@@ -365,12 +400,12 @@ private:
 
   /** Collects all conflicting clients preventing lock acuisition for this message. Only used for deadlock detection.
    */
-  std::vector<LockConflict> CollectLockConflicts(const network::message::BlobsRead& message) const;
+  std::vector<LockConflict> CollectLockConflicts(const network::message::BlobsRead& message);
 
   /** If the given message has a lock conflict with the specified client then the location of that conflict (from this message)
    *  will be returned, otherwise nullopt is returned. Only used for deadlock detection.
    */
-  std::optional<BlobLocation> FindLockConflictWith(const network::message::BlobsRead& message, client_id conflictingClient) const;
+  std::optional<BlobLocation> FindLockConflictWith(const network::message::BlobsRead& message, client_id conflictingClient);
 
 
   /** Implements the check of whether certain locks can be revoked (are sticky locks)

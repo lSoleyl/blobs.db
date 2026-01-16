@@ -86,6 +86,13 @@ private:
    */
   bool TryHandleBlobsRead(const network::message::BlobsRead& message);
 
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a write lock on ClusterDeleteId.
+   *  This method will ensure that the requested cluster exists and that the client can acquire write locks on the whole cluster.
+   * 
+   * @return true if the request has been handled and a response sent to the client (including an error)
+   *         false if the request cannot be handled due to conflicting locks.
+   */
+  bool TryHandleDeleteClusterId(blobs::server::Client& client, const network::message::BlobsRead& message);
 
   /** Primitive logging of incoming messages.
    */
@@ -94,7 +101,7 @@ private:
   /** Releases the client's locks from all opened databases and removes all queued read requests and
    *  checks whether any client can now satisfy his outstanding read requests.
    */
-  void AbortTransaction(blobs::server::Client& clientId, bool releaseAllLocks);
+  void AbortTransaction(blobs::server::Client& client, bool releaseAllLocks);
 
   /** Attempts to process as many queued read operations as possible for the specified database.
    */

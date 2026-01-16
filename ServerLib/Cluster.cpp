@@ -15,7 +15,7 @@ Cluster::Cluster(const Cluster& other, commit_id commitId) : id(other.id), commi
   nextFreeBlobIdBlob.SetIdContent(nextFreeBlobId);
 }
 
-Blob* Cluster::GetBlob(blob_id blob, const FileBackend& file) {
+Blob* Cluster::GetLoadedBlob(blob_id blob, const FileBackend& file) {
   if (blob == constants::NextFreeBlobId) {
     // special blob holding the next free blob id
     TODO("Ensure the blob is always up to date with the actual `nextFreeBlobId`");
@@ -173,6 +173,17 @@ void Cluster::LoadFrom(const FileBackend& file) {
   }
 
   status = Status::LOADED;
+}
+
+
+Cluster::iterator Cluster::begin() {
+  assert(status == Status::LOADED);
+  return blobs.begin();
+}
+
+Cluster::iterator Cluster::end() {
+  assert(status == Status::LOADED);
+  return blobs.end();
 }
 
 

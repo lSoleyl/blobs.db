@@ -63,6 +63,9 @@
     <ClInclude Include="include\server\Logging.hpp">
       <Filter>Headerdateien\server</Filter>
     </ClInclude>
+    <ClInclude Include="include\server\LockUtil.hpp">
+      <Filter>Headerdateien\server</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Blob.cpp">

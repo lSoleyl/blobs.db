@@ -34,11 +34,13 @@ struct BlobsRead : public Message {
 
   /** STL like iteration over each single blob request
    */
-  BlobAddress* begin();
-  BlobAddress* end();
+  using iterator = BlobAddress*;
+  iterator begin();
+  iterator end();
 
-  const BlobAddress* begin() const;
-  const BlobAddress* end() const;
+  using const_iterator = const BlobAddress*;
+  const_iterator begin() const;
+  const_iterator end() const;
 
 
   /** Returns true if this blob read message sets a write or delete lock.

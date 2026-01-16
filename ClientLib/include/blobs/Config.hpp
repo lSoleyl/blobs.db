@@ -49,7 +49,7 @@ namespace blobs {
     constexpr blob_id NextFreeBlobId = MaxBlobId + 1;
 
     /** Special blob id, which needs to be write locked by clients who want to delete a cluster. Committing this blob will result in deletion of the cluster.
-     *  If a write lock to this blob id is held, no other blobs in the cluster can be locked by any other clients.
+     *  If a write lock to this blob id is held, no other blobs in the cluster can be locked by any other client.
      */
     constexpr blob_id ClusterDeleteId = MaxBlobId + 2;
 
@@ -63,7 +63,7 @@ namespace blobs {
     constexpr cluster_id NextFreeClusterId = MaxClusterId + 1;
 
     /** Special cluster id, which needs to be write locked by clients who want to delete the segment. Committing (segment, DeleteSegmentId, DeleteClusterId) will 
-     *  delete the whole segment. If a write lock to this blob id is held, no other blobs in the segment can be locked by any other clients.
+     *  delete the whole segment. If a write lock to this blob id is held, no other blobs in the segment can be locked by any other client.
      */ 
     constexpr cluster_id SegmentDeleteId = MaxClusterId + 2;
 

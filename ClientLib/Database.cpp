@@ -612,6 +612,7 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
   auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
   auto& address = *request->begin();
   address = location;
+  address.ifCommitIdHigher = 0;
 
   // Send it and await the server's response
   client.SendMessageToServer(std::move(request));

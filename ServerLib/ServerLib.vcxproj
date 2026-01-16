@@ -93,6 +93,7 @@
     <ClInclude Include="include\server\Database.hpp" />
     <ClInclude Include="include\server\File.hpp" />
     <ClInclude Include="include\server\FileBackend.hpp" />
+    <ClInclude Include="include\server\LockUtil.hpp" />
     <ClInclude Include="include\server\Logging.hpp" />
     <ClInclude Include="include\server\MemoryBlockDelta.hpp" />
     <ClInclude Include="include\server\sorted_flat_map.hpp" />

@@ -2,6 +2,7 @@
 #include "include/server/Server.hpp"
 #include "include/server/Client.hpp"
 #include "include/server/Logging.hpp"
+#include "include/server/LockUtil.hpp"
 
 #include <network/Factory.hpp>
 #include <common/Encoding.hpp>
@@ -242,7 +243,6 @@ void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::
 
 
 void Server::HandleTransactionAbort(network::MessagePointer_T<network::message::TransactionAbort> message) {
-  // FIXME STICKY the client should be able to specify in the TransactionAbort message whether to release all locks now or to keep them around
   AbortTransaction(server::Client::Get(message->clientId), false);
 }
 
@@ -297,6 +297,10 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
       
       client.commitMessages.clear();
       
+      FIXME(
+        "Release all locks held on deleted blobs,clusters,segments. "
+        "When deleting a cluster then all locks held inside that cluster must be released AND deleted"
+      );
       
       // Grant the client all implicitly acquired write locks from creating blobs (they are preseved across transactions as sticky locks)
       // The following method doesn't have to check for any lock conflicts as no other client could possibly hold locks to not yet created blobs.
@@ -321,7 +325,6 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
 
       // We committed all changes for this transaction and replied to the client,
       // Reset the transaction state and all locks held by the client, which may in turn trigger processing of outstanding reads
-      // FIXME STICKY the client should be able to specify whether he wants to keep his locks at transaction commit (as sticky locks) or release them proactively
       AbortTransaction(client, false);
     } else {
       // Commit not successful -> return error code to the client and abort its transaction commit (and active transaction)
@@ -352,6 +355,14 @@ namespace {
     /** A range encompassing the specified blob range inside a cluster and segment
      */
     BlobLocationRange(segment_id segment, cluster_id cluster, blob_id blobBegin, blob_id blobEnd) : begin(segment, cluster, blobBegin), end(segment, cluster, blobEnd) {}
+
+    /** Returns true if this range represents the creation of a cluster (strongly simplified check here relies on EnterNewCluster())
+     */
+    bool IsCreatedCluster() const { return end.cluster == begin.cluster + 1; }
+
+    /** Returns true if this range represents the creation of a segment (strongly simplified check here relies on EnterNewSegment())
+     */
+    bool IsCreatedSegment() const { return end.segment == begin.segment + 1; }
 
     BlobLocation begin, end; // regular [begin;end) interval with exclusive end
   };
@@ -402,6 +413,9 @@ namespace {
       ranges.push_back(range);
     }
 
+    auto begin() { return ranges.begin(); }
+    auto end() { return ranges.end(); }
+
   private:
     std::vector<BlobLocationRange> ranges;
   };
@@ -446,27 +460,19 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
 
     for (auto pos = message.begin(), end = message.end(); pos != end; ++pos) {
       auto& location = *pos;
-      if (!database->ClientOwnsWriteLock(client.id, location)) {
-        // Client doesn't own a write lock for the committed blob. This is allowed if the client
-        // created the blob in this transaction by acquring a write lock to the NextFreeBlobId blob and
-        // updating the blob id there accordingly.
 
-        if (!createdBlobs.Encompasses(location)) {
-          // This blob has not been created in this transaction, which is not allowed.
-          // This is an illegal commit.
-          return Result::MISSING_WRITE_LOCK;
-        } else {
-          // The client holds a write lock, because he created this blob
-          implicitDbWriteLocks.push_back(location);
-        }
+      // Use AllLocksForLocation() to also handle the case of DeleteClusterId, which requires the client
+      // to hold locks on the whole cluster.
+      if (!AllLocksForLocation(*database, location, [&](const BlobLocation& location) { return database->ClientOwnsWriteLock(client.id, location) || createdBlobs.Encompasses(location); })) {
+        // If the client doesn't own a write lock for a location we want to write to 
+        // AND the client doesn't own the write lock implicitly by creating the blob/cluster/segment, then
+        // the client is missing the required lock for this commit and this is an illegal commit.
+        return Result::MISSING_WRITE_LOCK;
       }
 
 
-      TODO("If cluster is SegmentDeleteId, then blob must be ClusterDeleteId");
-      
-      TODO("If cluster is SegmentDeleteId, then the whole segment must be write locked");
-      TODO("If blob is ClusterDeleteId, then the whole cluster must be write locked");
-
+      FIXME("If cluster is SegmentDeleteId, then blob must be ClusterDeleteId");
+      FIXME("If cluster is SegmentDeleteId, then the whole segment must be write locked");
 
 
       if (location.segment == constants::NextFreeSegmentId) {
@@ -582,8 +588,57 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
         createdBlobs.Enter(BlobLocationRange(location.segment, location.cluster, nextFreeBlobId, newNextFreeBlobId));
       }
     }
-  }
 
+    // Now acquire implicit write locks for all implicitly created blobs/clusters/segments
+    for (auto& range : createdBlobs) {
+      if (range.IsCreatedSegment()) {
+        // This range represents a newly created segment
+        auto segment = range.begin.segment;
+
+        // Implicit write lock on cluster creation
+        BlobLocation location(segment, constants::NextFreeClusterId, constants::NextFreeBlobId);
+        if (!database->ClientOwnsWriteLock(client.id, location)) { 
+          implicitDbWriteLocks.push_back(location);
+        }
+
+        // Implicit write lock on segment deletion
+        location = BlobLocation(segment, constants::SegmentDeleteId, constants::ClusterDeleteId);
+        if (!database->ClientOwnsWriteLock(client.id, location)) {
+          implicitDbWriteLocks.push_back(location);
+        }
+
+        TODO("If we support a list of clusters then we must write lock that too");
+      } else if (range.IsCreatedCluster()) {
+        auto segment = range.begin.segment;
+        auto cluster = range.begin.cluster;
+
+        // Implicit write lock on blob creation
+        BlobLocation location(segment, cluster, constants::NextFreeBlobId);
+        if (!database->ClientOwnsWriteLock(client.id, location)) {
+          implicitDbWriteLocks.push_back(location);
+        }
+
+        // Implicit write lock on cluster deletion
+        location = BlobLocation(segment, cluster, constants::ClusterDeleteId);
+        if (!database->ClientOwnsWriteLock(client.id, location)) {
+          implicitDbWriteLocks.push_back(location);
+        }
+
+        TODO("If we support a list of blobs then we must write lock that too");
+      } else {
+        // one or more regular created blobs
+        auto segment = range.begin.segment;
+        auto cluster = range.begin.cluster;
+
+        for (auto blob = range.begin.blob; blob != range.end.blob; ++blob) {
+          BlobLocation location(segment, cluster, blob);
+          if (!database->ClientOwnsWriteLock(client.id, location)) {
+            implicitDbWriteLocks.push_back(location);
+          }
+        }
+      }
+    }
+  }
 
   return Result::SUCCESS;
 }
@@ -614,7 +669,18 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   if (message.nBlobsRequested == 1) {
     // Fast path: at most 1 blob needs to be sent to the client
     auto& requestedBlob = *message.begin();
-    auto blob = database->GetBlob(requestedBlob);
+
+
+
+    FIXME("Also handle DeleteSegmentId here");
+
+    // Handle delete cluster request (this must always be a delete lock)
+    if (requestedBlob.blob == constants::ClusterDeleteId && message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      return TryHandleDeleteClusterId(client, message);
+    }
+
+
+    auto blob = database->GetLoadedBlob(requestedBlob);
     if (!blob) {
       SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
       return true;
@@ -640,11 +706,44 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
       return false;
     }
   } else {
+    // For this we would need to first check all resources whether they exist
+    // Then check whether we can acquire all locks
+    // Then acquire all locks
+    // Then build the response from the results
     TODO("Handle multi blob requests");
     assert(false);
     return true;
   }
 }
+
+
+bool Server::TryHandleDeleteClusterId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
+  assert(message.nBlobsRequested == 1);
+  auto& location = *message.begin();
+  
+
+  auto database = client.GetDatabase(message.databaseId);
+  assert(database); // should have been checked by the caller
+
+  if (!database->GetLoadedCluster(location.segment, location.cluster)) {
+    // Cluster or segment do not exist
+    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::CLUSTER_DOES_NOT_EXIST));
+    return true;
+  }
+  
+
+  // Now acquire locks for all blobs inside the cluster including the artificial ones (NextFreeBlobId and DeleteClusterId)
+  if (client.AcquireLocks(message)) {
+    // Now we can reply with an empty response (delete lock must have been set in the message)
+    assert(message.lockMode == network::message::BlobsRead::LockMode::Delete);
+    SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
+    return true;
+  }
+  
+  return false;
+}
+
 
 void Server::LogMessage(const network::message::Message& message) {
   BLOBS_LOG_DEBUG("Client[" << message.clientId << "]: " << message);

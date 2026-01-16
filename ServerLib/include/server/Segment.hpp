@@ -15,8 +15,15 @@ public:
 
   /** Returns the cluster with the specified id or nullptr if it doesn't exist.
    *  This method CANNOT handle the nextFreeClusterId id, use GetBlob() instead
+   *  This may return a cluster, which has not yet been loaded from the database file into memory
    */
   Cluster* GetCluster(cluster_id cluster);
+
+  /** Returns the cluster with the specified id or nullptr if it doesn't exist.
+   *  The cluster is loaded from the database file into memory it not already done.
+   *  This method CANNOT handle the nextFreeClusterId id, use GetBlob() instead
+   */
+  Cluster* GetLoadedCluster(cluster_id cluster, const FileBackend& file, bool loadAllBlobs = false);
 
   /** This method is used by the snapshot's ApplyCommitMessage method to fetch the cluster with the specified id
    *  and copy it if it hasn't been modified in the same transaction as the segment yet or create the cluster if id doesn't exist yet.
@@ -43,12 +50,13 @@ public:
   void ReleaseAllClusters(MemoryBlockDelta* delta);
 
   /** Returns the specified cluster's blob or nullptr if it doesn't exist
+   *  Loads the blob from the database file into memory if not already loaded.
    * 
    * @param cluster the cluster id within the segment
    * @param blob the blob id within the cluster
    * @param file the file to load the cluster from in case it isn't loaded yet (only for file databases)
    */
-  Blob* GetBlob(cluster_id cluster, blob_id blob, const FileBackend& file);
+  Blob* GetLoadedBlob(cluster_id cluster, blob_id blob, const FileBackend& file);
 
   /** Returns the next free cluster id for this segment
    *  This is the value, which can be read from the (`NextFreeClusterId`, `NextFreeBlobId`) blob
@@ -71,6 +79,12 @@ public:
    *  This will load the map of clusters and initialize each cluster to a not yet loaded one
    */
   void LoadFrom(const FileBackend& file);
+
+  // Iteration over all cluster objects of this segment. The segment must be already loaded for this to work.
+  using iterator = typename sorted_flat_map<cluster_id, std::shared_ptr<Cluster>>::iterator;
+  iterator begin();
+  iterator end();
+
 
   const segment_id id;
 

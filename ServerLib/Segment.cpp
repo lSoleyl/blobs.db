@@ -25,6 +25,34 @@ Cluster* Segment::GetCluster(cluster_id cluster) {
 }
 
 
+Cluster* Segment::GetLoadedCluster(cluster_id clusterId, const FileBackend& file, bool loadAllBlobs) {
+  if (auto cluster = GetCluster(clusterId)) {
+    // Load the cluster from file if it isn't loaded yet
+    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+    if (cluster->status != Status::LOADED) {
+      cluster->LoadFrom(file);
+      assert(cluster->status == Status::LOADED);
+    }
+
+
+    // Load each blob into memory if requested
+    if (loadAllBlobs) {
+      for (auto& [blobId, blob] : *cluster) {
+        TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+        if (blob->status != Status::LOADED) {
+          blob->LoadFrom(file);
+          assert(blob->status == Status::LOADED);
+        }
+      }
+    }
+
+    return cluster;
+  }
+
+  return nullptr;
+}
+
+
 Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta) {
   TODO("What if the segment isn't loaded yet? Can this happen?");
 
@@ -73,22 +101,17 @@ void Segment::ReleaseAllClusters(MemoryBlockDelta* delta) {
 }
 
 
-Blob* Segment::GetBlob(cluster_id cluster, blob_id blob, const FileBackend& file) {
+Blob* Segment::GetLoadedBlob(cluster_id cluster, blob_id blob, const FileBackend& file) {
   if (cluster == constants::NextFreeClusterId && blob == constants::NextFreeBlobId) {
     // Special blob holding the next free cluster id for cluster creation
     return &nextFreeClusterIdBlob;
   }
 
-  if (auto clusterObj = GetCluster(cluster)) {
-    // Load the cluster from file if it isn't loaded yet
-    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
-    if (clusterObj->status != Status::LOADED) {
-      clusterObj->LoadFrom(file);
-      assert(clusterObj->status == Status::LOADED);
-    }
-
-    return clusterObj->GetBlob(blob, file);
+  if (auto clusterObj = GetLoadedCluster(cluster, file)) {
+    // Use GetLoadedBlob to also handle the nextFreeBlobId and load the blob from file if necessary
+    return clusterObj->GetLoadedBlob(blob, file);
   }
+
   return nullptr;
 }
 
@@ -192,6 +215,17 @@ void Segment::LoadFrom(const FileBackend& file) {
   }
 
   status = Status::LOADED;
+}
+
+
+Segment::iterator Segment::begin() {
+  assert(status == Status::LOADED);
+  return clusters.begin();
+}
+
+Segment::iterator Segment::end() {
+  assert(status == Status::LOADED);
+  return clusters.end();
 }
 
 
