@@ -90,6 +90,11 @@ public:
    */
   void AcquireImplicitWriteLocks(database_id dbId, const std::vector<BlobLocation>& writeLocks);
 
+  /** Releases all locks, for all blobs, cluster, segments that have been deleted in the current transaction
+   */
+  void ReleaseDeletedLocks(database_id dbId, const Deleted& deleted);
+
+
   /** True if the client sent the first commit message, but not yet the final commit message.
    */
   bool CommitInProcess() const;

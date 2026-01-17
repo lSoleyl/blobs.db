@@ -404,8 +404,8 @@ void Database::AbortClientTransaction(client_id client, const std::vector<BlobLo
 }
 
 
-Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta)
-  : database(database), snapshot(std::move(snapshot)), freeList(std::move(freeList)), delta(std::move(delta))
+Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta, Deleted&& deleted)
+  : database(database), snapshot(std::move(snapshot)), freeList(std::move(freeList)), delta(std::move(delta)), deleted(std::move(deleted))
 {}
 
 commit_id Database::CommitResult::ApplyToDatabase() {
@@ -458,7 +458,7 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
   auto newSnapshot = std::make_unique<Snapshot>(*snapshot);
   auto newFreeList = freeList ? std::make_unique<FreeList>(*freeList) : nullptr;
   auto delta = freeList ? std::make_unique<MemoryBlockDelta>() : nullptr;
-
+  Deleted deleted;
 
   if (delta) {
     // Mark the new snapshot as allocated and the current one as released
@@ -468,29 +468,35 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
 
   // Now apply the commit messages one by one to the snapshot modifying it in the process
   for (auto pos = commitPos, end = commitEnd; pos != end; ++pos) {
-    newSnapshot->ApplyCommitMessage(**pos, delta.get());
+    newSnapshot->ApplyCommitMessage(**pos, delta.get(), deleted);
   }
 
   if (newFreeList) {
     newFreeList->AllocateAndApplyDelta(*delta);
   }
   
-  return CommitResult(*this, std::move(newSnapshot), std::move(newFreeList), std::move(delta));
+  return CommitResult(*this, std::move(newSnapshot), std::move(newFreeList), std::move(delta), std::move(deleted));
+}
+
+void Database::ReleaseLock(client_id client, const BlobLocation& location) {
+  auto lock = locks.find(location);
+  assert(lock != locks.end()); // This would indicate a programming error as the client assumes a lock which he doesn't have.
+  // The const_cast here is valid as we do not modify the sorting order in any respect
+  bool empty = const_cast<Lock&>(*lock).Release(client);
+
+  if (empty) {
+    // Lock no longer held by any client -> remove it from the locks data structure to free up memory.
+    // The use of sticky locks should actually avoid the frequent deletion and re-creation of commonly used locks.
+    // Deleting the lock object is important to release the lock structures for deleted blobs, clusters, segments as they
+    // cannot ever be re-acquired and keeping them around would only slow down every following lookup.
+    locks.erase(lock);
+  }
 }
 
 
 void Database::ReleaseLocks(client_id client, const std::vector<BlobLocation>& locations) {
   for (auto& location : locations) {
-    auto lock = locks.find(location);
-    assert(lock != locks.end()); // This would indicate a programming error as the client assumes a lock which he doesn't have.
-    // The const_cast here is valid as we do not modify the sorting order in any respect
-    bool empty = const_cast<Lock&>(*lock).Release(client);
-    // Should we delete this Lock object now or keep it in memory forever? What is worse performance wise?
-
-    FIXME(
-      "Actually I think we should delete the lock structures as this will also solve the issue of "
-      "not keeping around Lock objects for already deleted segments, clusters, blobs"
-    );
+    ReleaseLock(client, location);
   }
 }
 
@@ -686,7 +692,7 @@ void Database::Snapshot::DeleteSegment(segment_id segment, MemoryBlockDelta* del
 }
 
 
-void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta) {
+void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta, Deleted& deleted) {
   TODO("Maybe we should use if(constexpr) for the db-less path");
 
 
@@ -707,6 +713,7 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
       // A segment is being deleted by writing to the SegmentDeleteId cluster
       assert(update.blob == constants::ClusterDeleteId);
       DeleteSegment(update.segment, delta);
+      deleted.segments.push_back(update.segment);
     } else {
       // Fetch a copy of the segment this update refers to and create it if necessary
       auto segment = UpdateSegment(update.segment, delta);
@@ -718,6 +725,7 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
       } else if (update.blob == constants::ClusterDeleteId) {
         // A cluster is being deleted by writing to ClusterDeleteId blob
         segment->DeleteCluster(update.cluster, delta);
+        deleted.clusters.push_back({ update.segment, update.cluster });
 
       } else {
         // Fetch a copy of the cluster this update refers to and create it if necessary
@@ -729,6 +737,7 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
         } else if (update.blobSize == constants::DeleteBlobSize) {
           // The specified blob is being deleted
           cluster->DeleteBlob(update.blob, delta);
+          deleted.blobs.push_back(update);
         } else {
           // Regular blob content update
           cluster->UpdateBlob(update.blob, delta)->SetContent(pos.ReadData());

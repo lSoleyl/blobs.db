@@ -3,6 +3,18 @@
 #include "include/server/LockUtil.hpp"
 
 
+namespace cpp20 {
+
+/** The C++20 erase_if() function (without the return value)
+ */
+template<typename Container, typename Predicate>
+void erase_if(Container& container, Predicate&& predicate) {
+  container.erase(std::remove_if(container.begin(), container.end(), std::forward<Predicate>(predicate)), container.end());
+}
+
+}
+
+
 namespace blobs::server {
 
 std::unordered_map<client_id, Client> Client::clients;
@@ -179,6 +191,22 @@ void Client::AcquireImplicitWriteLocks(database_id dbId, const std::vector<BlobL
   for (auto& location : writeLocks) {
     dbState.locks.push_back(location);
   }
+}
+
+
+void Client::ReleaseDeletedLocks(database_id dbId, const Deleted& deleted) {
+  auto& dbState = openDatabases[dbId];
+
+  // Remove the locks for blobs which have been deleted (and release them in the database)
+  cpp20::erase_if(dbState.locks, [&](const BlobLocation& lockLocation) {
+    if (deleted.IsDeleted(lockLocation)) {
+      // We must release the lock
+      dbState.database->ReleaseLock(id, lockLocation);
+      return true; // delete this lock
+    }
+
+    return false; // keep this lock
+  });
 }
 
 

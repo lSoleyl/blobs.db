@@ -27,6 +27,16 @@ void HeldLocks::UpdateLocks(bool keep, const BlobLocation* pos, const BlobLocati
   }
 }
 
+void HeldLocks::ReleaseLockRange(const BlobLocation& begin, const BlobLocation& end) {
+  auto eraseReadBegin = read.lower_bound(begin);
+  auto eraseReadEnd = read.upper_bound(end);
+  read.erase(eraseReadBegin, eraseReadEnd);
+
+  auto eraseWriteBegin = write.lower_bound(begin);
+  auto eraseWriteEnd = write.upper_bound(end);
+  write.erase(eraseWriteBegin, eraseWriteEnd);
+}
+
 
 }
 

@@ -85,11 +85,14 @@ public:
    */
   static Transaction* Get(const Session::Handle& session, connection_id connectionId);
 
-  // FIXME STICKY NO! Since Commit() always applies to all server connections, so should Create()
-  //              If we start a transaction we must notify ALL connected servers about the TransactionBegin and process responses from them.
 
   /** Creates a new transaction for the given connection ID without checking for an already existing one. This 
    *  function is only used from within CLientLib itself.
+   *  Database::GetTransaction() already handles the logic of starting a new transaction on demand the first time a database is 
+   *  accessed outside of an transaction. This also implies that a server whose database is not being touched during a transaction won't
+   *  be notified about the transaction. Notifying all connected servers immediately about the started transaction may result in a more consistent
+   *  view of cross server databases (cannot be guaranteed due to timing issues), but would also mean that sticky locks would be actively held and
+   *  could block other clients even though the database on the other server is not even being touched during the transaction.
    * 
    * @param session the session to which the created transaction will belong (the session should already be locked before calling this function)
    */

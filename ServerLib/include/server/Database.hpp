@@ -10,6 +10,7 @@
 #include "File.hpp"
 #include "MemoryBlockDelta.hpp"
 #include "FileBackend.hpp"
+#include "Deleted.hpp"
 
 
 namespace blobs::server {
@@ -107,12 +108,13 @@ public:
   //       smart pointer and the caller needs to be able to hold it...
   class CommitResult {
   public:
-    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta);
+    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta, Deleted&& deleted);
 
     /** Applies the snapshot to the database and returns the commit id of that snapshot
      */
     commit_id ApplyToDatabase();
 
+    Deleted deleted;
   private:
     Database& database;
     std::unique_ptr<Snapshot> snapshot;
@@ -131,7 +133,9 @@ public:
    */
   std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
 
- 
+  /** Releases the specified lock for the given client
+   */
+  void ReleaseLock(client_id client, const BlobLocation& lock);
 
   /** Releases the specified locks for the given client
    */
@@ -256,8 +260,9 @@ private:
      * @param commitMessage the commit message to apply to this snapshot's state
      * @param delta the data structure used to keep track of allocated/released blocks during copy-on-write commits
      *              This may be nullptr for pure in memory databases
+     * @param deleted this data structure is used to track all deleted blobs, clusters and segments in this database
      */
-    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta);
+    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta, Deleted& deleted);
 
     /** Returns the next free segment id for this database
      *  This is the value, which can be read from the (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`) blob

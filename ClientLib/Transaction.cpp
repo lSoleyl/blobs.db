@@ -208,6 +208,30 @@ struct Transaction::State {
         transmitBegin = transmitEnd;
       }
     }
+
+    /** Releases locks held on blobs,cluster,segments, which were deleted during this transaction as they are no longer valid.
+     */
+    void ReleaseDeletedBlobLocks() {
+      // First release all locks on deleted segments
+      for (auto segmentId : deletedSegments) {
+        BlobLocation segmentBegin(segmentId, 0, 0);
+        BlobLocation segmentEnd(segmentId, std::numeric_limits<cluster_id>::max(), std::numeric_limits<blob_id>::max());
+        heldLocks->ReleaseLockRange(segmentBegin, segmentEnd);
+      }
+
+      // Then release all locks held on deleted clusters
+      for (auto [segmentId, clusterId] : deletedClusters) {
+        BlobLocation clusterBegin(segmentId, clusterId, 0);
+        BlobLocation clusterEnd(segmentId, clusterId, std::numeric_limits<blob_id>::max());
+        heldLocks->ReleaseLockRange(clusterBegin, clusterEnd);
+      }
+
+      // Finally relase locks held on all deleted single blobs
+      for (auto& location : deletedBlobs) {
+        heldLocks->ReleaseLockRange(location, BlobLocation(location.segment, location.cluster, location.blob + 1));
+      }
+    }
+
   };
 
   /** Constructs the commit messages for all databases in this transaction state.
@@ -252,6 +276,16 @@ struct Transaction::State {
     }
     return pos->second;
   }
+
+
+  /** Releases locks held on blobs,cluster,segments, which were deleted during this transaction as they are no longer valid.
+   */
+  void ReleaseDeletedBlobLocks() {
+    for (auto& [dbId, state] : forDatabase) {
+      state.ReleaseDeletedBlobLocks();
+    }
+  }
+
 
   /** State getter, which will only return an existing transaction state, not instantiate a new one and it thus also doesn't need 
    *  a full Database.
@@ -323,7 +357,6 @@ bool Transaction::Commit(const Session::Handle& session) {
             database->UpdateCacheForCommittedBlob(location, std::move(data), commitEntry.commitId, transaction->id);
           }
 
-          TODO("Maybe also delete all deleted blobs from the cache?");
           TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
         }
       } else {
@@ -335,6 +368,13 @@ bool Transaction::Commit(const Session::Handle& session) {
       TODO("It could also be a connection close message... handle it accordingly");
       TODO("All other replies should return an unexpected server message exception");
     }
+  }
+
+
+  // Release the held locks to any blob,cluster,segment, which we deleted during this transaction as they 
+  // lock ressources that no longer exist.
+  for (auto& [connectionId, transaction] : transactions.active) {
+    transaction.state->ReleaseDeletedBlobLocks();
   }
 
 
@@ -426,9 +466,6 @@ Transaction::LockMode Transaction::GetLockType(Database* database, const BlobLoc
     }
   }
 
-  TODO("Handle special lock values... If we hold a write lock on cluster creation, then we also have an implicit write lock on all created clusters");
-  TODO("Maybe we should instead hold lock ranges, instead of single granular locks?")
-
   return LockMode::None;
 }
 
@@ -485,6 +522,8 @@ void Transaction::DeleteBlob(Database* database, const BlobLocation& location) {
 
   // Mark the blob as deleted
   dbState.deletedBlobs.insert(location);
+
+  // The blob is erased from the cache in the calling Database::DeleteBlob()
 }
 
 
@@ -508,6 +547,8 @@ void Transaction::DeleteCluster(Database* database, segment_id segment, cluster_
 
   // Finally note down that we deleted it (we don't construct a writtenBlob entry for ClusterDeleteId, that is handled in commit())
   dbState.deletedClusters.insert({ segment, cluster });
+
+  // The cluster with all blobs is erased from the cache in the calling Database::DeleteCluster()
 }
 
 
@@ -536,6 +577,8 @@ void Transaction::DeleteSegment(Database* database, segment_id segment) {
 
   // Finally note down that we deleted it (we don't construct a writtenBlob entry for SegmentDeleteId, that is handled in commit())
   dbState.deletedSegments.insert(segment);
+
+  // The segment with all blobs is erased from the cache in the calling Database::DeleteSegment()
 }
 
 

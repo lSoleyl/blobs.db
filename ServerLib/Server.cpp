@@ -294,19 +294,7 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
         pos = dbIdEnd;
       }
       
-      
       client.commitMessages.clear();
-      
-      FIXME(
-        "Release all locks held on deleted blobs,clusters,segments. "
-        "When deleting a cluster then all locks held inside that cluster must be released AND deleted"
-      );
-      
-      // Grant the client all implicitly acquired write locks from creating blobs (they are preseved across transactions as sticky locks)
-      // The following method doesn't have to check for any lock conflicts as no other client could possibly hold locks to not yet created blobs.
-      for (auto& [dbId, locks] : implicitWriteLocks) {
-        client.AcquireImplicitWriteLocks(dbId, locks);
-      }
 
 
       // Allocate the response message with enough space to communicate all commit ids back to the client
@@ -318,6 +306,20 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
         writePos->dbId = databaseId;
         writePos->commitId = commitResult.ApplyToDatabase();
         ++writePos;
+      }
+
+      // The commit has now been successfully applied to the database file and write was successful.
+
+      // Grant the client all implicitly acquired write locks from creating blobs (they are preseved across transactions as sticky locks)
+      // The following method doesn't have to check for any lock conflicts as no other client could possibly hold locks to not yet created blobs.
+      for (auto& [dbId, locks] : implicitWriteLocks) {
+        client.AcquireImplicitWriteLocks(dbId, locks);
+      }
+
+      // Now release all locks in any deleted blobs,clusters,segments as they now refer to deleted resources.
+      // The client side is expected to know that these locks are implicitly released during the commit.
+      for (auto& [databaseId, commitResult] : commitResults) {
+        client.ReleaseDeletedLocks(databaseId, commitResult.deleted);
       }
       
       // Send reply to client      

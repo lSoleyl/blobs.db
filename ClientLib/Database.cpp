@@ -400,6 +400,7 @@ cluster_id Database::CreateCluster(segment_id segment) {
   // Through creation we implicitly hold write locks to the cluster's special blobs
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::ClusterDeleteId), Transaction::LockMode::Write);
+  TODO("Once we support reading the blob list then we also implicitly write lock that blob");
 
   // Write the nextFreeBlobId in the newly created cluster into our client cache to be able to create blobs in that cluster without 
   // querying the server (which doesn't know anything about this cluster anyway).
@@ -443,6 +444,7 @@ segment_id Database::CreateSegment() {
   // Through creation we implicitly hold write locks to the segment's special blobs
   transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
   transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::SegmentDeleteId, constants::ClusterDeleteId), Transaction::LockMode::Write);
+  TODO("Once we support reading the cluster list then we also implicitly write lock that blob");
 
   // Write the next free cluster id for the newly created segment into our client cache to be able to create clusters in that segment
   // without querying the server (which doesn't know anything about this segment anyway).
@@ -489,6 +491,15 @@ void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
   // Acquire a write lock for deletion of the cluster if we don't already hold one (which is unlikely)
   if (transaction.GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
+    // With this lock the server will implicitly grant the client a write lock to NextFreeBlobId and all blobs
+    // inside that cluster to ensure consistency. 
+    // 
+    // We DO NOT store any of these locks in our transaction state however even though the server will hold
+    // these locks for the client as sticky locks in case this transaction is aborted. 
+    // This results in the client re-requesting a write lock on the NextFreeBlobId if we attempt to create a 
+    // blob in this cluster in the next transaction, but we would have to re-request that blob anyway because the
+    // server may have granted us the implicit write lock, but the client still doesn't know the contents of that blob!
+    // So there is no performance to be gained from actually storing the lock in the client unless we know the blob's contents.
   }
 
   // Validate that the segment isn't deleted yet and then mark the cluster with all its segments
@@ -510,6 +521,15 @@ void Database::DeleteSegment(segment_id segment) {
   // Acquire a write lock for deletion of the segment if we don't already hold one (which is unlikely)
   if (transaction.GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
+    // With this lock the server will implicitly grant the client a write lock to NextFreeClusterId and all blobs
+    // inside that segment to ensure consistency. 
+    // 
+    // We DO NOT store any of these locks in our transaction state however even though the server will hold
+    // these locks for the client as sticky locks in case this transaction is aborted. 
+    // This results in the client re-requesting a write lock on the NextFreeClusterId if we attempt to create a 
+    // cluster in this segment in the next transaction, but we would have to re-request that blob anyway because the
+    // server may have granted us the implicit write lock, but the client still doesn't know the contents of that blob!
+    // So there is no performance to be gained from actually storing the lock in the client unless we know the blob's contents.
   }
 
   // Mark the segment for deletion upon transaction commit
@@ -686,7 +706,7 @@ Transaction& Database::GetTransaction() {
     return *transaction;
   }
 
-  // Start new transaction
+  // Start new transaction (for that server connection)
   auto& network = session->Network();
   auto& client = network.Get(connectionId);
   client.SendMessageToServer(network::message::TransactionBegin::Create(session->Transactions().useStickyLocks));
