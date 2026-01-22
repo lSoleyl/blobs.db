@@ -27,9 +27,11 @@ namespace parallel {
         // make sure there are no races when dealing with the exception ptr
         std::lock_guard<std::mutex> lock(mutex);
 
-        // set the exception pointer in case of an exception - might overwrite
-        // another exception but here we care about propagating any exception - not all
-        exception_ptr = std::current_exception();
+        // set the exception pointer in case of an exception - only store the first one
+        // as the second may be caused by the error in the first failing thread. We don't want to overwrite it
+        if (!exception_ptr) {
+          exception_ptr = std::current_exception();
+        }
       }
     });
 
@@ -53,9 +55,11 @@ namespace parallel {
         // make sure there are no races when dealing with the exception ptr
         std::lock_guard<std::mutex> lock(mutex);
 
-        // set the exception pointer in case of an exception - might overwrite
-        // another exception but here we care about propagating any exception - not all
-        exception_ptr = std::current_exception();
+        // set the exception pointer in case of an exception - only store the first one
+        // as the second may be caused by the error in the first failing thread. We don't want to overwrite it
+        if (!exception_ptr) {
+          exception_ptr = std::current_exception();
+        }
       }
     });
 
@@ -77,7 +81,10 @@ namespace parallel {
         lock.unlock();
         signal.notify_all();
       } else {
-        signal.wait(lock, [=]() { return nThreads == 0; });
+        // Wait for all threads to arrive at the sync point (wait for at most 3 seconds to not block for all eternity)
+        if (!signal.wait_for(lock, std::chrono::seconds(3), [=]() { return nThreads == 0; })) {
+          throw std::exception("Waiting for sync_point timed out!");
+        }
       }
     }
 

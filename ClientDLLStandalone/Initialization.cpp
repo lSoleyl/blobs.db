@@ -7,6 +7,7 @@
 #include <server/Logging.hpp>
 
 #include <thread>
+#include <cassert>
 
 // We must include doctest here to not get any linker errors when linking against ServerLib, which uses doctest
 #define DOCTEST_CONFIG_IMPLEMENT
@@ -26,7 +27,13 @@ public:
 
   ~StandaloneServer() {
     serverInstance.BeginShutdown();
-    serverThread.join();
+    if (serverThread.get_id() != std::this_thread::get_id()) {
+      serverThread.join();
+    } else {
+      // If this code is being run from inside the Standalone server thread, then the main thread must have 
+      // exited BEFORE calling blobs::Shutdown()!
+      assert(!"Process exited without calling blobs::Shutdown()!");
+    }
   }
 
 private:
