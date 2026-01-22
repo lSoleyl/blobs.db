@@ -86,6 +86,16 @@ private:
    */
   bool TryHandleBlobsRead(const network::message::BlobsRead& message);
 
+
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a write lock on SegmentDeleteId.
+   *  This method will ensure that the requested segment exists and that the client can acquire write locks on the whole segment.
+   * 
+   * @return true if the request has been handled and a response sent to the client (including an error)
+   *         false if the request cannot be handled due to conflicting locks.
+   */
+  bool TryHandleDeleteSegmentId(blobs::server::Client& client, const network::message::BlobsRead& message);
+
+
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a write lock on ClusterDeleteId.
    *  This method will ensure that the requested cluster exists and that the client can acquire write locks on the whole cluster.
    * 

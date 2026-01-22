@@ -25,7 +25,7 @@ Cluster* Segment::GetCluster(cluster_id cluster) {
 }
 
 
-Cluster* Segment::GetLoadedCluster(cluster_id clusterId, const FileBackend& file, bool loadAllBlobs) {
+Cluster* Segment::GetLoadedCluster(cluster_id clusterId, const FileBackend& file) {
   if (auto cluster = GetCluster(clusterId)) {
     // Load the cluster from file if it isn't loaded yet
     TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
@@ -34,22 +34,26 @@ Cluster* Segment::GetLoadedCluster(cluster_id clusterId, const FileBackend& file
       assert(cluster->status == Status::LOADED);
     }
 
-
-    // Load each blob into memory if requested
-    if (loadAllBlobs) {
-      for (auto& [blobId, blob] : *cluster) {
-        TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
-        if (blob->status != Status::LOADED) {
-          blob->LoadFrom(file);
-          assert(blob->status == Status::LOADED);
-        }
-      }
-    }
-
     return cluster;
   }
 
   return nullptr;
+}
+
+
+void Segment::LoadAllBlobs(const FileBackend& file) {
+  assert(status == Status::LOADED); // the segment itself should already be loaded
+  
+  for (auto& [clusterId, cluster] : *this) {
+    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+    if (cluster->status != Status::LOADED) {
+      cluster->LoadFrom(file);
+      assert(cluster->status == Status::LOADED);
+    }
+
+    // Now ensure all blobs of that cluster are loaded
+    cluster->LoadAllBlobs(file);
+  }
 }
 
 

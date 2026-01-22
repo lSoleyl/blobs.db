@@ -16,6 +16,7 @@ struct BlobsReadResponse : public Message {
     SUCCESS,
     BLOB_DOES_NOT_EXIST,
     CLUSTER_DOES_NOT_EXIST,     // only returned when attempting to delete a cluster through ClusterDeleteId and that cluster or its segment does not exist
+    SEGMENT_DOES_NOT_EXIST,     // only returned when attempting to delete a segment through SegmentDeleteId and that segment does not exist
     DATBASE_NOT_OPENED,         // passed a database id, which the server doesn't recognize for this client
     NO_TRANSACTION_IN_PROGRESS, // trying to read blobs before explicitly starting a transaction
     LOCK_TIMEOUT,

@@ -654,11 +654,15 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
 void Database::HandleReadBlobErrorResponse(const network::message::BlobsReadResponse& response) {
   assert(response.result != network::message::BlobsReadResponse::Result::SUCCESS);
 
-  TODO("Define separate errors for SEGMENT_DOES_NOT_EXIST, CLUSTER_DOES_NOT_EXIST, BLOB_DOES_NOT_EXIST for better error handling");
-
   switch (response.result) {
     case network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST:
       throw exception::BlobDoesNotExist();
+
+    case network::message::BlobsReadResponse::Result::CLUSTER_DOES_NOT_EXIST:
+      throw exception::ClusterDoesNotExist();
+
+    case network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST:
+      throw exception::SegmentDoesNotExist();
 
     case network::message::BlobsReadResponse::Result::DATBASE_NOT_OPENED:
       // This should never happen unless the client lib doesn't track database open/closes correctly

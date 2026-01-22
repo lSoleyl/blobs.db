@@ -149,7 +149,7 @@ TEST_CASE("Deleting a cluster when already holding locks into it") {
 
 
 // This test case will test the use case of first creating a new blob in a cluster and then deleting the cluster in the same transaction
-TEST_CASE("Create Blob then delete the cluster") {
+TEST_CASE("Create blob then delete the cluster") {
   // Prepare test
   auto session = Session::Create();
   database_ptr db(Database::Open(session, "localhost", "mem:createBlobDeleteCluster"));
@@ -194,4 +194,11 @@ TEST_CASE("Accessing a cluster form the same session after aborting its deletion
   REQUIRE(db->ReadString(0, clusterId, 0) == "");
   REQUIRE(db->ReadString(0, clusterId, blobId) == "new");
   REQUIRE(db->CreateString(0, clusterId, "test") == 2);
+}
+
+
+TEST_CASE("Deleting a non existent cluster") {
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, "localhost", "mem:deleteNotExistingCluster"));
+  REQUIRE_THROWS_AS_MESSAGE(db->DeleteCluster(0, 1), exception::ClusterDoesNotExist, "Expected exception to be thrown when attempting to delete cluster that doesn't exist");
 }

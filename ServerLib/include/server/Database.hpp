@@ -46,15 +46,13 @@ public:
 
   /** Return the specified cluster from this database (if it exists) 
    *  and loads it from disk if not yet done.
-   * 
-   * @param loadAllBlobs if true then also all blobs of that cluster are loaded from disk if not yet done
    */
-  Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster, bool loadAllBlobs = false);
+  Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster);
 
   /** Returns a segment from this databse (if it exists)
-   *  This may return a not yet loaded (delay loaded) Segment
+   *  and loads it from disk if not yet done.
    */
-  Segment* GetSegment(segment_id segment);
+  Segment* GetLoadedSegment(segment_id segment);
 
   /** Returns the next free segment id, which can also be retrieved form the blob (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`)
    */
@@ -201,9 +199,8 @@ private:
      * @param segment the cluster's segment
      * @param cluster the cluster to load
      * @param file the database file to load the segment/cluster from (only used for file databases)
-     * @param loadAllBlobs if true then also all blobs of that cluster are loaded from disk into memory if not already done
      */
-    Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster, const FileBackend& file, bool loadAllBlobs = false);
+    Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster, const FileBackend& file);
 
 
     /** Returns the specified segment or nullptr if it doesn't exist
@@ -211,9 +208,8 @@ private:
      * 
      * @param segment the segment to load
      * @param file the database file to laod the segment/cluster from (only used for file databases)
-     * @param loadAllClusters if true then also all clusters and all blobs inside are loaded from disk into memory if not already done (expensive!)
      */
-    Segment* GetLoadedSegment(segment_id segment, const FileBackend& file, bool loadAllClusters = false);
+    Segment* GetLoadedSegment(segment_id segment, const FileBackend& file);
 
 
     /** Returns the segment with the specified segment id or nullptr if the segment doesn't exist.

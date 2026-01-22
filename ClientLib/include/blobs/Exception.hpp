@@ -18,6 +18,7 @@ enum class ExceptionCode {
   BlobDeleted,            // Attempted to read/write a blob, which has been deleted in the current transaction
   ClusterDoesNotExist,    // Attempt to delete a cluster, which does not exist in the database
   ClusterDeleted,         // Attempt to read/write/create/delete a blob in a cluster, which has already been deleted
+  SegmentDoesNotExist,    // Attempt to delete a segment, which does not exist in the database
   SegmentDeleted,         // Attempt to read/write/create/delete a blob/cluster in a segment, which has already been deleted
   BlobLimitReached,       // Cannot create more blobs in the cluster
   ClusterLimitReached,    // Cannot create more clusters in the segment
@@ -95,6 +96,11 @@ public:
 class ClusterDeleted : public Exception {
 public:
   ClusterDeleted();
+};
+
+class SegmentDoesNotExist : public Exception {
+public:
+  SegmentDoesNotExist();
 };
 
 class SegmentDeleted : public Exception {

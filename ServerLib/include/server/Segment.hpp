@@ -23,7 +23,11 @@ public:
    *  The cluster is loaded from the database file into memory it not already done.
    *  This method CANNOT handle the nextFreeClusterId id, use GetBlob() instead
    */
-  Cluster* GetLoadedCluster(cluster_id cluster, const FileBackend& file, bool loadAllBlobs = false);
+  Cluster* GetLoadedCluster(cluster_id cluster, const FileBackend& file);
+
+  /** Loads all not yet loaded clusters and all their blobs from the given file backend into memory.
+   */
+  void LoadAllBlobs(const FileBackend& file);
 
   /** This method is used by the snapshot's ApplyCommitMessage method to fetch the cluster with the specified id
    *  and copy it if it hasn't been modified in the same transaction as the segment yet or create the cluster if id doesn't exist yet.

@@ -280,13 +280,13 @@ Blob* Database::GetLoadedBlob(const BlobLocation& location) {
   return snapshot->GetLoadedBlob(location, file);
 }
 
-Cluster* Database::GetLoadedCluster(segment_id segment, cluster_id cluster, bool loadAllBlobs) {
-  return snapshot->GetLoadedCluster(segment, cluster, file, loadAllBlobs);
+Cluster* Database::GetLoadedCluster(segment_id segment, cluster_id cluster) {
+  return snapshot->GetLoadedCluster(segment, cluster, file);
 }
 
 
-Segment* Database::GetSegment(segment_id segment) {
-  return snapshot->GetSegment(segment);
+Segment* Database::GetLoadedSegment(segment_id segment) {
+  return snapshot->GetLoadedSegment(segment, file);
 }
 
 segment_id Database::GetNextFreeSegmentId() const {
@@ -598,29 +598,22 @@ Blob* Database::Snapshot::GetLoadedBlob(const BlobLocation& location, const File
 }
 
 
-Cluster* Database::Snapshot::GetLoadedCluster(segment_id segmentId, cluster_id clusterId, const FileBackend& file, bool loadAllBlobs) {
+Cluster* Database::Snapshot::GetLoadedCluster(segment_id segmentId, cluster_id clusterId, const FileBackend& file) {
   if (auto segment = GetLoadedSegment(segmentId, file)) {
-    return segment->GetLoadedCluster(clusterId, file, loadAllBlobs);
+    return segment->GetLoadedCluster(clusterId, file);
   }
 
   return nullptr;
 }
 
 
-Segment* Database::Snapshot::GetLoadedSegment(segment_id segmentId, const FileBackend& file, bool loadAllClusters) {
+Segment* Database::Snapshot::GetLoadedSegment(segment_id segmentId, const FileBackend& file) {
   if (auto segment = GetSegment(segmentId)) {
     // Load the segment from file if it isn't loaded yet
     TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
     if (segment->status != Status::LOADED) {
       segment->LoadFrom(file);
       assert(segment->status == Status::LOADED);
-    }
-
-    if (loadAllClusters) {
-      // Loading of all clusters (and their blobs) requested
-      for (auto& [clusterId, cluster] : *segment) {
-        segment->GetLoadedCluster(clusterId, file, true);
-      }
     }
 
     return segment;

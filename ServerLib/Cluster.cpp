@@ -37,6 +37,18 @@ Blob* Cluster::GetLoadedBlob(blob_id blob, const FileBackend& file) {
   return blobObj;
 }
 
+void Cluster::LoadAllBlobs(const FileBackend& file) {
+  for (auto& [blobId, blob] : *this) {
+    // Load the blob from file if it isn't loaded yet
+    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+    if (blob->status != Status::LOADED) {
+      blob->LoadFrom(file);
+      assert(blob->status == Status::LOADED);
+    }
+  }
+}
+
+
 Blob* Cluster::UpdateBlob(blob_id blob, MemoryBlockDelta* delta) {
   auto& blobPtr = blobs[blob];
   if (!blobPtr || blobPtr->commitId != commitId) {

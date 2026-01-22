@@ -9,9 +9,55 @@ namespace blobs::server {
 
 
 /** Handles special blob locations and determines all blocks, which need to be locked to access the given blob location
+ *  and evaluates the action on each one of them.
+ *
+ *  This function encapuslates the additional logic for special blobs, like ClusterDeleteId, which require
+ *  a lock on the whole cluster, which is also what the database reference is needed for.
+ *
+ * @param database the database to load the cluster/segment from if necessary
+ * @param location the location to check the locks for
+ * @param action(const BlobLocation&) -> void
+ */
+template<typename Action>
+void ForEachLockForLocation(Database& database, const BlobLocation& location, Action&& action) {
+  if (location.blob == constants::ClusterDeleteId) {
+    if (location.cluster == constants::SegmentDeleteId) {
+      // Whole segment is being deleted
+      auto segment = database.GetLoadedSegment(location.segment);
+      assert(segment); // the caller should ensure the segments's existence
+
+      action(location);
+      action(BlobLocation(location.segment, constants::NextFreeClusterId, constants::NextFreeBlobId));
+      TODO("Once we support reading all clusters of a segment, we must also lock that id");
+
+      for (auto& [clusterId, cluster] : *segment) {
+        // Now run on all the locks needed to delete each single cluster (effectively checking all locks inside the cluster)
+        ForEachLockForLocation(database, BlobLocation(location.segment, clusterId, constants::ClusterDeleteId), action);
+      }
+    } else {
+      // Whole cluster is being deleted
+      auto cluster = database.GetLoadedCluster(location.segment, location.cluster);
+      assert(cluster); // the caller should ensure the cluster's existence
+
+      action(location);
+      action(BlobLocation(location.segment, location.cluster, constants::NextFreeBlobId));
+      TODO("Once we support reading all blobs of a cluster, we must also lock that id");
+
+      for (auto& [blobId, blob] : *cluster) {
+        action(BlobLocation(location.segment, location.cluster, blobId));
+      }
+    }
+  } else {
+    // Regular single blob lock
+    action(location);
+  }
+}
+
+/** Handles special blob locations and determines all blocks, which need to be locked to access the given blob location
  *  and evaluates the predicate on each one of them.
  *
- * @param database the database to load the cluster from if necessary
+ * @param database the database to load the cluster/segment from if necessary
+ * @param location the location to check the locks for
  * @param predicate(const BlobLocation&) -> bool
  *
  * @return true if the predicate returned true for all locations, false otherwise
@@ -19,26 +65,48 @@ namespace blobs::server {
 template<typename Predicate>
 bool AllLocksForLocation(Database& database, const BlobLocation& location, Predicate&& predicate) {
   if (location.blob == constants::ClusterDeleteId) {
-    // For deletion of a cluster, the client must hold locks to every single blob in that cluster
-    auto cluster = database.GetLoadedCluster(location.segment, location.cluster);
-    assert(cluster); // the caller should ensure the cluster's existence
+    if (location.cluster == constants::SegmentDeleteId) {
+      // For deletion of a segment, the client must hold locks to every single blob in that segment
+      auto segment = database.GetLoadedSegment(location.segment);
+      assert(segment); // the caller should ensure the segments's existence
 
-    if (!predicate(location)) {
-      return false;
-    }
-
-    TODO("Once we support reading all blobs of a cluster, we must also lock that id");
-
-    if (!predicate(BlobLocation(location.segment, location.cluster, constants::NextFreeBlobId))) {
-      return false;
-    }
-
-    for (auto& [blobId, blob] : *cluster) {
-      if (!predicate(BlobLocation(location.segment, location.cluster, blobId))) {
+      if (!predicate(location)) {
         return false;
       }
-    }
+      
+      TODO("Once we support reading all clusters of a segment, we must also lock that id");
 
+      if (!predicate(BlobLocation(location.segment, constants::NextFreeClusterId, constants::NextFreeBlobId))) {
+        return false;
+      }
+      
+      for (auto& [clusterId, cluster] : *segment) {
+        // We need to hold all the locks for all the clusters (so check all required locks to delete each single cluster)
+        if (!AllLocksForLocation(database, BlobLocation(location.segment, clusterId, constants::ClusterDeleteId), predicate)) {
+          return false;
+        }
+      }
+    } else {
+      // For deletion of a cluster, the client must hold locks to every single blob in that cluster
+      auto cluster = database.GetLoadedCluster(location.segment, location.cluster);
+      assert(cluster); // the caller should ensure the cluster's existence
+
+      if (!predicate(location)) {
+        return false;
+      }
+
+      TODO("Once we support reading all blobs of a cluster, we must also lock that id");
+
+      if (!predicate(BlobLocation(location.segment, location.cluster, constants::NextFreeBlobId))) {
+        return false;
+      }
+
+      for (auto& [blobId, blob] : *cluster) {
+        if (!predicate(BlobLocation(location.segment, location.cluster, blobId))) {
+          return false;
+        }
+      }
+    }
   } else {
     // Regular single blob lock
     if (!predicate(location)) {
@@ -85,21 +153,7 @@ bool AllLocksInMessage(Database& database, const network::message::BlobsRead& me
 template<typename Action>
 void ForEachLockInMessage(Database& database, const network::message::BlobsRead& message, Action&& action) {
   for (auto& location : message) {
-    if (location.blob == constants::ClusterDeleteId) {
-      auto cluster = database.GetLoadedCluster(location.segment, location.cluster);
-      assert(cluster); // the caller should ensure the cluster's existence
-
-      action(location);
-      action(BlobLocation(location.segment, location.cluster, constants::NextFreeBlobId));
-      TODO("Once we support reading all blobs of a cluster, we must also lock that id");
-
-      for (auto& [blobId, blob] : *cluster) {
-        action(BlobLocation(location.segment, location.cluster, blobId));
-      }
-    } else {
-      // Regular single blob lock
-      action(location);
-    }
+    ForEachLockForLocation(database, location, action);
   }
 }
 

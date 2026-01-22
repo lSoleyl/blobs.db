@@ -473,10 +473,6 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
       }
 
 
-      FIXME("If cluster is SegmentDeleteId, then blob must be ClusterDeleteId");
-      FIXME("If cluster is SegmentDeleteId, then the whole segment must be write locked");
-
-
       if (location.segment == constants::NextFreeSegmentId) {
         // The client has creatd one or more segments in the database
         if (location.cluster != constants::NextFreeClusterId || location.blob != constants::NextFreeBlobId) {
@@ -515,7 +511,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
 
         cluster_id nextFreeClusterId; // The current nextFreeClusterId of the segment
 
-        if (auto segment = database->GetSegment(location.segment)) {
+        if (auto segment = database->GetLoadedSegment(location.segment)) {
           // Creating a cluster in an already existing segment
           nextFreeClusterId = segment->GetNextFreeClusterId();
         } else if (createdBlobs.Encompasses(location)) {
@@ -557,7 +553,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
           // The cluster and or segment have been created in this transaction so there is no point in performing the segment/cluster lookup
           // We can assume the nextFreeBlobId to have been 1 as the 0'th blob is always implicitly created
           nextFreeBlobId = 1;
-        } else if (auto segment = database->GetSegment(location.segment)) {
+        } else if (auto segment = database->GetLoadedSegment(location.segment)) {
           if (auto cluster = segment->GetCluster(location.cluster)) {
             nextFreeBlobId = cluster->GetNextFreeBlobId();
           } else {
@@ -673,8 +669,10 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     auto& requestedBlob = *message.begin();
 
 
-
-    FIXME("Also handle DeleteSegmentId here");
+    // Handle delete segment request  (this must always be a delete lock)
+    if (requestedBlob.cluster == constants::SegmentDeleteId && requestedBlob.blob == constants::ClusterDeleteId && message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      return TryHandleDeleteSegmentId(client, message);
+    }
 
     // Handle delete cluster request (this must always be a delete lock)
     if (requestedBlob.blob == constants::ClusterDeleteId && message.lockMode == network::message::BlobsRead::LockMode::Delete) {
@@ -717,6 +715,35 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     return true;
   }
 }
+
+
+bool Server::TryHandleDeleteSegmentId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
+  assert(message.nBlobsRequested == 1);
+  auto& location = *message.begin();
+
+
+  auto database = client.GetDatabase(message.databaseId);
+  assert(database); // should have been checked by the caller
+
+  if (!database->GetLoadedSegment(location.segment)) {
+    // Cluster or segment do not exist
+    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
+    return true;
+  }
+
+
+  // Now acquire locks for all blobs inside the cluster including the artificial ones (NextFreeBlobId and DeleteClusterId)
+  if (client.AcquireLocks(message)) {
+    // Now we can reply with an empty response (delete lock must have been set in the message)
+    assert(message.lockMode == network::message::BlobsRead::LockMode::Delete);
+    SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
+    return true;
+  }
+
+  return false;
+}
+
 
 
 bool Server::TryHandleDeleteClusterId(blobs::server::Client& client, const network::message::BlobsRead& message) {

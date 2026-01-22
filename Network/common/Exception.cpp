@@ -47,6 +47,8 @@ ClusterDoesNotExist::ClusterDoesNotExist() : Exception("Attempt to delete a clus
 
 ClusterDeleted::ClusterDeleted() : Exception("Attempt to access a blob in an already deleted cluster", ExceptionCode::ClusterDeleted) {}
 
+SegmentDoesNotExist::SegmentDoesNotExist() : Exception("Attempt to delete a segment, which does not exist", ExceptionCode::SegmentDoesNotExist) {}
+
 SegmentDeleted::SegmentDeleted() : Exception("Attempt to access a cluster in an already deleted segment", ExceptionCode::SegmentDeleted) {}
 
 

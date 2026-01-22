@@ -27,6 +27,9 @@ public:
    */
   Blob* GetLoadedBlob(blob_id blob, const FileBackend& file);
 
+  /** Loads all not yet loaded blobs from the given file backend into memory.
+   */
+  void LoadAllBlobs(const FileBackend& file);
 
   /** If the specified blob does not yet exist OR has not yet been modified in the same transaction as the clsuter 
    *  then a new EMPTY(!!!) blob is returned, which is entered into the blob map. Otherwise the already modified blob  
