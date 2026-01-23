@@ -70,6 +70,7 @@ private:
   TransactionCommitResponse(Result result, message_size messageSize);
 };
 
+std::ostream& operator<<(std::ostream& out, TransactionCommitResponse::Result result);
 std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& message);
 
 }}}

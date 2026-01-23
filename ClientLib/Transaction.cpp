@@ -381,8 +381,12 @@ bool Transaction::Commit(const Session::Handle& session) {
           TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
         }
       } else {
-        assert(false);
-        TODO("Convert error code into some nice error message and include the database in there somehow");
+        std::ostringstream error;
+        error << "Internal error: Unexpected result in Transaction::Commit(): " << commitResponse->result;
+        
+        TODO("Recover as good as possible from this scenario before throwing the exception to be able to continue execution with a new transaction");
+        TODO("Revoke all locks");
+        throw exception::InternalCommitError(error.str());
       }
     } else {
       assert(false);

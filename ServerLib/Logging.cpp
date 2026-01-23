@@ -71,6 +71,9 @@ std::ostream& operator<<(std::ostream& out, Level level) {
     case Level::INFO_LEVEL:  return out << "[INF]";
     case Level::DEBUG_LEVEL: return out << "[DBG]";
   }
+
+  assert(!"Unhandled log level");
+  return out << "[???]";
 }
 
 

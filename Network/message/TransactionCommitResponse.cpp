@@ -39,56 +39,55 @@ MessagePointer TransactionCommitResponse::CreateError(Result result) {
 }
 
 
-std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& message) {
+std::ostream& operator<<(std::ostream& out, TransactionCommitResponse::Result result) {
   using Result = TransactionCommitResponse::Result;
-  out << message.type << '(';
-  switch (message.result) {
-    case Result::SUCCESS:
-      out << "dbId=" << message.begin()->dbId << ", commitId=" << message.begin()->commitId;
-      break;
 
-    case Result::DATABASE_NOT_OPENED:
-      out << "DATABASE_NOT_OPENED";
-      break;
+  switch (result) {
+    case Result::SUCCESS: 
+      return out << "SUCCESS";
+
+    case Result::DATABASE_NOT_OPENED: 
+      return out << "DATABASE_NOT_OPENED";
 
     case Result::DATABASE_ORDER_VIOLATED:
-      out << "DATABASE_ORDER_VIOLATED";
-      break;
+      return out << "DATABASE_ORDER_VIOLATED";
 
     case Result::MISSING_WRITE_LOCK:
-      out << "MISSING_WRITE_LOCK";
-      break;
+      return out << "MISSING_WRITE_LOCK";
 
     case Result::NO_TRANSACTION_IN_PROGRESS:
-      out << "NO_TRANSACTION_IN_PROGRESS";
-      break;
+      return out << "NO_TRANSACTION_IN_PROGRESS";
 
     case Result::SEGMENT_DOES_NOT_EXIST:
-      out << "SEGMENT_DOES_NOT_EXIST";
-      break;
+      return out << "SEGMENT_DOES_NOT_EXIST";
 
     case Result::CLUSTER_DOES_NOT_EXIST:
-      out << "CLUSTER_DOES_NOT_EXIST";
-      break;
+      return out << "CLUSTER_DOES_NOT_EXIST";
 
     case Result::BLOB_DOES_NOT_EXIST:
-      out << "BLOB_DOES_NOT_EXIST";
-      break;
+      return out << "BLOB_DOES_NOT_EXIST";
 
     case Result::ILLEGAL_NEXT_FREE_BLOB_ID:
-      out << "ILLEGAL_NEXT_FREE_BLOB_ID";
-      break;
+      return out << "ILLEGAL_NEXT_FREE_BLOB_ID";
 
     case Result::ILLEGAL_NEXT_FREE_CLUSTER_ID:
-      out << "ILLEGAL_NEXT_FREE_CLUSTER_ID";
-      break;
+      return out << "ILLEGAL_NEXT_FREE_CLUSTER_ID";
 
     case Result::ILLEGAL_NEXT_FREE_SEGMENT_ID:
-      out << "ILLEGAL_NEXT_FREE_SEGMENT_ID";
-      break;
+      return out << "ILLEGAL_NEXT_FREE_SEGMENT_ID";
 
     default:
-      assert(false);  // missing stringification?
+      assert(!"Missing serialization for TransactionCommitResponse::Result");
+      return out;
+  }
+}
+
+std::ostream& operator<<(std::ostream& out, const TransactionCommitResponse& message) {
+  out << message.type << '(';
+  if (message.result == TransactionCommitResponse::Result::SUCCESS) {
+    out << "dbId=" << message.begin()->dbId << ", commitId=" << message.begin()->commitId;
+  } else {
+    out << message.result;
   }
 
   return out << ')';

@@ -606,7 +606,12 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
           implicitDbWriteLocks.push_back(location);
         }
 
-        TODO("If we support a list of clusters then we must write lock that too");
+        // Implicit write lock on the segment's cluster list
+        location = BlobLocation(segment, constants::ClusterListId, constants::BlobListId);
+        if (!database->ClientOwnsWriteLock(client.id, location)) {
+          implicitDbWriteLocks.push_back(location);
+        }
+        
       } else if (range.IsCreatedCluster()) {
         auto segment = range.begin.segment;
         auto cluster = range.begin.cluster;
@@ -623,7 +628,12 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
           implicitDbWriteLocks.push_back(location);
         }
 
-        TODO("If we support a list of blobs then we must write lock that too");
+        // Implicit write lock on the list of blobs in the cluster
+        location = BlobLocation(segment, cluster, constants::BlobListId);
+        if (!database->ClientOwnsWriteLock(client.id, location)) {
+          implicitDbWriteLocks.push_back(location);
+        }
+
       } else {
         // one or more regular created blobs
         auto segment = range.begin.segment;

@@ -24,6 +24,7 @@ enum class ExceptionCode {
   ClusterLimitReached,    // Cannot create more clusters in the segment
   SegmentLimitReached,    // Cannot create more segments in the database
   TransactionAlreadyOpen, // Attempted to start a new transaction with a transaction already in progress
+  InternalCommitError     // An error during server commit - this should never happen and indicates a bug in the library
 };
 
 
@@ -128,6 +129,12 @@ class TransactionAlreadyOpen : public Exception {
 public:
   TransactionAlreadyOpen();
 };
+
+class InternalCommitError : public Exception {
+public:
+  InternalCommitError(std::string_view reason);
+};
+
 
 }
 

@@ -68,7 +68,7 @@ SegmentLimitReached::SegmentLimitReached() : Exception("Cannot create any more s
 
 TransactionAlreadyOpen::TransactionAlreadyOpen() : Exception("Cannot start a new transaction, a transaction is already in progress.", ExceptionCode::TransactionAlreadyOpen) {}
 
-
+InternalCommitError::InternalCommitError(std::string_view reason) : Exception(reason, ExceptionCode::InternalCommitError) {}
 
 
 }}

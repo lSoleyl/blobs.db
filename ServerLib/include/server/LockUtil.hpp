@@ -37,12 +37,12 @@ void ForEachLockForLocation(Database& database, const BlobLocation& location, Ac
         // because we would call action multiple times for the segment's list of clusters if we were to do this
         auto cluster = database.GetLoadedCluster(location.segment, clusterId);
 
-        action(BlobLocation(location.segment, location.cluster, constants::ClusterDeleteId));
-        action(BlobLocation(location.segment, location.cluster, constants::NextFreeBlobId));
-        action(BlobLocation(location.segment, location.cluster, constants::BlobListId)); // The cluster's blob list
+        action(BlobLocation(location.segment, clusterId, constants::ClusterDeleteId));
+        action(BlobLocation(location.segment, clusterId, constants::NextFreeBlobId));
+        action(BlobLocation(location.segment, clusterId, constants::BlobListId)); // The cluster's blob list
 
         for (auto& [blobId, blob] : *cluster) {
-          action(BlobLocation(location.segment, location.cluster, blobId));
+          action(BlobLocation(location.segment, clusterId, blobId));
         }
       }
     } else {
@@ -120,19 +120,26 @@ bool AllLocksForLocation(Database& database, const BlobLocation& location, Predi
         // We need to hold all the locks for all the clusters
         // We cannot perform a recursive call here with ClusterDeleteId as this would call the predicate multiple times
         // on the segment's cluster list
-        auto cluster = database.GetLoadedCluster(location.segment, location.cluster);
+        auto cluster = database.GetLoadedCluster(location.segment, clusterId);
 
-        if (!predicate(BlobLocation(location.segment, location.cluster, constants::ClusterDeleteId))) {
+        if (!predicate(BlobLocation(location.segment, clusterId, constants::ClusterDeleteId))) {
           return false;
         }
 
-        if (!predicate(BlobLocation(location.segment, location.cluster, constants::NextFreeBlobId))) {
+        if (!predicate(BlobLocation(location.segment, clusterId, constants::NextFreeBlobId))) {
           return false;
         }
 
         // The cluster's blob list
-        if (!predicate(BlobLocation(location.segment, location.cluster, constants::BlobListId))) {
+        if (!predicate(BlobLocation(location.segment, clusterId, constants::BlobListId))) {
           return false;
+        }
+
+        // And each blob in the cluster
+        for (auto& [blobId, blob] : *cluster) {
+          if (!predicate(BlobLocation(location.segment, clusterId, blobId))) {
+            return false;
+          }
         }
       }
     } else {
@@ -158,6 +165,7 @@ bool AllLocksForLocation(Database& database, const BlobLocation& location, Predi
         return false;
       }
 
+      // And each blob in the cluster
       for (auto& [blobId, blob] : *cluster) {
         if (!predicate(BlobLocation(location.segment, location.cluster, blobId))) {
           return false;
