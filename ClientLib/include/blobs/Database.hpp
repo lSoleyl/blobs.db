@@ -2,6 +2,7 @@
 
 #include "Config.hpp"
 #include "Session.hpp"
+#include "Range.hpp"
 
 #include <string>
 #include <vector>
@@ -205,6 +206,29 @@ public:
    */
   BLOBS_EXPORT void DeleteSegment(segment_id segment);
 
+  /** Retrieves a range with all existing blob ids in the specified cluster.
+   *  This operation will set locks to prevent other clients form creating/deleting blobs in the same cluster.
+   * 
+   * @param segment the segment to query the blob list for
+   * @param cluster the cluster to query the blob list for
+   * @param writeLock if true then the blob list locks will be set as write locks instead of read locks
+   */
+  BLOBS_EXPORT Range<blob_id> GetAllBlobs(segment_id segment, cluster_id cluster, bool writeLock = false);
+
+  /** Retrieves a range with all existing cluster ids in the specified segment.
+   *  This operation will set locks to prevent other clients from creating/deleting clusters in the same segment.
+   *
+   * @param segment the segment to query the cluster list for
+   * @param writeLock if true then the cluster list locks will be set as write locks instead of read locks
+   */
+  BLOBS_EXPORT Range<cluster_id> GetAllClusters(segment_id segment, bool writeLock = false);
+
+  /** Retrieves a range of all existing segment ids in the database.
+   *  This operation will set locks to prevent other clients from creating/deleting segments.
+   * 
+   * @param writeLock if true the segment list locks will be set as write locks instead of read locks
+   */
+  BLOBS_EXPORT Range<segment_id> GetAllSegments(bool writeLock = false);
 
   /** Closes the connection to this database and deletes this object.
    * 

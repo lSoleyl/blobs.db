@@ -53,6 +53,9 @@ namespace blobs {
      */
     constexpr blob_id ClusterDeleteId = MaxBlobId + 2;
 
+    /** Special blob id, which will may be read to retrieve the list of all existing blobs in a cluster.
+     */
+    constexpr blob_id BlobListId = MaxBlobId + 3;
     
     /** Highest valid cluster id to use for storing clusters. All others have special semantics or are reserved for future use
      */
@@ -67,6 +70,10 @@ namespace blobs {
      */ 
     constexpr cluster_id SegmentDeleteId = MaxClusterId + 2;
 
+    /** Special cluster id that is used as (segment, ClusterListId, BlobListId) to read the list of all clusters in the specified segment.
+     */
+    constexpr cluster_id ClusterListId = MaxClusterId + 3;
+
 
     /** Highest valid segment id to use for storing segments. All others have special semantics or are reserved for future use
      */
@@ -75,6 +82,10 @@ namespace blobs {
     /** Special segment id used to acquire a write lock for creating new segments in the database and reading the next free segment id
      */
     constexpr segment_id NextFreeSegmentId = MaxSegmentId + 1;
+
+    /** Sepcial segment id that is used as (SegmentListId, ClusterListId, BlobListId) to read the list of all segments in the database,.
+     */
+    constexpr segment_id SegmentListId = MaxSegmentId + 1;
   }
 }
 

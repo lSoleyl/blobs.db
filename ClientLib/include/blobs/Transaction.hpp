@@ -128,6 +128,21 @@ public:
   void WriteBlob(Database* database, const BlobLocation& location, const void* blobData, blob_size blobSize);
 
 
+  /** Marks the blob as created during this transaction. This information is necessary to correctly keep track of the list of all
+   *  blobs in a cluster during a transaction.
+   */
+  void CreateBlob(Database* database, const BlobLocation& location);
+
+  /** Marks the cluster as created during this transaction. This information is necessary to correctly keep track of the list of all
+   *  clusters in a segment during a transaction
+   */
+  void CreateCluster(Database* database, segment_id segment, cluster_id cluster);
+
+  /** Marks the segment as created during this transaction. This information is necessary to correctly keep track of the list of all 
+   *  segments in the database during a transaction
+   */
+  void CreateSegment(Database* database, segment_id segment);
+
   /** Marks a blob for deletion on transaction commit. After calling this method, the blob cannot be read or written anymore unless the
    *  transaction is aborted.
    */
@@ -151,8 +166,20 @@ public:
    */
   std::optional<std::pair<const void* /*data*/, blob_size>> ReadBlob(Database* database, const BlobLocation& location) const;
 
+  /** This function is used to implement the merging of the server's blob id list with the local changes to it during this transaction.
+   *  It will erase all blob ids of blobs deleted during this transaction and then insert ids for all blobs created during this transaction.
+   */
+  void MergeBlobIdList(Database* database, segment_id segment, cluster_id cluster, std::vector<blob_id>& blobs);
 
-  
+  /** This function is used to implement the merging of the server's cluster id list with the local changes to it during this transaction.
+   *  It will erase all cluster ids of clusters deleted during this transaction and then insert ids for all clusters created during this transaction.
+   */
+  void MergeClusterIdList(Database* database, segment_id segment, std::vector<cluster_id>& clusters);
+
+  /** This function is used to implement the merging of the server's segment id list with the local changes to it during this transaction.
+   *  It will erase all segment ids of segments deleted during this transaction and then insert ids for all segments created during this transaction.
+   */
+  void MergeSegmentIdList(Database* database, std::vector<segment_id>& segments);
 
 
   /** Each transaction has an id, which is counted up. This is not the same as the commit id of the server, which is stored in the blobs.

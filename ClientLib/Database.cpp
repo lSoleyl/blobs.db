@@ -13,6 +13,7 @@
 #include <common/Encoding.hpp>
 
 #include <charconv>
+#include <algorithm>
 
 namespace blobs {
 
@@ -379,6 +380,9 @@ cluster_id Database::CreateCluster(segment_id segment) {
   // Only one thread at a time may create a cluster
   auto sessionLock = session->Lock();
 
+
+  static_assert(!"We must also lock the list of all clusters in the segment... or is this done by the server?");
+
   // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
   // also tell us the next cluster id to use
   auto [data, size] = ReadBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
@@ -401,6 +405,9 @@ cluster_id Database::CreateCluster(segment_id segment) {
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::ClusterDeleteId), Transaction::LockMode::Write);
   TODO("Once we support reading the blob list then we also implicitly write lock that blob");
+
+  // Mark the cluster as created during this transaction
+  transaction->CreateCluster(this, segment, newClusterId);
 
   // Write the nextFreeBlobId in the newly created cluster into our client cache to be able to create blobs in that cluster without 
   // querying the server (which doesn't know anything about this cluster anyway).
@@ -446,6 +453,9 @@ segment_id Database::CreateSegment() {
   transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::SegmentDeleteId, constants::ClusterDeleteId), Transaction::LockMode::Write);
   TODO("Once we support reading the cluster list then we also implicitly write lock that blob");
 
+  // Mark the segment as created during this transaction
+  transaction->CreateSegment(this, newSegmentId);
+
   // Write the next free cluster id for the newly created segment into our client cache to be able to create clusters in that segment
   // without querying the server (which doesn't know anything about this segment anyway).
   cluster_id nextFreeClusterId = 0;
@@ -468,6 +478,12 @@ void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) 
   auto& transaction = GetTransaction();
   BlobLocation location(segment, cluster, blob);
 
+  // We must acquire a write lock into the cluster's list of all blobs before we can delete the blobs
+  if (transaction.GetLockType(this, BlobLocation(segment, cluster, constants::BlobListId)) != Transaction::LockMode::Write) {
+    // FIXME once we support multi blob requests, we could send just one request for locking both blobs
+    WriteLockNoContent(BlobLocation(segment, cluster, constants::BlobListId)); // we don't fetch the content of the blob, we are only interested in the lock
+  }
+
   // Acquire a write lock for deletion of the blob if we don't already hold one.
   if (transaction.GetLockType(this, location) != Transaction::LockMode::Write) {
     WriteLockNoContent(location); // no need to fetch the blob content -> we delete the blob anyway
@@ -487,6 +503,8 @@ void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
   // Get the currently running transaction or start a new one if no is running yet
   auto& transaction = GetTransaction();
   BlobLocation lockLocation(segment, cluster, constants::ClusterDeleteId);
+
+  static_assert(!"We must also lock the list of all clusters in the segment... or is this done implicitly by the server?");
 
   // Acquire a write lock for deletion of the cluster if we don't already hold one (which is unlikely)
   if (transaction.GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
@@ -539,6 +557,109 @@ void Database::DeleteSegment(segment_id segment) {
   cache->RemoveSegment(segment);
 }
 
+
+Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, bool writeLock) {
+  if (segment > constants::MaxSegmentId) {
+    throw Exception("Invalid segment id");
+  }
+
+  if (cluster > constants::MaxClusterId) {
+    throw Exception("Invalid cluster id");
+  }
+
+  // Only one thread at a time may query the blob list
+  auto sessionLock = session->Lock();
+
+  // Get the currently running transaction or start a new one if no is running yet
+  auto& transaction = GetTransaction();
+
+  // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
+  // The returned list of blobs will be in ascending id order.
+  auto [data, size] = ReadBlobInternal(segment, cluster, constants::BlobListId, writeLock);
+  using BlobRange = std::pair<blob_id, blob_id>;
+
+  // Construct a vector from all the blob ranges
+  std::vector<blob_id> ids;
+  for (auto it = static_cast<const BlobRange*>(data), end = it + (size / sizeof(BlobRange)); it != end; ++it) {
+    auto [blobBegin, blobEnd] = *it;
+    for (auto blobId = blobBegin; blobId != blobEnd; ++blobId) {
+      ids.push_back(blobId);
+    }
+  }
+
+  // Merge with the changes from the currently active transaction
+  transaction.MergeBlobIdList(this, segment, cluster, ids);
+
+  // Convert the vector into the result object
+  Range<blob_id> resultRange(new blob_id[ids.size()], ids.size());
+  std::copy(ids.begin(), ids.end(), resultRange.begin());
+  return resultRange;
+}
+
+Range<cluster_id> Database::GetAllClusters(segment_id segment, bool writeLock) {
+  if (segment > constants::MaxSegmentId) {
+    throw Exception("Invalid segment id");
+  }
+
+  // Only one thread at a time may query the blob list
+  auto sessionLock = session->Lock();
+
+  // Get the currently running transaction or start a new one if no is running yet
+  auto& transaction = GetTransaction();
+
+  // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
+  // The returned list of blobs will be in ascending id order.
+  auto [data, size] = ReadBlobInternal(segment, constants::ClusterListId, constants::BlobListId, writeLock);
+  using ClusterRange = std::pair<cluster_id, cluster_id>;
+
+  // Construct a vector from all the blob ranges
+  std::vector<cluster_id> ids;
+  for (auto it = static_cast<const ClusterRange*>(data), end = it + (size / sizeof(ClusterRange)); it != end; ++it) {
+    auto [clusterBegin, clusterEnd] = *it;
+    for (auto clusterId = clusterBegin; clusterId != clusterEnd; ++clusterId) {
+      ids.push_back(clusterId);
+    }
+  }
+
+  // Merge with the changes from the currently active transaction
+  transaction.MergeClusterIdList(this, segment, ids);
+
+  // Convert the vector into the result object
+  Range<cluster_id> resultRange(new cluster_id[ids.size()], ids.size());
+  std::copy(ids.begin(), ids.end(), resultRange.begin());
+  return resultRange;
+}
+
+
+Range<segment_id> Database::GetAllSegments(bool writeLock) {
+  // Only one thread at a time may query the segment list
+  auto sessionLock = session->Lock();
+
+  // Get the currently running transaction or start a new one if no is running yet
+  auto& transaction = GetTransaction();
+
+  // Read the segmnt list from the server or transaction cache.
+  // The returned list of segments will be in ascending id order.
+  auto [data, size] = ReadBlobInternal(constants::SegmentListId, constants::ClusterListId, constants::BlobListId, writeLock);
+  using SegmentRange = std::pair<segment_id, segment_id>;
+
+  // Construct a vector from all the segment ranges
+  std::vector<segment_id> ids;
+  for (auto it = static_cast<const SegmentRange*>(data), end = it + (size / sizeof(SegmentRange)); it != end; ++it) {
+    auto [segmentBegin, segmentEnd] = *it;
+    for (auto segmentId = segmentBegin; segmentId != segmentEnd; ++segmentId) {
+      ids.push_back(segmentId);
+    }
+  }
+
+  // Merge with the changes from the currently active transaction
+  transaction.MergeSegmentIdList(this, ids);
+
+  // Convert the vector into the result object
+  Range<segment_id> resultRange(new segment_id[ids.size()], ids.size());
+  std::copy(ids.begin(), ids.end(), resultRange.begin());
+  return resultRange;
+}
 
 
 void Database::Close() {
@@ -600,6 +721,7 @@ void Database::AssignStickyLocks(std::unique_ptr<internal::HeldLocks> stickyLock
 blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster and
   // also tell us the next blob id to use.
+  static_assert(!"We must also lock the list of all blobs in the cluster... or is this done by the server?");
   auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, true);
   assert(size == sizeof(blob_id)); // This blob only consists of the blob_id value
 
@@ -616,6 +738,9 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // The blob is now logically created, so we also implicitly hold a write lock to it
   auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction if not already
   transaction->AcquiredLock(this, newLocation, Transaction::LockMode::Write);
+
+  // Mark the blob as created during this transaction
+  transaction->CreateBlob(this, newLocation);
 
   // Now we logically created the blob and we implicitly created the write lock, now the caller just has to actually write some
   // blob data for this blob or else it won't actually be created on transaction commit.

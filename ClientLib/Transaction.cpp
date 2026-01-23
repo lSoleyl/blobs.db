@@ -33,8 +33,11 @@ struct Transaction::State {
     std::unique_ptr<internal::HeldLocks> heldLocks;
     std::map<BlobLocation, std::vector<uint8_t>> writtenBlobs;
     std::set<BlobLocation> deletedBlobs;
+    std::set<BlobLocation> createdBlobs;
     std::set<std::pair<segment_id, cluster_id>> deletedClusters;
+    std::set<std::pair<segment_id, cluster_id>> createdClusters;
     std::set<segment_id> deletedSegments;
+    std::set<segment_id> createdSegments;
     Database* database;
 
 
@@ -62,6 +65,24 @@ struct Transaction::State {
       if (deletedSegments.find(segment) != deletedSegments.end()) {
         throw exception::SegmentDeleted();
       }
+    }
+
+    /** Returns true if the blob, its cluster or segment is marked for deletion
+     */
+    bool IsBlobDeleted(const BlobLocation& location) const {
+      return IsClusterDeleted(location.segment, location.cluster) || deletedBlobs.count(location) != 0;
+    }
+
+    /** Returns true if the specified cluster or its segment is marked for deletion
+     */
+    bool IsClusterDeleted(segment_id segment, cluster_id cluster) const {
+      return IsSegmentDeleted(segment) || deletedClusters.count({ segment, cluster }) != 0;
+    }
+
+    /** Returns true if the specified segment is marked for deletion
+     */
+    bool IsSegmentDeleted(segment_id segment) const {
+      return deletedSegments.count(segment) != 0;
     }
 
     struct BlobToSend {
@@ -508,6 +529,40 @@ void Transaction::WriteBlob(Database* database, const BlobLocation& location, co
 }
 
 
+void Transaction::CreateBlob(Database* database, const BlobLocation& location) {
+  assert(session->OwnsLock());
+  auto& dbState = state->AccessDatabaseState(database);
+
+  // We cannot create a blob that has been marked for deletion
+  assert(!dbState.IsBlobDeleted(location)); 
+
+  // Mark the blob as created
+  dbState.createdBlobs.insert(location);
+}
+
+void Transaction::CreateCluster(Database* database, segment_id segment, cluster_id cluster) {
+  assert(session->OwnsLock());
+  auto& dbState = state->AccessDatabaseState(database);
+
+  // We cannot create a cluster that has been marked for deletion
+  assert(!dbState.IsClusterDeleted(segment, cluster));
+
+  // Mark the cluster as created
+  dbState.createdClusters.insert({segment, cluster});
+}
+
+void Transaction::CreateSegment(Database* database, segment_id segment) {
+  assert(session->OwnsLock());
+  auto& dbState = state->AccessDatabaseState(database);
+
+  // We cannot create a segment that has been marked for deletion
+  assert(!dbState.IsSegmentDeleted(segment));
+
+  // Mark the segment as created
+  dbState.createdSegments.insert(segment);
+}
+
+
 void Transaction::DeleteBlob(Database* database, const BlobLocation& location) {
   assert(session->OwnsLock());
   auto& dbState = state->AccessDatabaseState(database);
@@ -519,6 +574,10 @@ void Transaction::DeleteBlob(Database* database, const BlobLocation& location) {
   // If we first called WriteBlob() and then in the same transaction DeleteBlob(),
   // then clear the write data and mark the blob as deleted.
   dbState.writtenBlobs.erase(location);
+
+  // If we created the blob in this transaction and then deleted it, then we must
+  // remove it from the list of created blobs
+  dbState.createdBlobs.erase(location);
 
   // Mark the blob as deleted
   dbState.deletedBlobs.insert(location);
@@ -534,16 +593,21 @@ void Transaction::DeleteCluster(Database* database, segment_id segment, cluster_
   // Make sure, the cluster hasn't already been marked for deletion
   dbState.EnsureClusterNotDeleted(segment, cluster);
 
-  // Now discard all write/delete operations in that cluster as the whole cluster will be discarded anyway
+  // Now discard all write/create/delete operations in that cluster as the whole cluster will be discarded anyway
   auto writtenBlobsBegin = dbState.writtenBlobs.lower_bound(BlobLocation(segment, cluster, 0));
   auto writtenBlobsEnd = dbState.writtenBlobs.upper_bound(BlobLocation(segment, cluster, std::numeric_limits<blob_id>::max()));
   dbState.writtenBlobs.erase(writtenBlobsBegin, writtenBlobsEnd);
 
+  auto createdBlobsBegin = dbState.createdBlobs.lower_bound(BlobLocation(segment, cluster, 0));
+  auto createdBlobsEnd = dbState.createdBlobs.upper_bound(BlobLocation(segment, cluster, std::numeric_limits<blob_id>::max()));
+  dbState.createdBlobs.erase(createdBlobsBegin, createdBlobsEnd);
 
   auto deletedBlobsBegin = dbState.deletedBlobs.lower_bound(BlobLocation(segment, cluster, 0));
   auto deletedBlobsEnd = dbState.deletedBlobs.upper_bound(BlobLocation(segment, cluster, std::numeric_limits<blob_id>::max()));
   dbState.deletedBlobs.erase(deletedBlobsBegin, deletedBlobsEnd);
 
+  // If the cluster has been created during this transaction, then we must discard this info as well
+  dbState.createdClusters.erase({ segment, cluster });
 
   // Finally note down that we deleted it (we don't construct a writtenBlob entry for ClusterDeleteId, that is handled in commit())
   dbState.deletedClusters.insert({ segment, cluster });
@@ -560,20 +624,31 @@ void Transaction::DeleteSegment(Database* database, segment_id segment) {
   dbState.EnsureSegmentNotDeleted(segment);
 
 
-  // Now discard all write/delete operations in that segment as the whole segment will be discarded anyway
+  // Now discard all write/create/delete operations in that segment as the whole segment will be discarded anyway
   auto writtenBlobsBegin = dbState.writtenBlobs.lower_bound(BlobLocation(segment, 0, 0));
   auto writtenBlobsEnd = dbState.writtenBlobs.upper_bound(BlobLocation(segment, std::numeric_limits<cluster_id>::max(), std::numeric_limits<blob_id>::max()));
   dbState.writtenBlobs.erase(writtenBlobsBegin, writtenBlobsEnd);
 
+  auto createdBlobsBegin = dbState.createdBlobs.lower_bound(BlobLocation(segment, 0, 0));
+  auto createdBlobsEnd = dbState.createdBlobs.upper_bound(BlobLocation(segment, std::numeric_limits<cluster_id>::max(), std::numeric_limits<blob_id>::max()));
+  dbState.createdBlobs.erase(createdBlobsBegin, createdBlobsEnd);
 
   auto deletedBlobsBegin = dbState.deletedBlobs.lower_bound(BlobLocation(segment, 0, 0));
   auto deletedBlobsEnd = dbState.deletedBlobs.upper_bound(BlobLocation(segment, std::numeric_limits<cluster_id>::max(), std::numeric_limits<blob_id>::max()));
   dbState.deletedBlobs.erase(deletedBlobsBegin, deletedBlobsEnd);
 
+
+  auto createdClustersBegin = dbState.createdClusters.lower_bound({ segment, 0 });
+  auto createdClustersEnd = dbState.createdClusters.upper_bound({ segment, std::numeric_limits<cluster_id>::max() });
+  dbState.createdClusters.erase(createdClustersBegin, createdClustersEnd);
+
   auto deletedClustersBegin = dbState.deletedClusters.lower_bound({ segment, 0 });
   auto deletedClustersEnd = dbState.deletedClusters.upper_bound({ segment, std::numeric_limits<cluster_id>::max() });
   dbState.deletedClusters.erase(deletedClustersBegin, deletedClustersEnd);
 
+
+  // If we created the segment during this transaction, then we must discard this info as well
+  dbState.createdSegments.erase(segment);
 
   // Finally note down that we deleted it (we don't construct a writtenBlob entry for SegmentDeleteId, that is handled in commit())
   dbState.deletedSegments.insert(segment);
@@ -601,6 +676,60 @@ std::optional<std::pair<const void*, blob_size>> Transaction::ReadBlob(Database*
   return std::nullopt;
 }
 
+
+void Transaction::MergeBlobIdList(Database* database, segment_id segment, cluster_id cluster, std::vector<blob_id>& blobs) {
+  assert(session->OwnsLock());
+  if (auto dbState = state->GetDatabaseState(database->id)) {
+    assert(!dbState->IsClusterDeleted(segment, cluster)); // this should already be validated by the caller before attempting to merge the list
+
+    // Remove blobs marked for deletion
+    blobs.erase(std::remove_if(blobs.begin(), blobs.end(), [=](blob_id blob) { return dbState->deletedBlobs.count(BlobLocation(segment, cluster, blob)) != 0; }), blobs.end());
+
+    // Insert created blobs
+    auto createdBlobsBegin = dbState->createdBlobs.lower_bound(BlobLocation(segment, cluster, 0));
+    auto createdBlobsEnd = dbState->createdBlobs.upper_bound(BlobLocation(segment, cluster, std::numeric_limits<blob_id>::max()));
+    for (auto pos = createdBlobsBegin; pos != createdBlobsEnd; ++pos) {
+      blobs.push_back(pos->blob);
+    }
+
+    // Both deletion and insertion preserve the ascending sort order of the blob ids, so no sort necessary here
+  }
+}
+
+
+void Transaction::MergeClusterIdList(Database* database, segment_id segment, std::vector<cluster_id>& clusters) {
+  assert(session->OwnsLock());
+  if (auto dbState = state->GetDatabaseState(database->id)) {
+    assert(!dbState->IsSegmentDeleted(segment)); // this should already be validated by the caller before attempting to merge the list
+
+    // Remove clusters marked for deletion
+    clusters.erase(std::remove_if(clusters.begin(), clusters.end(), [=](cluster_id cluster) { return dbState->deletedClusters.count({ segment, cluster }) != 0; }), clusters.end());
+
+    // Insert created clusters
+    auto createdClustersBegin = dbState->createdClusters.lower_bound({ segment, 0 });
+    auto createdClustersEnd = dbState->createdClusters.upper_bound({ segment, std::numeric_limits<cluster_id>::max() });
+    for (auto pos = createdClustersBegin; pos != createdClustersEnd; ++pos) {
+      clusters.push_back(pos->second);
+    }
+
+    // Both deletion and insertion preserve the ascending sort order of the cluster ids, so no sort necessary here
+  }
+}
+
+void Transaction::MergeSegmentIdList(Database* database, std::vector<segment_id>& segments) {
+  assert(session->OwnsLock());
+  if (auto dbState = state->GetDatabaseState(database->id)) {
+    // Remove segments marked for deletion
+    segments.erase(std::remove_if(segments.begin(), segments.end(), [=](segment_id segment) { return dbState->deletedSegments.count(segment) != 0; }), segments.end());
+
+    // Insert created segments
+    for (auto segment : dbState->createdSegments) {
+      segments.push_back(segment);
+    }
+
+    // Both deletion and insertion preserve the ascending sort order of the segment ids, so no sort necessary here
+  }
+}
 
 
 void Transaction::TransferAndClearState(const Session::Handle& session) {
