@@ -460,6 +460,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
     // In case the client created some blobs, this vector will be filled with ranges of created blobs
     BlobLocationRanges createdBlobs;
 
+
     for (auto pos = message.begin(), end = message.end(); pos != end; ++pos) {
       auto& location = *pos;
 
@@ -679,6 +680,17 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
       return TryHandleDeleteClusterId(client, message);
     }
 
+    // Handle requests for querying the list of all blobs, clusters, segments
+    // We cannot use the default implementation because these too are just artificial blobs that don't exist in the database and are calculated on demand.
+    if (requestedBlob.blob == constants::BlobListId) {
+      if (requestedBlob.cluster == constants::ClusterListId) {
+        if (requestedBlob.segment == constants::SegmentListId) {
+          return TryHandleSegmentListId(client, message);
+        }
+        return TryHandleClusterListId(client, message);
+      }
+      return TryHandleBlobListId(client, message);
+    }
 
     auto blob = database->GetLoadedBlob(requestedBlob);
     if (!blob) {
@@ -727,7 +739,7 @@ bool Server::TryHandleDeleteSegmentId(blobs::server::Client& client, const netwo
   assert(database); // should have been checked by the caller
 
   if (!database->GetLoadedSegment(location.segment)) {
-    // Cluster or segment do not exist
+    // Segment do not exist
     SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
     return true;
   }
@@ -770,6 +782,121 @@ bool Server::TryHandleDeleteClusterId(blobs::server::Client& client, const netwo
     return true;
   }
   
+  return false;
+}
+
+
+namespace{
+  template<typename T> using Range = std::pair<T, T>;
+
+  /** A small helper function for converting the list of all blob,cluster,segment ids into a list of contiguous ranges
+   */
+  template<typename flat_map_iterator>
+  std::vector<Range<typename std::iterator_traits<flat_map_iterator>::value_type::first_type>> intoIdRanges(flat_map_iterator begin, flat_map_iterator end) {
+    using id_type = typename std::iterator_traits<flat_map_iterator>::value_type::first_type;
+    std::vector<Range<id_type>> ranges;
+
+    if (begin != end) {
+      Range<id_type> currentRange { begin->first, begin->first+1 };
+      while (++begin != end) {
+        if (begin->first == currentRange.second) {
+          // same contiguous range
+          ++currentRange.second;
+        } else {
+          // a hole in the numbering -> start new range
+          ranges.push_back(currentRange);
+          currentRange = { begin->first, begin->first+1 };
+        }
+      }
+      // enter the last range
+      ranges.push_back(currentRange);
+    }
+
+    return ranges;
+  }
+}
+
+
+bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
+  assert(message.nBlobsRequested == 1);
+  auto& location = *message.begin();
+
+  auto database = client.GetDatabase(message.databaseId);
+  assert(database); // should have been checked by the caller
+
+  auto cluster = database->GetLoadedCluster(location.segment, location.cluster);
+  if (!cluster) {
+    // Segment do not exist
+    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
+    return true;
+  }
+
+  // Now acquire locks for the cluster id list
+  if (client.AcquireLocks(message)) {
+    // Now construct the cluster ranges and create a blobs response message for it
+    auto ranges = intoIdRanges(cluster->begin(), cluster->end());
+    auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
+
+    auto response = network::message::BlobsReadResponse::Create(byteSize);
+    response->begin().SetBlob(location, database->GetCommitId(), ranges.data(), byteSize);
+    SendMessageToClient(message.clientId, std::move(response));
+    return true;
+  }
+
+  return false;
+}
+
+bool Server::TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
+  assert(message.nBlobsRequested == 1);
+  auto& location = *message.begin();
+
+  auto database = client.GetDatabase(message.databaseId);
+  assert(database); // should have been checked by the caller
+
+  auto segment = database->GetLoadedSegment(location.segment);
+  if (!segment) {
+    // Segment do not exist
+    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
+    return true;
+  }
+
+  // Now acquire locks for the cluster id list
+  if (client.AcquireLocks(message)) {
+    // Now construct the cluster ranges and create a blobs response message for it
+    auto ranges = intoIdRanges(segment->begin(), segment->end());
+    auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
+
+    auto response = network::message::BlobsReadResponse::Create(byteSize);
+    response->begin().SetBlob(location, database->GetCommitId(), ranges.data(), byteSize);
+    SendMessageToClient(message.clientId, std::move(response));
+    return true;
+  }
+
+  return false;
+}
+
+bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
+  assert(message.nBlobsRequested == 1);
+  auto& location = *message.begin();
+
+  auto database = client.GetDatabase(message.databaseId);
+  assert(database); // should have been checked by the caller
+
+  // Now acquire locks for the segment id list
+  if (client.AcquireLocks(message)) {
+    // Now construct the segment ranges and create a blobs response message for it
+    auto ranges = intoIdRanges(database->begin(), database->end());
+    auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
+    
+    auto response = network::message::BlobsReadResponse::Create(byteSize);
+    response->begin().SetBlob(location, database->GetCommitId(), ranges.data(), byteSize);
+    SendMessageToClient(message.clientId, std::move(response));
+    return true;
+  }
+
   return false;
 }
 

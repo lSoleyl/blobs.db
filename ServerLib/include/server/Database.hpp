@@ -58,6 +58,15 @@ public:
    */
   segment_id GetNextFreeSegmentId() const;
 
+  /** Returns the current snapshot's commit id
+   */
+  commit_id GetCommitId() const;
+
+  // Iteration over all segment objects of the current snapshot.
+  using iterator = typename sorted_flat_map<segment_id, std::shared_ptr<Segment>>::iterator;
+  iterator begin();
+  iterator end();
+
   /** Acquires the locks specified in the blobs read message and returns true if successful, false if not
    *  IMPORTANT: This only sets the locks in the database... For proper bookkeeping the client also needs to know, which locks it holds
    *             Therefore locks should always be acquired via Client::AcquireLocks(), which calls this method.
@@ -278,6 +287,11 @@ private:
     /** Serialize the snapshot into a buffer for writing it to file
      */
     virtual void SerializeIntoBuffer(std::vector<char>& targetBuffer) const override;
+
+    // Iteration over all segment objects of this snapshot.
+    using iterator = typename sorted_flat_map<segment_id, std::shared_ptr<Segment>>::iterator;
+    iterator begin();
+    iterator end();
 
     /** Global commit id counter of the last commited transaction for this database (snapshot).
      *  Initialized to 1 for a new database and is incremented with each transaction commit (and thus with each snapshot)

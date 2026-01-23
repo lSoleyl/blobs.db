@@ -293,6 +293,18 @@ segment_id Database::GetNextFreeSegmentId() const {
   return snapshot->GetNextFreeSegmentId();
 }
 
+commit_id Database::GetCommitId() const {
+  return snapshot->commitId;
+}
+
+Database::iterator Database::begin() {
+  return snapshot->begin();
+}
+
+Database::iterator Database::end() {
+  return snapshot->end();
+}
+
 
 bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   auto client = message.clientId;
@@ -817,8 +829,13 @@ void Database::Snapshot::SerializeIntoBuffer(std::vector<char>& targetBuffer) co
 }
 
 
+Database::Snapshot::iterator Database::Snapshot::begin() {
+  return segments.begin();
+}
 
-
+Database::Snapshot::iterator Database::Snapshot::end() {
+  return segments.end();
+}
 
 
 Database::FreeList::FreeList(uint64_t endOffset) : endOffset(endOffset) {}

@@ -104,6 +104,33 @@ private:
    */
   bool TryHandleDeleteClusterId(blobs::server::Client& client, const network::message::BlobsRead& message);
 
+
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the blob id list
+   *  This method will ensure that the referenced cluster exists and that the client acquires the necessary lock
+   *
+   * @return true if the request has been handled and a response sent to the client (including an error)
+   *         false if the reuqest cannot be handled due to conflicting locks
+   */
+  bool TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message);
+
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the cluster id list
+   *  This method will ensure that the referenced segment exists and that the client acquires the necessary lock
+   *
+   * @return true if the request has been handled and a response sent to the client (including an error)
+   *         false if the reuqest cannot be handled due to conflicting locks
+   */
+  bool TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message);
+
+
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the segment id list
+   *  This method will ensure that the client acquires the necessary lock
+   * 
+   * @return true if the request has been handled and a response sent to the client
+   *         false if the reuqest cannot be handled due to conflicting locks
+   */
+  bool TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message);
+
+
   /** Primitive logging of incoming messages.
    */
   void LogMessage(const network::message::Message& message);

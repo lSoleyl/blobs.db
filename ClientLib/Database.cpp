@@ -380,13 +380,15 @@ cluster_id Database::CreateCluster(segment_id segment) {
   // Only one thread at a time may create a cluster
   auto sessionLock = session->Lock();
 
-
-  static_assert(!"We must also lock the list of all clusters in the segment... or is this done by the server?");
-
   // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
   // also tell us the next cluster id to use
   auto [data, size] = ReadBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
   assert(size == sizeof(cluster_id)); // This blob only consists of the cluster_id value
+
+  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
+  // By acquiring a write lock on NextFreeClusterId we implicitly acquire a lock on the segment's list of all clusters.
+  // This implicit locking is performed by the server.
+  transaction->AcquiredLock(this, BlobLocation(segment, constants::ClusterListId, constants::BlobListId), Transaction::LockMode::Write);
 
   cluster_id newClusterId = *static_cast<const cluster_id*>(data);
   if (newClusterId > constants::MaxClusterId) {
@@ -399,12 +401,11 @@ cluster_id Database::CreateCluster(segment_id segment) {
   WriteBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, &nextFreeClusterId, sizeof(nextFreeClusterId));
 
   // The cluster is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
 
   // Through creation we implicitly hold write locks to the cluster's special blobs
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
   transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::ClusterDeleteId), Transaction::LockMode::Write);
-  TODO("Once we support reading the blob list then we also implicitly write lock that blob");
+  transaction->AcquiredLock(this, BlobLocation(segment, newClusterId, constants::BlobListId), Transaction::LockMode::Write);
 
   // Mark the cluster as created during this transaction
   transaction->CreateCluster(this, segment, newClusterId);
@@ -434,6 +435,12 @@ segment_id Database::CreateSegment() {
   auto [data, size] = ReadBlobInternal(constants::NextFreeSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
   assert(size == sizeof(segment_id)); // This blob only consists of the cluster_id value
 
+  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
+
+  // By acquiring a write lock on NextFreeSegmentId we implicitly acquire a lock on the list of all segments
+  // This implicit locking is performed by the server.
+  transaction->AcquiredLock(this, BlobLocation(constants::SegmentListId, constants::ClusterListId, constants::BlobListId), Transaction::LockMode::Write);
+
   segment_id newSegmentId = *static_cast<const segment_id*>(data);
   if (newSegmentId > constants::MaxSegmentId) {
     // Segment is full, no more clusters can be created
@@ -446,12 +453,12 @@ segment_id Database::CreateSegment() {
 
 
   // The segment is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
 
   // Through creation we implicitly hold write locks to the segment's special blobs
   transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId), Transaction::LockMode::Write);
   transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::SegmentDeleteId, constants::ClusterDeleteId), Transaction::LockMode::Write);
-  TODO("Once we support reading the cluster list then we also implicitly write lock that blob");
+  transaction->AcquiredLock(this, BlobLocation(newSegmentId, constants::ClusterListId, constants::BlobListId), Transaction::LockMode::Write); // list of clusters
+
 
   // Mark the segment as created during this transaction
   transaction->CreateSegment(this, newSegmentId);
@@ -478,7 +485,9 @@ void Database::DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob) 
   auto& transaction = GetTransaction();
   BlobLocation location(segment, cluster, blob);
 
-  // We must acquire a write lock into the cluster's list of all blobs before we can delete the blobs
+  // We must acquire a write lock into the cluster's list of all blobs before we can delete a blob
+  // This must be done explicitly as the server cannot know that we want to delete a blob when requesting the write lock, especially
+  // if we first write into the blob and only later in the transaction delete it.
   if (transaction.GetLockType(this, BlobLocation(segment, cluster, constants::BlobListId)) != Transaction::LockMode::Write) {
     // FIXME once we support multi blob requests, we could send just one request for locking both blobs
     WriteLockNoContent(BlobLocation(segment, cluster, constants::BlobListId)); // we don't fetch the content of the blob, we are only interested in the lock
@@ -504,15 +513,14 @@ void Database::DeleteCluster(segment_id segment, cluster_id cluster) {
   auto& transaction = GetTransaction();
   BlobLocation lockLocation(segment, cluster, constants::ClusterDeleteId);
 
-  static_assert(!"We must also lock the list of all clusters in the segment... or is this done implicitly by the server?");
-
   // Acquire a write lock for deletion of the cluster if we don't already hold one (which is unlikely)
   if (transaction.GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
-    // With this lock the server will implicitly grant the client a write lock to NextFreeBlobId and all blobs
-    // inside that cluster to ensure consistency. 
-    // 
-    // We DO NOT store any of these locks in our transaction state however even though the server will hold
+    // With this lock the server will implicitly grant the client a write lock to the list of all clusters in the segment (because it is modified during this transaction)
+    // as well as NextFreeBlobId and all blobs inside that cluster to ensure consistency. 
+    transaction.AcquiredLock(this, BlobLocation(segment, constants::ClusterListId, constants::BlobListId), Transaction::LockMode::Write);
+
+    // We DO NOT store any of the other locks (inside the cluster) in our transaction state however even though the server will hold
     // these locks for the client as sticky locks in case this transaction is aborted. 
     // This results in the client re-requesting a write lock on the NextFreeBlobId if we attempt to create a 
     // blob in this cluster in the next transaction, but we would have to re-request that blob anyway because the
@@ -539,10 +547,11 @@ void Database::DeleteSegment(segment_id segment) {
   // Acquire a write lock for deletion of the segment if we don't already hold one (which is unlikely)
   if (transaction.GetLockType(this, lockLocation) != Transaction::LockMode::Write) {
     WriteLockNoContent(lockLocation); // no need to fetch the blob content -> we only need to write into it
-    // With this lock the server will implicitly grant the client a write lock to NextFreeClusterId and all blobs
-    // inside that segment to ensure consistency. 
-    // 
-    // We DO NOT store any of these locks in our transaction state however even though the server will hold
+    // With this lock the server will implicitly grant the client a write lock to the list of all segments (because it is modified during this transaction)
+    // as well as NextFreeClusterId and all blobs inside that segment to ensure consistency. 
+    transaction.AcquiredLock(this, BlobLocation(constants::SegmentListId, constants::ClusterListId, constants::BlobListId), Transaction::LockMode::Write);
+    
+    // We DO NOT store any of the other locks (inside the segment) in our transaction state however even though the server will hold
     // these locks for the client as sticky locks in case this transaction is aborted. 
     // This results in the client re-requesting a write lock on the NextFreeClusterId if we attempt to create a 
     // cluster in this segment in the next transaction, but we would have to re-request that blob anyway because the
@@ -721,9 +730,13 @@ void Database::AssignStickyLocks(std::unique_ptr<internal::HeldLocks> stickyLock
 blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster and
   // also tell us the next blob id to use.
-  static_assert(!"We must also lock the list of all blobs in the cluster... or is this done by the server?");
   auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, true);
   assert(size == sizeof(blob_id)); // This blob only consists of the blob_id value
+
+  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction if not already
+  // When acquring the lock on NextFreeBlobId we are implicitly acquring also the lock on the cluster's list of all blobs
+  // This implicit locking is performed by the server.
+  transaction->AcquiredLock(this, BlobLocation(segment, cluster, constants::BlobListId), Transaction::LockMode::Write);
 
   BlobLocation newLocation(segment, cluster, *static_cast<const blob_id*>(data));
   if (newLocation.blob > constants::MaxBlobId) {
@@ -736,7 +749,6 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   WriteBlobInternal(segment, cluster, constants::NextFreeBlobId, &nextBlobId, sizeof(blob_id));
 
   // The blob is now logically created, so we also implicitly hold a write lock to it
-  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction if not already
   transaction->AcquiredLock(this, newLocation, Transaction::LockMode::Write);
 
   // Mark the blob as created during this transaction
