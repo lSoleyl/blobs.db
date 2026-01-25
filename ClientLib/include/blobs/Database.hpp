@@ -247,6 +247,15 @@ public:
    */
   void UpdateCacheForCommittedBlob(const BlobLocation& location, std::vector<uint8_t> data, commit_id commitId, uint64_t transactionId);
 
+  /** Called by Transaction::Commit() to clear some blobs from the cache (blob/cluster/segment id lists) if they were modified by the client
+   *  to re-request them from the server to prevent them being out of sync. This is only relevant if the id list has been read during the same
+   *  or a previous transaction where the blobs/clusters/segments have been created/deleted.
+   * 
+   *  An alternative solution to this would be to modify the cached blob list to avoid re-requesting it from the server after the commit as the 
+   *  client SHOULD know the correct state of that list and SHOULD be able to keep track of the changes and modify the cache accordingly.
+   *  This would however complicate the merging process of the server's/cached id list and the transactions state (created/deleted blobs/clusters/segments).
+   */
+  void RemoveCachedBlob(const BlobLocation& location);
   
   /** Internal method called during transaction commit to transfer ownership of sticky locks from the transaction into the database to be able
    *  to reuse them in the next transaction.

@@ -844,6 +844,13 @@ bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::m
 
   // Now acquire locks for the cluster id list
   if (client.AcquireLocks(message)) {
+    if (location.ifCommitIdHigher >= cluster->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      // - The client has the current version of the list 
+      // - Or the client requested the write locks only for synchronization of blob deletion/creation
+      SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
+      return true;
+    }
+
     // Now construct the cluster ranges and create a blobs response message for it
     auto ranges = intoIdRanges(cluster->begin(), cluster->end());
     auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
@@ -874,6 +881,13 @@ bool Server::TryHandleClusterListId(blobs::server::Client& client, const network
 
   // Now acquire locks for the cluster id list
   if (client.AcquireLocks(message)) {
+    if (location.ifCommitIdHigher >= segment->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      // - The client has the current version of the list
+      // - Or the client requested the write locks only for synchronization of cluster deletion/creation
+      SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
+      return true;
+    }
+
     // Now construct the cluster ranges and create a blobs response message for it
     auto ranges = intoIdRanges(segment->begin(), segment->end());
     auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
@@ -897,6 +911,13 @@ bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network
 
   // Now acquire locks for the segment id list
   if (client.AcquireLocks(message)) {
+    if (location.ifCommitIdHigher >= database->GetCommitId() || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      // - The client has the current version of the list
+      // - Or the client requested the write locks only for synchronization of segment deletion/creation
+      SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
+      return true;
+    }
+
     // Now construct the segment ranges and create a blobs response message for it
     auto ranges = intoIdRanges(database->begin(), database->end());
     auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);

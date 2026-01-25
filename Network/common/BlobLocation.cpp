@@ -1,4 +1,5 @@
 #include <common/BlobLocation.hpp>
+#include <cassert>
 
 namespace blobs {
 
@@ -53,28 +54,43 @@ std::ostream& operator<<(std::ostream& out, const BlobLocation& location) {
   out << '(';
   
   // Translate special segment ids
-  if (location.segment == constants::NextFreeSegmentId) {
-    out << "NextFreeSegmentId,";
-  } else {
+  if (location.segment <= constants::MaxSegmentId) {
     out << location.segment << ',';
+  } else if (location.segment == constants::NextFreeSegmentId) {
+    out << "NextFreeSegmentId,";
+  } else if (location.segment == constants::SegmentListId) {
+    out << "SegmentListId,";
+  } else {
+    assert(!"Unknown segment id constant");
+    out << "???,";
   }
 
   // Translate special cluster ids
-  if (location.cluster == constants::NextFreeClusterId) {
+  if (location.cluster <= constants::MaxClusterId) {
+    out << location.cluster << ',';
+  } else  if (location.cluster == constants::NextFreeClusterId) {
     out << "NextFreeClusterId,";
   } else if (location.cluster == constants::SegmentDeleteId) {
     out << "SegmentDeleteId,";
+  } else if (location.cluster == constants::ClusterListId) {
+    out << "ClusterListId,";
   } else {
-    out << location.cluster << ',';
+    assert(!"Unknown cluster id constant");
+    out << "???,";
   }
 
   // Translate special blob ids
-  if (location.blob == constants::NextFreeBlobId) {
+  if (location.blob <= constants::MaxBlobId) {
+    out << location.blob;
+  } else if (location.blob == constants::NextFreeBlobId) {
     out << "NextFreeBlobId";
   } else if (location.blob == constants::ClusterDeleteId) {
     out << "ClusterDeleteId";
+  } else if (location.blob == constants::BlobListId) {
+    out << "BlobListId";
   } else {
-    out << location.blob;
+    assert(!"Unknown blob id constant");
+    out << "???,";
   }
   return out << ')';
 }

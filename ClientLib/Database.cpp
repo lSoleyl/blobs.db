@@ -719,6 +719,11 @@ void Database::UpdateCacheForCommittedBlob(const BlobLocation& location, std::ve
   cache->Update(location, std::move(data), commitId, transactionId);
 }
 
+void Database::RemoveCachedBlob(const BlobLocation& location) {
+  cache->RemoveBlob(location);
+}
+
+
 void Database::AssignStickyLocks(std::unique_ptr<internal::HeldLocks> stickyLocks) {
   // The following assertion should never trigger as receiving sticky locks means that the database accessed in the current transaction, but then
   // it should have transfered its sticky locks into the transaction.

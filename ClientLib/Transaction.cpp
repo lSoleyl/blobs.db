@@ -253,6 +253,36 @@ struct Transaction::State {
       }
     }
 
+    /** This method will clear the corresponding id list from the database cache for each created/deleted blob/cluster/segment.
+     *  This is used to avoid holding on to outdated id lists.
+     */
+    void ClearModifiedIdListsInCache() {
+      FIXME(
+        "Instead of simply clearing the outdated id list blobs from the cache, we could actually update them here to their new state and keep them!"
+        "That way we could save re-requesting the blob in the next transaction from the server (if the client wants to read it in the next transaction)"
+      );
+
+      for (auto& location : createdBlobs) {
+        database->RemoveCachedBlob(BlobLocation(location.segment, location.cluster, constants::BlobListId));
+      }
+
+      for (auto& location : deletedBlobs) {
+        database->RemoveCachedBlob(BlobLocation(location.segment, location.cluster, constants::BlobListId));
+      }
+
+      for (auto [segment, cluster] : createdClusters) {
+        database->RemoveCachedBlob(BlobLocation(segment, constants::ClusterListId, constants::BlobListId));
+      }
+
+      for (auto [segment, cluster] : deletedClusters) {
+        database->RemoveCachedBlob(BlobLocation(segment, constants::ClusterListId, constants::BlobListId));
+      }
+
+      if (!deletedSegments.empty() || !createdSegments.empty()) {
+        database->RemoveCachedBlob(BlobLocation(constants::SegmentListId, constants::ClusterListId, constants::BlobListId));
+      }
+    }
+
   };
 
   /** Constructs the commit messages for all databases in this transaction state.
@@ -304,6 +334,17 @@ struct Transaction::State {
   void ReleaseDeletedBlobLocks() {
     for (auto& [dbId, state] : forDatabase) {
       state.ReleaseDeletedBlobLocks();
+    }
+  }
+
+  /** Clears the cached id list blobs for all created/deleted blobs/clusters/segments to avoid reading an outdated list from the cache in the next transaction.
+   *  The list would be outdated if we hold a sticky lock on the list and we read the list in the previous transaction. Then Database::ApplyStickyLocksToTansaction()
+   *  would simply update the transaction id of the cached blob, because it couldn't have possibly changed in between. The only issue is that we currently don't update the
+   *  cached id list when we commit changes to the database that would modify the id list. (TODO)
+   */
+  void ClearModifiedIdListsInCache() {
+    for (auto& [dbId, state] : forDatabase) {
+      state.ClearModifiedIdListsInCache();
     }
   }
 
@@ -400,6 +441,7 @@ bool Transaction::Commit(const Session::Handle& session) {
   // lock ressources that no longer exist.
   for (auto& [connectionId, transaction] : transactions.active) {
     transaction.state->ReleaseDeletedBlobLocks();
+    transaction.state->ClearModifiedIdListsInCache();
   }
 
 
@@ -459,7 +501,7 @@ void Transaction::AbortDeadlock() {
   }
 
   // Finally clear all transaction state (This will delete `this`!)
-  Transaction::TransferAndClearState(session);
+  TransferAndClearState(session);
 }
 
 
