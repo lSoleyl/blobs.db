@@ -639,7 +639,8 @@ Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, Loc
   auto sessionLock = session->Lock();
 
   // Get the currently running transaction or start a new one if no is running yet
-  auto& transaction = GetTransaction();
+  // Unless we attempt to perform a dirty (lockless) read then we don't need a running transaction
+  auto transaction = (lock == Lock::None) ? nullptr : &GetTransaction();
 
   // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
   // The returned list of blobs will be in ascending id order.
@@ -655,8 +656,10 @@ Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, Loc
     }
   }
 
-  // Merge with the changes from the currently active transaction
-  transaction.MergeBlobIdList(this, segment, cluster, ids);
+  // Merge with the changes from the currently active transaction (unless we are performing a dirty read)
+  if (transaction) {
+    transaction->MergeBlobIdList(this, segment, cluster, ids);
+  }
 
   // Convert the vector into the result object
   Range<blob_id> resultRange(new blob_id[ids.size()], ids.size());
@@ -673,7 +676,8 @@ Range<cluster_id> Database::GetAllClusters(segment_id segment, Lock lock) {
   auto sessionLock = session->Lock();
 
   // Get the currently running transaction or start a new one if no is running yet
-  auto& transaction = GetTransaction();
+  // Unless we attempt to perform a dirty (lockless) read then we don't need a running transaction
+  auto transaction = (lock == Lock::None) ? nullptr : &GetTransaction();
 
   // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
   // The returned list of blobs will be in ascending id order.
@@ -689,8 +693,10 @@ Range<cluster_id> Database::GetAllClusters(segment_id segment, Lock lock) {
     }
   }
 
-  // Merge with the changes from the currently active transaction
-  transaction.MergeClusterIdList(this, segment, ids);
+  // Merge with the changes from the currently active transaction (unless we are performing a dirty read)
+  if (transaction) {
+    transaction->MergeClusterIdList(this, segment, ids);
+  }
 
   // Convert the vector into the result object
   Range<cluster_id> resultRange(new cluster_id[ids.size()], ids.size());
@@ -704,7 +710,8 @@ Range<segment_id> Database::GetAllSegments(Lock lock) {
   auto sessionLock = session->Lock();
 
   // Get the currently running transaction or start a new one if no is running yet
-  auto& transaction = GetTransaction();
+  // Unless we attempt to perform a dirty (lockless) read then we don't need a running transaction
+  auto transaction = (lock == Lock::None) ? nullptr : &GetTransaction();
 
   // Read the segmnt list from the server or transaction cache.
   // The returned list of segments will be in ascending id order.
@@ -720,8 +727,10 @@ Range<segment_id> Database::GetAllSegments(Lock lock) {
     }
   }
 
-  // Merge with the changes from the currently active transaction
-  transaction.MergeSegmentIdList(this, ids);
+  // Merge with the changes from the currently active transaction (unless we are performing a dirty read)
+  if (transaction) {
+    transaction->MergeSegmentIdList(this, ids);
+  }
 
   // Convert the vector into the result object
   Range<segment_id> resultRange(new segment_id[ids.size()], ids.size());

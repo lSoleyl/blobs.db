@@ -846,7 +846,7 @@ bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::m
   }
 
   // Now acquire locks for the cluster id list
-  if (client.AcquireLocks(message)) {
+  if (message.IsDirtyRead() || client.AcquireLocks(message)) {
     if (location.ifCommitIdHigher >= cluster->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list 
       // - Or the client requested the write locks only for synchronization of blob deletion/creation
@@ -883,7 +883,7 @@ bool Server::TryHandleClusterListId(blobs::server::Client& client, const network
   }
 
   // Now acquire locks for the cluster id list
-  if (client.AcquireLocks(message)) {
+  if (message.IsDirtyRead() || client.AcquireLocks(message)) {
     if (location.ifCommitIdHigher >= segment->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list
       // - Or the client requested the write locks only for synchronization of cluster deletion/creation
@@ -913,7 +913,7 @@ bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network
   assert(database); // should have been checked by the caller
 
   // Now acquire locks for the segment id list
-  if (client.AcquireLocks(message)) {
+  if (message.IsDirtyRead() || client.AcquireLocks(message)) {
     if (location.ifCommitIdHigher >= database->GetCommitId() || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list
       // - Or the client requested the write locks only for synchronization of segment deletion/creation
