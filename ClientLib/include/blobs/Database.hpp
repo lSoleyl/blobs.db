@@ -21,6 +21,30 @@ namespace internal {
   struct HeldLocks;
 }
 
+/** The following enum can be passed to most read operations to specify what kind of lock will be acquired.
+ *  The default being Read for read operations.
+ */
+enum class Lock {
+  /** Perform a dirty read with no lock acquired. These read operations will never block and they will always request the 
+   *  current state of the blob from teh server. The current transaction's cache will not be considered for this read operation
+   *  and the cache will not be updated from the server's response. This read operation is essentially performed inside its own 
+   *  isolated transaction and the returned value may be inconsistent with the blob's state in the current transaction.
+   *  Only use this mode if avoiding locks is important and consistency between different reads is less so.
+   */
+  None = 0,
+  
+  /** Acquire an (upgradable) read lock for the read operation.
+   */
+  Read = 1, 
+  
+  /** Acquire a write lock with the read operation.This may be helpful to avoid read-write deadlocks
+   *  or as a tool for explicitly synchronizing clients by write locking a specific resource.
+   */
+  Write = 2,     
+};
+
+
+
 
 class Database {
 public:
@@ -103,16 +127,16 @@ public:
    *  The method is implemented in the header and not exported to ensure the client can use any STL implementation he sees fit.
    */
   template<typename CharT = char>
-  std::basic_string<CharT> ReadString(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false) {
-    auto [data, size] = ReadBlob(segment, cluster, blob, writeLock);
+  std::basic_string<CharT> ReadString(segment_id segment, cluster_id cluster, blob_id blob, Lock lock = Lock::Read) {
+    auto [data, size] = ReadBlob(segment, cluster, blob, lock);
     return std::basic_string<CharT>(static_cast<const CharT*>(data), size / sizeof(CharT));
   }
 
   /** Similar to ReadString() this method reads a blob as vector of T.
    */
   template<typename T = uint8_t>
-  std::vector<T> ReadVector(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false) {
-    auto [data, size] = ReadBlob(segment, cluster, blob, writeLock);
+  std::vector<T> ReadVector(segment_id segment, cluster_id cluster, blob_id blob, Lock lock = Lock::Read) {
+    auto [data, size] = ReadBlob(segment, cluster, blob, lock);
     return std::vector<T>(static_cast<const T*>(data), static_cast<const T*>(data) + (size / sizeof(T)));
   }
 
@@ -124,7 +148,7 @@ public:
    * 
    * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
-  BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock = false);
+  BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock = Lock::Read);
 
 
   /** Convenience method to store string typed content in a blob
@@ -211,24 +235,24 @@ public:
    * 
    * @param segment the segment to query the blob list for
    * @param cluster the cluster to query the blob list for
-   * @param writeLock if true then the blob list locks will be set as write locks instead of read locks
+   * @param lock what kind of lock to set on the blob id list during the read operation
    */
-  BLOBS_EXPORT Range<blob_id> GetAllBlobs(segment_id segment, cluster_id cluster, bool writeLock = false);
+  BLOBS_EXPORT Range<blob_id> GetAllBlobs(segment_id segment, cluster_id cluster, Lock lock = Lock::Read);
 
   /** Retrieves a range with all existing cluster ids in the specified segment.
    *  This operation will set locks to prevent other clients from creating/deleting clusters in the same segment.
    *
    * @param segment the segment to query the cluster list for
-   * @param writeLock if true then the cluster list locks will be set as write locks instead of read locks
+   * @param lock what kind of lock to set on the blob id list during the read operation
    */
-  BLOBS_EXPORT Range<cluster_id> GetAllClusters(segment_id segment, bool writeLock = false);
+  BLOBS_EXPORT Range<cluster_id> GetAllClusters(segment_id segment, Lock lock = Lock::Read);
 
   /** Retrieves a range of all existing segment ids in the database.
    *  This operation will set locks to prevent other clients from creating/deleting segments.
    * 
-   * @param writeLock if true the segment list locks will be set as write locks instead of read locks
+   * @param lock what kind of lock to set on the blob id list during the read operation
    */
-  BLOBS_EXPORT Range<segment_id> GetAllSegments(bool writeLock = false);
+  BLOBS_EXPORT Range<segment_id> GetAllSegments(Lock lock = Lock::Read);
 
   /** Closes the connection to this database and deletes this object.
    * 
@@ -276,7 +300,14 @@ private:
    *
    * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
-  std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock);
+  std::pair<const void*, blob_size> ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, Lock lock = Lock::Read);
+
+
+  /** This method is called by ReadBlobInternal for dirty reads. It is much more simplified as doesn't check the transaction state/cache
+   *  and always returns the blob straight from the server. Since this method cannot return the memory from the blob cache this also 
+   *  means that the response must be handled differently.
+   */
+  std::pair<const void*, blob_size> DirtyReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob);
 
   /** This method performs the actual write operation of WriteBlob() without checking for restricted ids.
    *  This method starts a transaction if not already started, acquires a write lock for the specified location (if not already done) and

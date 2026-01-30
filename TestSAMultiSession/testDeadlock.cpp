@@ -72,7 +72,7 @@ TEST_CASE("Write-Write deadlock scenario") {
     auto blobId = blobs[threadId];
     CAPTURE(blobId);
     // Acquire the write lock and ensure the blob hasn't been written to yet
-    CHECK(db->ReadString(0, 0, blobId, true) == "<empty>");
+    CHECK(db->ReadString(0, 0, blobId, blobs::Lock::Write) == "<empty>");
 
     // Now wait for the other thread
     syncPoint.wait();

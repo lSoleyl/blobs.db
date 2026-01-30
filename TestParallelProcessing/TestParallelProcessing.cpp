@@ -21,7 +21,7 @@ int main() {
 
 
     // Now read the synchronization point for all clients
-    auto syncPoint = db->ReadString(0, 0, 0, true);
+    auto syncPoint = db->ReadString(0, 0, 0, blobs::Lock::Write);
     if (syncPoint.empty()) {
       // This is the first client -> print instructions and wait for user to confirm
       std::cout
@@ -48,7 +48,7 @@ int main() {
     // Increment the blob counter exatcly 100 times
     for (int i = 0; i < 100; ++i) {
       std::cout << "Waiting for write lock...\n";
-      auto currentValue = db->ReadVector<int>(0, 0, blobId, true); // Reading a vector<int>() with 1 element is the same as reading an int
+      auto currentValue = db->ReadVector<int>(0, 0, blobId, blobs::Lock::Write); // Reading a vector<int>() with 1 element is the same as reading an int
       std::cout << "Reading Value: " << std::setw(3) << currentValue[0] << '\n';
       ++currentValue[0];
       std::cout << "Writing Value: " << std::setw(3) << currentValue[0] << '\n';

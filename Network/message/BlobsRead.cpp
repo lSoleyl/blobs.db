@@ -31,6 +31,9 @@ bool BlobsRead::NeedsWriteLock() const {
   return lockMode != LockMode::Read;
 }
 
+bool BlobsRead::IsDirtyRead() const {
+  return lockMode == LockMode::None;
+}
 
 MessagePointer_T<BlobsRead> BlobsRead::Create(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode) {
   auto messageSize = sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress);
@@ -40,6 +43,7 @@ MessagePointer_T<BlobsRead> BlobsRead::Create(database_id databaseId, uint8_t nB
 
 std::ostream& operator<<(std::ostream& out, BlobsRead::LockMode mode) {
   switch (mode) {
+    case BlobsRead::LockMode::None: return out << "dirty_read";
     case BlobsRead::LockMode::Read: return out << "read";
     case BlobsRead::LockMode::Write: return out << "write";
     case BlobsRead::LockMode::Delete: return out << "delete";

@@ -14,9 +14,10 @@ namespace message {
  */
 struct BlobsRead : public Message {
   enum class LockMode : uint8_t {
-    Read = 0,   // acquire read locks
-    Write = 1,  // acquire write locks
-    Delete = 2  // acquire write locks but respond with empty blob contents (the client is not interested in the blob's content)
+    None = 0,   // acquire no locks (dirty read) may be performed outside of a transaction
+    Read = 1,   // acquire read locks
+    Write = 2,  // acquire write locks
+    Delete = 3  // acquire write locks but respond with empty blob contents (the client is not interested in the blob's content)
   };
 
   database_id databaseId; // id referencing the previously opened database to read from
@@ -46,6 +47,10 @@ struct BlobsRead : public Message {
   /** Returns true if this blob read message sets a write or delete lock.
    */
   bool NeedsWriteLock() const;
+
+  /** Returns true if the blob read message is a dirty read (i.e. lockMode == None)
+   */
+  bool IsDirtyRead() const;
 
   /** Create a new OpenDB message with sufficient space to hold nBlobsRequested number of blobs.
    *  The BlobAddresses are at this point not initialized and have to be initialized using the begin()/end() iterators

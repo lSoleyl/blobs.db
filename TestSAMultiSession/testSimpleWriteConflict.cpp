@@ -21,7 +21,7 @@ TEST_CASE("Simple write conflict with 2 clients") {
 
     // Perform 10 increments in each client
     for (int i = 0; i < 10; ++i) {
-      int number = *static_cast<const int*>(db->ReadBlob(0, 0, 0, true).first); // <- write lock to prevent deadlocks
+      int number = *static_cast<const int*>(db->ReadBlob(0, 0, 0, blobs::Lock::Write).first); // <- write lock to prevent deadlocks
       timestamps.push_back(std::chrono::high_resolution_clock::now());
       ++number;
       db->WriteBlob(0, 0, 0, &number, sizeof(number));

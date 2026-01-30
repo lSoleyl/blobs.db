@@ -670,7 +670,9 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   }
 
   // Client has to explicitly start a transaction before being able to read anything
-  if (!client.IsInsideTransaction()) {
+  // unless the client performs a dirty read, which is also allowed outside of a transaction as it will never
+  // set any locks because it doesn't have to ensure consistency with any other reads.
+  if (!message.IsDirtyRead() && !client.IsInsideTransaction()) {
     SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::NO_TRANSACTION_IN_PROGRESS));
     return true;
   }
@@ -708,7 +710,8 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
       return true;
     }
 
-    if (client.AcquireLocks(message)) {
+    // The client does not need to acquire any locks if the client requested a dirty read
+    if (message.IsDirtyRead() || client.AcquireLocks(message)) {
       // Locks successfully acquired (no conflicts) -> send response
       if (requestedBlob.ifCommitIdHigher >= blob->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
         // - The client has the current version of the blob 

@@ -45,7 +45,7 @@ int main() {
     auto db = blobs::Database::Open("127.0.0.1", "mem:vector-clock.db");
     std::cout << "Database opened.\n";
 
-    auto initialClock = db->ReadVector<int>(0, 0, 0, true);
+    auto initialClock = db->ReadVector<int>(0, 0, 0, blobs::Lock::Write);
     if (initialClock.empty()) {
       // This is the first client -> print instructions and wait for user to confirm
       std::cout
@@ -74,7 +74,7 @@ int main() {
     // If synchronization works correctly, then after 100 increment steps the vector clock will be at 100 for this client
     for (int i = 0; i < 100; ++i) {
       std::cout << "Waiting for write lock...\n";
-      auto currentClock = db->ReadVector<int>(0, 0, 0, true);
+      auto currentClock = db->ReadVector<int>(0, 0, 0, blobs::Lock::Write);
       std::cout << "Reading Clock: " << VectorClock(currentClock, index) << '\n';
       if (sleepMs) {
         std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));

@@ -219,7 +219,7 @@ Database* Database::Open(const Session::Handle& session, const char* hostName, s
 
 
 
-std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
+std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");
   }
@@ -234,12 +234,25 @@ std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster
 
   // Only one thread at a time may read a blob
   auto sessionLock = session->Lock();
-  return ReadBlobInternal(segment, cluster, blob, writeLock);
+  return ReadBlobInternal(segment, cluster, blob, lock);
 }
 
 
-std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, bool writeLock) {
+std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, Lock lock) {
   assert(session->OwnsLock());
+  // Some of the below casts rely on these to enumerations having the same values for the same names
+  static_assert(static_cast<int>(Lock::None) == static_cast<int>(network::message::BlobsRead::LockMode::None));
+  static_assert(static_cast<int>(Lock::Read) == static_cast<int>(network::message::BlobsRead::LockMode::Read));
+  static_assert(static_cast<int>(Lock::Write) == static_cast<int>(network::message::BlobsRead::LockMode::Write));
+  static_assert(static_cast<int>(Lock::None) == static_cast<int>(Transaction::LockMode::None));
+  static_assert(static_cast<int>(Lock::Read) == static_cast<int>(Transaction::LockMode::Read));
+  static_assert(static_cast<int>(Lock::Write) == static_cast<int>(Transaction::LockMode::Write));
+
+  if (lock == Lock::None) {
+    // Dirty reads are much more simplfied - no running transaction needed, no cache to update
+    return DirtyReadBlobInternal(segment, cluster, blob);
+  }
+
 
   // Get the currently running transaction or start a new one if no is running yet
   auto& transaction = GetTransaction();
@@ -257,7 +270,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   if (cachedBlob && cachedBlob->transactionId == transaction.id) {
     // We already read this blob. Now if we also aready hold a compatible lock to the requested one, then we can simply return the cached blob
     auto currentLock = transaction.GetLockType(this, location);
-    if (currentLock >= (writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read)) {
+    if (static_cast<int>(currentLock) >= static_cast<int>(lock)) {
       // Our current lock is already sufficient to fullfill the request -> return the cached blob content
       return cachedBlob->Data();
     } else if (currentLock == Transaction::LockMode::Read) {
@@ -270,7 +283,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   // Request the blob from the server
   auto& network = session->Network();
   auto& client = network.Get(connectionId);
-  auto request = network::message::BlobsRead::Create(id, 1, writeLock ? network::message::BlobsRead::LockMode::Write : network::message::BlobsRead::LockMode::Read);
+  auto request = network::message::BlobsRead::Create(id, 1, static_cast<network::message::BlobsRead::LockMode>(lock));
   auto& address = *request->begin();
   address = location;
   address.ifCommitIdHigher = cachedBlob ? cachedBlob->lastUpdated : 0;
@@ -281,13 +294,13 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
     if (cachedBlob && response->nBlobs == 0) {
       // Our cached blob is up to date, but we still successfully acquired the lock -> notify the transaction of the lock
-      transaction.AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
+      transaction.AcquiredLock(this, location, static_cast<Transaction::LockMode>(lock));
       return cachedBlob->Data();
     } else if (response->nBlobs == 1) {
       // Server has responded with a newer version of the blob, or we don't have it in our cache yet
       auto& blobData = *response->begin();
       auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction.id);
-      transaction.AcquiredLock(this, location, writeLock ? Transaction::LockMode::Write : Transaction::LockMode::Read);
+      transaction.AcquiredLock(this, location, static_cast<Transaction::LockMode>(lock));
       return cachedBlob.Data();
     } else {
       assert(false); // server repsonsed with an illegal number of blobs!
@@ -300,6 +313,52 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   // not reached
   return std::make_pair(nullptr, 0);
 }
+
+
+
+std::pair<const void*, blob_size> Database::DirtyReadBlobInternal(segment_id segment, cluster_id cluster, blob_id blob) {
+  assert(session->OwnsLock());
+  
+  // Request the blob from the server
+  auto& network = session->Network();
+  auto& client = network.Get(connectionId);
+  auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::None);
+  auto& address = *request->begin();
+  address.segment = segment;
+  address.cluster = cluster;
+  address.blob = blob;
+  address.ifCommitIdHigher = 0;
+  
+  client.SendMessageToServer(std::move(request));
+
+  // Wait for the response and handle it
+  auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
+  if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
+    if (response->nBlobs == 1) {
+      // Server has sent the requested blob -> copy it into the session's dirty read buffer and return a pointer into it
+      auto& blobData = *response->begin();
+      auto blobDataBegin = static_cast<const uint8_t*>(blobData.Data());
+      auto blobDataEnd = blobDataBegin + blobData.blobSize;
+
+      // Copy the blob's data into the dirty read buffer
+      auto& cache = session->Databases().dirtyReadBuffer;
+      cache.resize(blobData.blobSize);
+      std::copy(blobDataBegin, blobDataEnd, cache.data());
+
+      // Return a pointer into the dirty read cache
+      return std::pair<const void*, blob_size>(cache.data(), blobData.blobSize);
+    } else {
+      assert(false); // Server repsonsed with an illegal number of blobs!
+    }
+  } else {
+    // Handle error response
+    HandleReadBlobErrorResponse(*response);
+  }
+
+  return std::make_pair(nullptr, 0);
+}
+
+
 
 void Database::WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
   if (segment > constants::MaxSegmentId) {
@@ -382,7 +441,7 @@ cluster_id Database::CreateCluster(segment_id segment) {
 
   // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
   // also tell us the next cluster id to use
-  auto [data, size] = ReadBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
+  auto [data, size] = ReadBlobInternal(segment, constants::NextFreeClusterId, constants::NextFreeBlobId, Lock::Write);
   assert(size == sizeof(cluster_id)); // This blob only consists of the cluster_id value
 
   auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
@@ -432,7 +491,7 @@ segment_id Database::CreateSegment() {
 
   // Acquire a write lock to (NextFreeClusterId,NextFreeBlobId), which will allow us to create clusters and blobs cluster and
   // also tell us the next cluster id to use
-  auto [data, size] = ReadBlobInternal(constants::NextFreeSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId, true);
+  auto [data, size] = ReadBlobInternal(constants::NextFreeSegmentId, constants::NextFreeClusterId, constants::NextFreeBlobId, Lock::Write);
   assert(size == sizeof(segment_id)); // This blob only consists of the cluster_id value
 
   auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction
@@ -567,7 +626,7 @@ void Database::DeleteSegment(segment_id segment) {
 }
 
 
-Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, bool writeLock) {
+Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, Lock lock) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");
   }
@@ -584,7 +643,7 @@ Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, boo
 
   // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
   // The returned list of blobs will be in ascending id order.
-  auto [data, size] = ReadBlobInternal(segment, cluster, constants::BlobListId, writeLock);
+  auto [data, size] = ReadBlobInternal(segment, cluster, constants::BlobListId, lock);
   using BlobRange = std::pair<blob_id, blob_id>;
 
   // Construct a vector from all the blob ranges
@@ -605,7 +664,7 @@ Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, boo
   return resultRange;
 }
 
-Range<cluster_id> Database::GetAllClusters(segment_id segment, bool writeLock) {
+Range<cluster_id> Database::GetAllClusters(segment_id segment, Lock lock) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");
   }
@@ -618,7 +677,7 @@ Range<cluster_id> Database::GetAllClusters(segment_id segment, bool writeLock) {
 
   // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
   // The returned list of blobs will be in ascending id order.
-  auto [data, size] = ReadBlobInternal(segment, constants::ClusterListId, constants::BlobListId, writeLock);
+  auto [data, size] = ReadBlobInternal(segment, constants::ClusterListId, constants::BlobListId, lock);
   using ClusterRange = std::pair<cluster_id, cluster_id>;
 
   // Construct a vector from all the blob ranges
@@ -640,7 +699,7 @@ Range<cluster_id> Database::GetAllClusters(segment_id segment, bool writeLock) {
 }
 
 
-Range<segment_id> Database::GetAllSegments(bool writeLock) {
+Range<segment_id> Database::GetAllSegments(Lock lock) {
   // Only one thread at a time may query the segment list
   auto sessionLock = session->Lock();
 
@@ -649,7 +708,7 @@ Range<segment_id> Database::GetAllSegments(bool writeLock) {
 
   // Read the segmnt list from the server or transaction cache.
   // The returned list of segments will be in ascending id order.
-  auto [data, size] = ReadBlobInternal(constants::SegmentListId, constants::ClusterListId, constants::BlobListId, writeLock);
+  auto [data, size] = ReadBlobInternal(constants::SegmentListId, constants::ClusterListId, constants::BlobListId, lock);
   using SegmentRange = std::pair<segment_id, segment_id>;
 
   // Construct a vector from all the segment ranges
@@ -735,7 +794,7 @@ void Database::AssignStickyLocks(std::unique_ptr<internal::HeldLocks> stickyLock
 blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster and
   // also tell us the next blob id to use.
-  auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, true);
+  auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, Lock::Write);
   assert(size == sizeof(blob_id)); // This blob only consists of the blob_id value
 
   auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction if not already

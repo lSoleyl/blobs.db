@@ -21,7 +21,7 @@ TEST_CASE("Vector clock with 5 clients") {
     database_ptr db(Database::Open(session, "localhost", "mem:testVectorClock"));
     // Initialize the clock for this client
     // We must always read with a write lock, otherwise we will get a deadlock
-    auto content = db->ReadString(0, 0, 0, true);
+    auto content = db->ReadString(0, 0, 0, blobs::Lock::Write);
     auto index = content.length();
     REQUIRE_MESSAGE(index < clients, "Clock length cannot exceed number of clients!");
     content.push_back('A'); // 0x41
@@ -32,7 +32,7 @@ TEST_CASE("Vector clock with 5 clients") {
 
     // Now increment the vectorclock at this client's index specified number of times (we should end up at 'z')
     for (int i = 0; i < increments; ++i) {
-      auto content = db->ReadString(0, 0, 0, true); // <- write lock to prevent deadlocks with other clients
+      auto content = db->ReadString(0, 0, 0, blobs::Lock::Write); // <- write lock to prevent deadlocks with other clients
       timestamps.push_back(std::chrono::high_resolution_clock::now()); // note down the time, when we get the write lock
       ++content[index];
       // Write back the modified clock and commit
