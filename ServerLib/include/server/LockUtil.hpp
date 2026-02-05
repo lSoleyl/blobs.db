@@ -2,6 +2,7 @@
 
 #include <network/message/BlobsRead.hpp>
 #include "Database.hpp"
+#include "BlobLocationRanges.hpp"
 
 #include <cassert>
 
@@ -24,7 +25,7 @@ void ForEachLockForLocation(Database& database, const BlobLocation& location, Ac
     if (location.cluster == constants::SegmentDeleteId) {
       // Whole segment is being deleted
       auto segment = database.GetLoadedSegment(location.segment);
-      assert(segment); // the caller should ensure the segments's existence
+      assert(segment); // the caller should ensure the segment's existence
 
       action(location);
       action(BlobLocation(location.segment, constants::NextFreeClusterId, constants::NextFreeBlobId));
@@ -87,15 +88,24 @@ void ForEachLockForLocation(Database& database, const BlobLocation& location, Ac
  * @param database the database to load the cluster/segment from if necessary
  * @param location the location to check the locks for
  * @param predicate(const BlobLocation&) -> bool
+ * @param createdBlobs optional range blobs marked for creation (only during commit validation) - this is used to skip lock locations
+ *                     that haven't been created yet and thus their segments/clusters may not yet exist.
+ *                     This is only needed for cluster/segment deletion ids as these locations require the whole cluster/segment to be locked.
  *
  * @return true if the predicate returned true for all locations, false otherwise
  */
 template<typename Predicate>
-bool AllLocksForLocation(Database& database, const BlobLocation& location, Predicate&& predicate) {
+bool AllLocksForLocation(Database& database, const BlobLocation& location, Predicate&& predicate, const BlobLocationRanges* createdBlobs = nullptr) {
   if (location.blob == constants::ClusterDeleteId) {
     if (location.cluster == constants::SegmentDeleteId) {
       // For deletion of a segment, the client must hold locks to every single blob in that segment
       auto segment = database.GetLoadedSegment(location.segment);
+      if (!segment && createdBlobs && createdBlobs->EncompassesCreatedSegment(location.segment)) {
+        // The segment has been just created by the client in this transaction commit, so we have no locks to 
+        // check as the client implicitly owns all locks into that segment.
+        return true;
+      }
+
       assert(segment); // the caller should ensure the segments's existence
 
       if (!predicate(location)) {
@@ -145,6 +155,12 @@ bool AllLocksForLocation(Database& database, const BlobLocation& location, Predi
     } else {
       // For deletion of a cluster, the client must hold locks to every single blob in that cluster
       auto cluster = database.GetLoadedCluster(location.segment, location.cluster);
+      if (!cluster && createdBlobs && createdBlobs->EncompassesCreatedCluster(location.segment, location.cluster)) {
+        // The cluster has been just created by the client in this transaction commit, so we have no locks to 
+        // check as the client implicitly owns all locks into that cluster.
+        return true;
+      }
+
       assert(cluster); // the caller should ensure the cluster's existence
 
       if (!predicate(location)) {

@@ -88,6 +88,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\server\Blob.hpp" />
+    <ClInclude Include="include\server\BlobLocationRanges.hpp" />
     <ClInclude Include="include\server\Client.hpp" />
     <ClInclude Include="include\server\Cluster.hpp" />
     <ClInclude Include="include\server\Database.hpp" />
@@ -106,6 +107,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Blob.cpp" />
+    <ClCompile Include="BlobLocationRanges.cpp" />
     <ClCompile Include="Client.cpp" />
     <ClCompile Include="Cluster.cpp" />
     <ClCompile Include="Database.cpp" />

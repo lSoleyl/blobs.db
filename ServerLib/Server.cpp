@@ -338,91 +338,6 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
   }
 }
 
-namespace {
-  struct BlobLocationRange {
-    BlobLocationRange() {}
-
-    /** A range encompassing the whole segment
-     */
-    BlobLocationRange(segment_id segment) : begin(segment, 0, 0), end(segment+1, 0, 0) {}
-
-    /** A range encompassing the whole cluster
-     */
-    BlobLocationRange(segment_id segment, cluster_id cluster) : begin(segment, cluster, 0), end(segment, cluster+1, 0) {}
-
-    /** A range encompassing the specified blob
-     */
-    BlobLocationRange(segment_id segment, cluster_id cluster, blob_id blob) : begin(segment, cluster, blob), end(segment, cluster, blob+1) {}
-
-    /** A range encompassing the specified blob range inside a cluster and segment
-     */
-    BlobLocationRange(segment_id segment, cluster_id cluster, blob_id blobBegin, blob_id blobEnd) : begin(segment, cluster, blobBegin), end(segment, cluster, blobEnd) {}
-
-    /** Returns true if this range represents the creation of a cluster (strongly simplified check here relies on EnterNewCluster())
-     */
-    bool IsCreatedCluster() const { return end.cluster == begin.cluster + 1; }
-
-    /** Returns true if this range represents the creation of a segment (strongly simplified check here relies on EnterNewSegment())
-     */
-    bool IsCreatedSegment() const { return end.segment == begin.segment + 1; }
-
-    BlobLocation begin, end; // regular [begin;end) interval with exclusive end
-  };
-
-
-  class BlobLocationRanges {
-  public:
-    /** True if any entry encompasses the given location
-     */
-    bool Encompasses(const BlobLocation& location) const {
-      return std::any_of(ranges.begin(), ranges.end(), [&](const BlobLocationRange& range) { return range.begin <= location && location < range.end; });
-    }
-
-    /** True if any entry encompasses the whole passed range
-     */
-    bool Encompasses(const BlobLocationRange& checkRange) const {
-      return std::any_of(ranges.begin(), ranges.end(), [&](const BlobLocationRange& range) { return range.begin <= checkRange.begin && range.end >= checkRange.end; });
-    }
-
-    void Enter(const BlobLocationRange& range) {
-      ranges.push_back(range);
-    }
-
-
-    /** Constructs and enters the ranges for all implicitly created blobs when creating a new cluster
-     */
-    void EnterNewCluster(segment_id segmentId, cluster_id clusterId) {
-      // First blob 0 is implicitly created
-      ranges.push_back({ segmentId, clusterId, 0 });
-
-      // Then all special blobs at the end of the cluster are also implicitly created
-      BlobLocationRange range;
-      range.begin = BlobLocation(segmentId, clusterId, constants::MaxBlobId + 1);
-      range.end = BlobLocation(segmentId, clusterId + 1, 0);
-      ranges.push_back(range);
-    }
-
-    /** Constructs and enters the ranges for all implicitly created blobs and the cluster
-     */
-    void EnterNewSegment(segment_id segmentId) {
-      // Cluster 0 is implicitly created
-      EnterNewCluster(segmentId, 0);
-
-      // The special clusterids are also implicitly created
-      BlobLocationRange range;
-      range.begin = BlobLocation(segmentId, constants::MaxClusterId + 1, 0);
-      range.end = BlobLocation(segmentId + 1, 0, 0);
-      ranges.push_back(range);
-    }
-
-    auto begin() { return ranges.begin(); }
-    auto end() { return ranges.end(); }
-
-  private:
-    std::vector<BlobLocationRange> ranges;
-  };
-}
-
 
 
 network::message::TransactionCommitResponse::Result Server::ValidateCommitMessages(const blobs::server::Client& client, ImplicitLocks& implicitWriteLocks) const {
@@ -466,9 +381,9 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
 
       // Use AllLocksForLocation() to also handle the case of DeleteClusterId, which requires the client
       // to hold locks on the whole cluster.
-      if (!AllLocksForLocation(*database, location, [&](const BlobLocation& location) { return database->ClientOwnsWriteLock(client.id, location) || createdBlobs.Encompasses(location); })) {
+      if (!AllLocksForLocation(*database, location, [&](const BlobLocation& location) { return database->ClientOwnsWriteLock(client.id, location) || createdBlobs.Encompasses(location); }, &createdBlobs)) {
         // If the client doesn't own a write lock for a location we want to write to 
-        // AND the client doesn't own the write lock implicitly by creating the blob/cluster/segment, then
+        // AND the client doesn't own the write lock implicitly by creating the blob/cluster/segment, then 
         // the client is missing the required lock for this commit and this is an illegal commit.
         return Result::MISSING_WRITE_LOCK;
       }

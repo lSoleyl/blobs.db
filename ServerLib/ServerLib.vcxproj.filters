@@ -69,6 +69,9 @@
     <ClInclude Include="include\server\Deleted.hpp">
       <Filter>Headerdateien\server</Filter>
     </ClInclude>
+    <ClInclude Include="include\server\BlobLocationRanges.hpp">
+      <Filter>Headerdateien\server</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Blob.cpp">
@@ -111,6 +114,9 @@
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="Deleted.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="BlobLocationRanges.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>

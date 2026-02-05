@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
   //context.setOption("order-by", "name");            // sort the test cases by their name
 
   context.applyCommandLine(argc, argv);
-  context.setOption("no-breaks", true);             // don't break in the debugger when assertions fail
+  //context.setOption("no-breaks", true);             // don't break in the debugger when assertions fail
 
   auto result = context.run();
 
