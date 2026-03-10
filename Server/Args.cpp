@@ -53,6 +53,14 @@ Args Args::Parse(int argc, const wchar_t* const* argv) {
 
       // Set log file
       args.logFile = *argPos++;
+    } else if (argName == L"--dbroot" || argName == L"-dr") {
+      // Database root directory specified
+      args.dbRoot = *argPos++;
+
+    } else if (argName == L"--nodbroot" || argName == L"-ndr") {
+      // No database root, all files on the filesystem should be accessible
+      args.dbRoot.reset();
+
     } else if (argName == L"--help" || argName == L"-h") {
       // --help specified
       args.help = true;
@@ -74,7 +82,14 @@ void Args::PrintHelp() const {
     << "  --test                     Run small server internal unittests. Combine with --help to see options\n"
     << "  --help,-h                  Displays this help message\n"
     << "  --logfile,-lf  <filename>  Server will write log statements into the specified file instead of the console\n"
-    << "  --loglevel,-ll <level>     Set the logging level as one of OFF,DEBUG,INFO,WARN,ERROR\n";
+    << "  --loglevel,-ll <level>     Set the logging level as one of OFF,DEBUG,INFO,WARN,ERROR\n"
+    << "  --dbroot,-dr <path>        Set the database root directory. All database file paths will be relative to that\n"
+    << "                             directory and only database files from that directory can be opened.\n"
+    << "                             Default: .\\databases\n"
+    << "  --nodbroot,-ndr            Disables the database root and allows opening a database file in any directory.\n"
+    << "                             When passing relative database paths, they will be resolved relative to the\n"
+    << "                             server's working directory."
+  ;
 }
 
 

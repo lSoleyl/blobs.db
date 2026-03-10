@@ -34,6 +34,13 @@ public:
   blobs::server::logging::Level logLevel = blobs::server::logging::Level::INFO_LEVEL; // --loglevel passed
   std::optional<std::wstring> logFile;                                                // --logfile passed
 
+  /**
+   * default: ".\databases"
+   * can be overwritten by passing --dbroot <path>
+   * can be disabled to be able to open any database on the filesystem using --nodbroot
+   */
+  std::optional<std::wstring> dbRoot = L".\\databases";
+
 private:
   bool valid = false;
   Args();

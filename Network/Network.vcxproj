@@ -92,6 +92,7 @@
   <ItemGroup>
     <ClCompile Include="common\Exception.cpp" />
     <ClCompile Include="common\Encoding.cpp" />
+    <ClCompile Include="common\Paths.cpp" />
     <ClCompile Include="IOCPReceiveMessageQueue.cpp" />
     <ClCompile Include="message\DatabaseCloseResponse.cpp" />
     <ClCompile Include="message\TransactionBegin.cpp" />
@@ -127,6 +128,7 @@
     <ClInclude Include="include\common\BlobLocation.hpp" />
     <ClInclude Include="include\common\Encoding.hpp" />
     <ClInclude Include="include\common\Exception.hpp" />
+    <ClInclude Include="include\common\Paths.hpp" />
     <ClInclude Include="include\network\ClientInterface.hpp" />
     <ClInclude Include="include\network\Factory.hpp" />
     <ClInclude Include="include\network\IOCompletionHandler.hpp" />

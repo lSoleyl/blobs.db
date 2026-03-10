@@ -26,8 +26,11 @@ public:
 
   /** Opens the the database for the specified client, which will always end with a call to Server::HandleDatabaseOpenResult() for that
    *  client once the database is fully loaded (which may happen immediately).
+   * 
+   * @param databaseName the database name as specified in the message (may start with "mem:" to refer to an in memory database)
+   * @param clientId the client, which requested the database open and to which the reply should be sent
    */
-  static Database& Open(std::string_view databaseName, client_id clientId);
+  static void Open(std::string_view databaseName, client_id clientId);
 
 
   /** Should be called by clients if they don't use this database anymore to delete it once the last client stopped using it.
@@ -152,7 +155,6 @@ private:
   Database(std::string name);
   Database(const Database&) = delete; // Not copyable, not movable
   Database& operator=(const Database&) = delete;
-
 
   /** Initializes the database to an in memory database structure with one segment, one cluster and one blob
    */
@@ -466,7 +468,7 @@ private:
 
   StickyLockHandler stickyLockHandler;
 
-  static std::map<std::string, std::unique_ptr<Database>, std::less<>> databases;
+  static std::vector<std::unique_ptr<Database>> databases;
 
 
   friend class DatabaseDocTestAccess;

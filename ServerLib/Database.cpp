@@ -4,11 +4,13 @@
 #include "include/server/File.hpp"
 #include "include/server/Client.hpp"
 #include "include/server/LockUtil.hpp"
+#include <common/Paths.hpp>
+#include <common/Encoding.hpp>
 
 namespace blobs {
 namespace server {
 
-std::map<std::string, std::unique_ptr<Database>, std::less<>> Database::databases;
+std::vector<std::unique_ptr<Database>> Database::databases;
 
 Database::Database(std::string name) : name(std::move(name)), useCount(0), loaded(false), stickyLockHandler(*this) {
   // In-Memory databases start with "mem:" prefix and are always loaded
@@ -16,20 +18,45 @@ Database::Database(std::string name) : name(std::move(name)), useCount(0), loade
 }
 
 Database* Database::Get(std::string_view databaseName) {
-  auto pos = databases.find(databaseName);
-  return (pos != databases.end()) ? pos->second.get() : nullptr;
+  auto pos = std::find_if(databases.begin(), databases.end(), [=](const std::unique_ptr<Database>& db) { return databaseName == db->name; });
+  return (pos != databases.end()) ? pos->get() : nullptr;
 }
 
 
 
-Database& Database::Open(std::string_view databaseName, client_id clientId) {
+void Database::Open(std::string_view databaseName, client_id clientId) {
   // Check whether database was already opened
-  auto database = Get(databaseName);
+
+  std::string resolvedDbPath;
+  Database* database = nullptr;
+  if (databaseName._Starts_with("mem:")) {
+    // An in-memory database: this is the simple case, just lookup the database in our database map
+    database = Get(databaseName);
+  } else {
+    // A file database -> resolve the path relative to the database root dir.
+    if (auto resolvedNativePath = Server::Instance().GetResolvedDatabasePath(databaseName)) {
+      auto pos = std::find_if(databases.begin(), databases.end(), [&](const std::unique_ptr<Database>& db) { return Paths::IsSame(*resolvedNativePath, encoding::ToUTF16(db->name)); });
+      if (pos != databases.end()) {
+        // Same Database file already opened -> return it
+        database = pos->get();
+      } else {
+        // File database opened for the first time -> update the databaseName to the fully resolved path
+        resolvedDbPath = encoding::ToUTF8(*resolvedNativePath);
+        databaseName = resolvedDbPath;
+      }
+
+    } else {
+      // Failed to resolve path (which means a path outside of the db root dir has been specified)
+      Server::Instance().HandleDatabaseOpenResult(*database, network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED, clientId);
+      return;
+    }
+  }
+
 
   if (!database) {
     // Database wasn't opened yet -> enter new database
     std::string nameStr(databaseName.data(), databaseName.size());
-    database = databases.emplace(nameStr, std::unique_ptr<Database>(new Database(nameStr))).first->second.get();
+    database = databases.emplace_back(new Database(nameStr)).get();
     // The newly created database may already be fully loaded in case of an in-memory database
 
     // Start the loading process if necessary
@@ -51,7 +78,6 @@ Database& Database::Open(std::string_view databaseName, client_id clientId) {
 
   // One more client is using this database
   ++database->useCount;
-  return *database;
 }
 
 
@@ -69,8 +95,9 @@ void Database::Close() {
   TODO("In some scenarios the database load thread may not be done yet.");
   file.Close();
 
-  // Delete this object by removing it from the databases map
-  databases.erase(name);
+  // Delete this object by removing it from the databases list
+  auto pos = std::find_if(databases.begin(), databases.end(), [=](const std::unique_ptr<Database>& db) { return db.get() == this; });
+  databases.erase(pos);
 }
 
 

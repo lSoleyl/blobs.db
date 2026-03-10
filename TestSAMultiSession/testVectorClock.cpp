@@ -55,12 +55,11 @@ TEST_CASE("Vector clock with 5 clients") {
   REQUIRE_MESSAGE(clockContent == expectedClock, "Vector clock content wrong after all clients finished");
 
   // The last check we have to perform is to ensure that no client was starved out.
-  auto latestFirstTimestamp = std::max_element(timestamps.begin(), timestamps.end(), [](auto& a, auto& b) { return a[0] < b[0]; });
-  auto earliestLastTimestamp = std::min_element(timestamps.begin(), timestamps.end(), [](auto& a, auto& b) { return a[increments-1] < b[increments-1]; });
+  auto latestFirstTimestamp = (*std::max_element(timestamps.begin(), timestamps.end(), [](auto& a, auto& b) { return a[0] < b[0]; }))[0];
+  auto earliestLastTimestamp = (*std::min_element(timestamps.begin(), timestamps.end(), [](auto& a, auto& b) { return a[increments - 1] < b[increments - 1]; }))[increments - 1];
 
   // This should only fail if one client was completely starved and started after the first one already finished.
   // This would imply bad scheduling by the server as the server should schedule using round robin.
-  // Or it could imply bad thread scheduling by the OS... If the thread simply does not run until the other clients complete then
-  // the server can do little about it and this seems to happen from time to time in the tests...
+  // Or it could imply bad thread scheduling by the OS...
   REQUIRE(latestFirstTimestamp < earliestLastTimestamp);
 }

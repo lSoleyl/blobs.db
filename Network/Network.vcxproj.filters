@@ -117,6 +117,9 @@
     <ClCompile Include="message\TransactionBeginResponse.cpp">
       <Filter>Quelldateien\message</Filter>
     </ClCompile>
+    <ClCompile Include="common\Paths.cpp">
+      <Filter>Quelldateien\common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Network.md" />
@@ -226,6 +229,9 @@
     </ClInclude>
     <ClInclude Include="include\network\message\TransactionBeginResponse.hpp">
       <Filter>Headerdateien\network\message</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common\Paths.hpp">
+      <Filter>Headerdateien\common</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -58,7 +58,7 @@ int wmain(int argc, wchar_t** argv) {
   server::Server server;
   BLOBS_LOG_INFO("Server ready");
 
-  server.ServerMain();
+  server.ServerMain(std::optional<std::wstring_view>(args.dbRoot));
 
   BLOBS_LOG_INFO("Server exiting");
   server::logging::Shutdown();

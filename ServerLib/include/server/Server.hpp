@@ -1,5 +1,8 @@
 #pragma once
 
+#include <optional>
+#include <string>
+#include <string_view>
 
 #include <network/ServerInterface.hpp>
 #include <network/message/All.hpp>
@@ -18,8 +21,13 @@ public:
   ~Server();
 
   /** Main server network message processing loop.
+   *  This method should only ever be called once.
+   *  
+   * @param dbRootDir the database root directory to use. Relative paths are resolved relative to the
+   *                  server process' working directory. Passing an empty optional will result in the database root
+   *                  feature being disabled and all files on the filesystem will be accessible.
    */
-  void ServerMain();
+  void ServerMain(std::optional<std::wstring_view> dbRootDir = L".\\databases");
 
   /** This method will trigger the shutdown of the server, which will lead to the server exiting the ServerMain() loop
    *  This method does not wait for the ServerMain() to be exited.
@@ -39,6 +47,10 @@ public:
    */
   void HandleDatabaseOpenResult(Database& database, network::message::DatabaseOpenResponse::Result result, client_id clientId);
 
+  /** Resolves the passed database name into an absolute path base don the configured dbRootDir.
+   *  Returns an empty optional if databaseName refers to a path located outside of dbRootDir.
+   */
+  std::optional<std::wstring> GetResolvedDatabasePath(std::string_view databaseName) const;
 
 private:
   /** Processes any outstanding not yet processed network messages
@@ -75,7 +87,7 @@ private:
 
   /** Abort a currently running transaction commit and the corresponding transaction. 
    *  Either because the sent commit messages were invalid or because the client sent a wrong message during commit.
-   */
+   */ 
   void AbortTransactionCommit(blobs::server::Client& client);
   
 
@@ -176,6 +188,11 @@ private:
   /** The single server instance (we currently do not support multiple server instances in a single process due to Database for example holding a static map of opened databases)
    */
   static Server* instance;
+
+  /** The location where databases are stored by the server. All database paths will be relative to that specified root
+   *  default: ".\databases"
+   */
+  std::optional<std::wstring> dbRootDir;
 };
 
 }}

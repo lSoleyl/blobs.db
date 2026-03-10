@@ -6,6 +6,7 @@
 
 #include <network/Factory.hpp>
 #include <common/Encoding.hpp>
+#include <common/Paths.hpp>
 
 #include <iostream>
 #include <sstream>
@@ -27,7 +28,20 @@ Server::~Server() {
   instance = nullptr;
 }
 
-void Server::ServerMain() {
+void Server::ServerMain(std::optional<std::wstring_view> dbRootDir) {
+  BLOBS_LOG_DEBUG("Staring Server::ServerMain()");
+  BLOBS_LOG_DEBUG("Current directory: " << encoding::ToUTF8(Paths::GetWorkingDirectory()));
+
+  TODO("Write automated tests ensuring that the db root works correctly (case-insensitivity / path restriction)");
+  if (dbRootDir) {
+    this->dbRootDir = Paths::ResolvePath(*dbRootDir);
+    BLOBS_LOG_DEBUG("Database root dir: " << encoding::ToUTF8(*this->dbRootDir));
+    // Create the root directory in case it doesn't exist yet
+    Paths::MakeDirs(*this->dbRootDir);
+  } else {
+    BLOBS_LOG_DEBUG("Database root dir: [disabled]");
+  }
+
   try {
     while (true) {
       ioCompletionPort.ProcessIOCompletionPacket();
@@ -132,7 +146,13 @@ void Server::HandleDatabaseOpenResult(Database& database, network::message::Data
 
 
 
-
+std::optional<std::wstring> Server::GetResolvedDatabasePath(std::string_view databaseName) const {
+  if (dbRootDir) {
+    return Paths::ResolvePath(*dbRootDir, encoding::ToUTF16(databaseName));
+  } else {
+    return Paths::ResolvePath(encoding::ToUTF16(databaseName));
+  }
+}
 
 void Server::SendMessageToClient(client_id clientId, network::MessagePointer message) {
   server->SendMessageToClient(clientId, std::move(message));

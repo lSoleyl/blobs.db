@@ -3,6 +3,7 @@
 #include "include/server/MemoryBlock.hpp"
 
 #include <common/Encoding.hpp>
+#include <common/Paths.hpp>
 
 namespace blobs::server {
 
@@ -28,6 +29,10 @@ FileBackend::~FileBackend() noexcept {
 FileBackend FileBackend::OpenExclusive(const char* filePath, bool& exists) {
   
   auto utf16Path = encoding::ToUTF16(filePath);
+
+  // Create the parent directories if necessary
+  Paths::MakeDirs(utf16Path, true);
+
 
   FileBackend result;
   result.handle = CreateFileW(
