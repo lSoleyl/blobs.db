@@ -15,6 +15,11 @@ void blobs::Initialize() {
   Session::Initialize();
 }
 
+void blobs::Initialize(const char*) {
+  // Client-only version performs regular initialization here
+  blobs::Initialize();
+}
+
 
 void blobs::InitializeServerLogging(LogLevel level, const wchar_t* filePath) {
   // Nothing to do, this is the client-only version

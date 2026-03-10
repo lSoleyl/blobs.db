@@ -5,6 +5,7 @@
 #include <network/StandaloneFactory.hpp>
 #include <server/Server.hpp>
 #include <server/Logging.hpp>
+#include <common/Encoding.hpp>
 
 #include <thread>
 #include <cassert>
@@ -36,10 +37,14 @@ public:
     }
   }
 
+
+  static std::unique_ptr<StandaloneServer> instance;
+  static std::optional<std::wstring> dbRootDir;
+
 private:
   void ServerThreadMain() {
     SetThreadDescription(GetCurrentThread(), L"Standalone server thread");
-    serverInstance.ServerMain();
+    serverInstance.ServerMain(dbRootDir);
     TODO("What about error handling?");
   }
 
@@ -47,8 +52,8 @@ private:
   std::thread serverThread;
 };
 
-
-std::unique_ptr<StandaloneServer> standaloneServer;
+std::unique_ptr<StandaloneServer> StandaloneServer::instance;
+std::optional<std::wstring> StandaloneServer::dbRootDir = L".\\databases";
 
 
 void blobs::Initialize() {
@@ -56,12 +61,19 @@ void blobs::Initialize() {
   network::StandaloneFactory::Use();
 
   // Initialize and start the local server instance
-  standaloneServer = std::make_unique<StandaloneServer>();
-  standaloneServer->Start();
+  StandaloneServer::instance = std::make_unique<StandaloneServer>();
+  StandaloneServer::instance->Start();
 
   // Initialize the global session
   Session::Initialize();
 }
+
+
+void blobs::Initialize(const char* dbRootDir) {
+  StandaloneServer::dbRootDir = dbRootDir ? std::optional<std::wstring>(encoding::ToUTF16(dbRootDir)) : std::nullopt;
+  blobs::Initialize();
+}
+
 
 void blobs::InitializeServerLogging(LogLevel level, const wchar_t* filePath) {
   if (filePath) {
@@ -74,7 +86,7 @@ void blobs::InitializeServerLogging(LogLevel level, const wchar_t* filePath) {
 
 void blobs::Shutdown() {
   // Wait for server thread to complete shutdown
-  standaloneServer.reset();
+  StandaloneServer::instance.reset();
 
   // Shutdown the global session
   Session::Shutdown();

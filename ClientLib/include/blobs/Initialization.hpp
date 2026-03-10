@@ -9,6 +9,19 @@ namespace blobs {
  */
 BLOBS_EXPORT void Initialize();
 
+/** Initialization overload, which may be used in the standalone version of the blobs.db client to specify the 
+ *  database root directory - i.e. the directory where all file databases will reside an and which will be used to 
+ *  resolve all relative file database paths.
+ * 
+ *  The default database root directory is ".\\databases". This is the root directory that is being used, when just
+ *  callign Initialize().
+ * 
+ * @param dbRootDir pass a utf8 encoded file path here to specify the database root directory.
+ *                  If a relative path is specified here, then the path is resolved relative to the current working
+ *                  directory of this process. (Set the log level to DEBUG to see, which database root directory is being used).
+ *                  Passing nullptr will disable the database root directory and allow clients to open databases anywhere on the filesystem.
+ */
+BLOBS_EXPORT void Initialize(const char* dbRootDir);
 
 
 enum class LogLevel : int {
