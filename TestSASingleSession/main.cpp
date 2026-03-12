@@ -11,7 +11,7 @@ REGISTER_EXCEPTION_TRANSLATOR(blobs::Exception& ex) {
 
 int main(int argc, char** argv) {
   blobs::InitializeServerLogging(blobs::LogLevel::DEBUG_LEVEL);
-  blobs::Initialize();
+  blobs::Initialize(".\\test_dbs");
 
   // Run unittests
   doctest::Context context;
