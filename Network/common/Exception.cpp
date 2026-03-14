@@ -43,11 +43,11 @@ BlobDoesNotExist::BlobDoesNotExist() : Exception("Attempt to read/write a blob, 
 
 BlobDeleted::BlobDeleted() : Exception("Attempt to read/write a blob, which has been deleted in the current transaction", ExceptionCode::BlobDeleted) {}
 
-ClusterDoesNotExist::ClusterDoesNotExist() : Exception("Attempt to delete a cluster, which does not exist", ExceptionCode::ClusterDoesNotExist) {}
+ClusterDoesNotExist::ClusterDoesNotExist() : Exception("Attempt to access a cluster, which does not exist", ExceptionCode::ClusterDoesNotExist) {}
 
 ClusterDeleted::ClusterDeleted() : Exception("Attempt to access a blob in an already deleted cluster", ExceptionCode::ClusterDeleted) {}
 
-SegmentDoesNotExist::SegmentDoesNotExist() : Exception("Attempt to delete a segment, which does not exist", ExceptionCode::SegmentDoesNotExist) {}
+SegmentDoesNotExist::SegmentDoesNotExist() : Exception("Attempt to access a segment, which does not exist", ExceptionCode::SegmentDoesNotExist) {}
 
 SegmentDeleted::SegmentDeleted() : Exception("Attempt to access a cluster in an already deleted segment", ExceptionCode::SegmentDeleted) {}
 

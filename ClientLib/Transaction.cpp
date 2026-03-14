@@ -85,6 +85,24 @@ struct Transaction::State {
       return deletedSegments.count(segment) != 0;
     }
 
+    /** Returns true if the given blob, its cluster or its segment have been created in this transaction
+     */
+    bool IsBlobCreated(const BlobLocation& location) const {
+      return createdBlobs.count(location) != 0 || IsClusterCreated(location.segment, location.cluster);
+    }
+
+    /** Returns true if the given cluster or its segment have been created in this transaction
+     */
+    bool IsClusterCreated(segment_id segment, cluster_id cluster) const {
+      return createdClusters.count({ segment, cluster }) != 0 || IsSegmentCreated(segment);
+    }
+
+    /** Returns true if the given segment has been created in this transaction
+     */
+    bool IsSegmentCreated(segment_id segment) const {
+      return createdSegments.count(segment) != 0;
+    }
+
     struct BlobToSend {
       BlobLocation location;
       const std::vector<uint8_t>* data;
@@ -606,6 +624,25 @@ void Transaction::CreateSegment(Database* database, segment_id segment) {
 
   // Mark the segment as created
   dbState.createdSegments.insert(segment);
+}
+
+
+bool Transaction::IsCreatedBlob(Database* database, const BlobLocation& location) const {
+  assert(session->OwnsLock());
+  auto& dbState = state->AccessDatabaseState(database);
+  return dbState.IsBlobCreated(location);
+}
+
+bool Transaction::IsCreatedCluster(Database* database, segment_id segment, cluster_id cluster) const {
+  assert(session->OwnsLock());
+  auto& dbState = state->AccessDatabaseState(database);
+  return dbState.IsClusterCreated(segment, cluster);
+}
+
+bool Transaction::IsCreatedSegment(Database* database, segment_id segment) const {
+  assert(session->OwnsLock());
+  auto& dbState = state->AccessDatabaseState(database);
+  return dbState.IsSegmentCreated(segment);
 }
 
 

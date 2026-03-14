@@ -642,17 +642,22 @@ Range<blob_id> Database::GetAllBlobs(segment_id segment, cluster_id cluster, Loc
   // Unless we attempt to perform a dirty (lockless) read then we don't need a running transaction
   auto transaction = (lock == Lock::None) ? nullptr : &GetTransaction();
 
-  // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
-  // The returned list of blobs will be in ascending id order.
-  auto [data, size] = ReadBlobInternal(segment, cluster, constants::BlobListId, lock);
-  using BlobRange = std::pair<blob_id, blob_id>;
-
-  // Construct a vector from all the blob ranges
   std::vector<blob_id> ids;
-  for (auto it = static_cast<const BlobRange*>(data), end = it + (size / sizeof(BlobRange)); it != end; ++it) {
-    auto [blobBegin, blobEnd] = *it;
-    for (auto blobId = blobBegin; blobId != blobEnd; ++blobId) {
-      ids.push_back(blobId);
+
+  // Only try to read the blob list if we are either performing a read outside any transaction (no lock)
+  // or we didn't create the cluster in the same transaction, because then the read would fail with ClusterDoesNotExist.
+  if (!transaction || !transaction->IsCreatedCluster(this, segment, cluster)) {
+    // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
+    // The returned list of blobs will be in ascending id order.
+    auto [data, size] = ReadBlobInternal(segment, cluster, constants::BlobListId, lock);
+    using BlobRange = std::pair<blob_id, blob_id>;
+
+    // Construct a vector from all the blob ranges
+    for (auto it = static_cast<const BlobRange*>(data), end = it + (size / sizeof(BlobRange)); it != end; ++it) {
+      auto [blobBegin, blobEnd] = *it;
+      for (auto blobId = blobBegin; blobId != blobEnd; ++blobId) {
+        ids.push_back(blobId);
+      }
     }
   }
 
@@ -679,18 +684,24 @@ Range<cluster_id> Database::GetAllClusters(segment_id segment, Lock lock) {
   // Unless we attempt to perform a dirty (lockless) read then we don't need a running transaction
   auto transaction = (lock == Lock::None) ? nullptr : &GetTransaction();
 
-  // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
-  // The returned list of blobs will be in ascending id order.
-  auto [data, size] = ReadBlobInternal(segment, constants::ClusterListId, constants::BlobListId, lock);
-  using ClusterRange = std::pair<cluster_id, cluster_id>;
-
-  // Construct a vector from all the blob ranges
   std::vector<cluster_id> ids;
-  for (auto it = static_cast<const ClusterRange*>(data), end = it + (size / sizeof(ClusterRange)); it != end; ++it) {
-    auto [clusterBegin, clusterEnd] = *it;
-    for (auto clusterId = clusterBegin; clusterId != clusterEnd; ++clusterId) {
-      ids.push_back(clusterId);
+
+  // Only try to read the cluster list if we are either performing a read outside any transaction (no lock)
+  // or we didn't create the segment in the same transaction, because then the read would fail with SegmentDoesNotExist.
+  if (!transaction || !transaction->IsCreatedSegment(this, segment)) {
+    // Read the blob list from the server or transaction cache. This will also validate that both segment and cluster exist
+    // The returned list of blobs will be in ascending id order.
+    auto [data, size] = ReadBlobInternal(segment, constants::ClusterListId, constants::BlobListId, lock);
+    using ClusterRange = std::pair<cluster_id, cluster_id>;
+
+    // Construct a vector from all the blob ranges
+    for (auto it = static_cast<const ClusterRange*>(data), end = it + (size / sizeof(ClusterRange)); it != end; ++it) {
+      auto [clusterBegin, clusterEnd] = *it;
+      for (auto clusterId = clusterBegin; clusterId != clusterEnd; ++clusterId) {
+        ids.push_back(clusterId);
+      }
     }
+
   }
 
   // Merge with the changes from the currently active transaction (unless we are performing a dirty read)

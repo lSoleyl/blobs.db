@@ -143,6 +143,18 @@ public:
    */
   void CreateSegment(Database* database, segment_id segment);
 
+  /** Returns true if the specified blob, its cluster or its segment has been just created in this transaction and not committed yet to the server.
+   */
+  bool IsCreatedBlob(Database* database, const BlobLocation& location) const;
+
+  /** Returns true if the specified cluster or its segment has been just created in this transaction and not committed yet to the server.
+   */
+  bool IsCreatedCluster(Database* database, segment_id segment, cluster_id cluster) const;
+
+  /** Returns true if the specified segment has been just created in this transaction and not committed yet to the server.
+   */
+  bool IsCreatedSegment(Database* database, segment_id segment) const;
+
   /** Marks a blob for deletion on transaction commit. After calling this method, the blob cannot be read or written anymore unless the
    *  transaction is aborted.
    */

@@ -273,3 +273,33 @@ TEST_CASE("Create cluster sticky lock on BlobListId") {
 
   REQUIRE_MESSAGE(firstClientCommit.load() < secondClientReadBlobs.load(), "The second client's read should have been blocked until the first client completes its transaction");
 }
+
+
+TEST_CASE("GetAllBlobs after CreateCluster in same transaction") {
+  const auto dbName = "mem:testGetAllBlobsAfterCreateCluster";
+  auto session = Session::Create();
+
+  database_ptr db(Database::Open(session, "localhost", dbName));
+  auto cluster = db->CreateCluster(0);
+  REQUIRE_MESSAGE(cluster == 1, "Newly created cluster has wrong id");
+
+  blobs::Range<blob_id> blobs;
+  REQUIRE_NOTHROW(blobs = db->GetAllBlobs(0, cluster));
+  REQUIRE_MESSAGE(blobs.size() == 1, "The returned blob range should contain one blob");
+  REQUIRE_MESSAGE(*blobs.begin() == 0, "The new cluster should only consist of the blob 0");
+}
+
+TEST_CASE("GetAllBlobs after CreateSegment in same transaction") {
+  const auto dbName = "mem:testGetAllBlobsAfterCreateSegment";
+  auto session = Session::Create();
+
+  database_ptr db(Database::Open(session, "localhost", dbName));
+  auto segment = db->CreateSegment();
+  REQUIRE_MESSAGE(segment == 1, "Newly created segment has wrong id");
+
+  blobs::Range<blob_id> blobs;
+  REQUIRE_NOTHROW(blobs = db->GetAllBlobs(segment, 0));
+  REQUIRE_MESSAGE(blobs.size() == 1, "The returned blob range should contain one blob");
+  REQUIRE_MESSAGE(*blobs.begin() == 0, "The default cluster in the new segment should only consist of the blob 0");
+}
+

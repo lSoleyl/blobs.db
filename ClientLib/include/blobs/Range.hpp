@@ -25,6 +25,7 @@ public:
   Range& operator=(Range&& other) {
     this->~Range();
     new (this) Range(std::move(other));
+    return *this;
   }
 
   using iterator = T*;

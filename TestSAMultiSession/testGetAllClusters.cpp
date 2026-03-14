@@ -12,7 +12,7 @@ namespace {
 
 // This test will ensure that the list can be correctly queried and is correctly adjusted to the modifications
 // performed during a transaction and that it is correctly read across transaction.
-TEST_CASE("GetAllClusters tests with on default segment") {
+TEST_CASE("GetAllClusters tests with default segment") {
   auto session = Session::Create();
   auto dbName = "mem:testGetAllClustersDefault";
   database_ptr db(Database::Open(session, "localhost", dbName));
@@ -281,6 +281,23 @@ TEST_CASE("Create segment sticky lock on ClusterListId") {
   });
 
   REQUIRE_MESSAGE(firstClientCommit.load() < secondClientReadClusters.load(), "The second client's read should have been blocked until the first client completes its transaction");
+}
+
+
+
+
+TEST_CASE("GetAllClusters after CreateSegment in same transaction") {
+  const auto dbName = "mem:testGetAllClustersAfterCreateSegment";
+  auto session = Session::Create();
+
+  database_ptr db(Database::Open(session, "localhost", dbName));
+  auto segment = db->CreateSegment();
+  REQUIRE_MESSAGE(segment == 1, "Newly created segment has wrong id");
+
+  blobs::Range<cluster_id> clusters;
+  REQUIRE_NOTHROW(clusters = db->GetAllClusters(segment));
+  REQUIRE_MESSAGE(clusters.size() == 1, "The returned cluster range should contain one cluster");
+  REQUIRE_MESSAGE(*clusters.begin() == 0, "The new segment should only consist of the cluster 0");
 }
 
 
