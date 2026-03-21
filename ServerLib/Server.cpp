@@ -364,165 +364,179 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
   using Result = network::message::TransactionCommitResponse::Result;
 
   // This vector is used to ensure that the commit messages are ordered by databases
-  std::vector<Database*> touchedDatabases;
-
+  // We will collect the database_ids mentioned in the messages in the same order to process the commits by database
+  std::vector<database_id> touchedDatabases;
   for (auto& messagePtr : client.commitMessages) {
     auto& message = *messagePtr;
-    auto database = client.GetDatabase(message.databaseId);
-    if (!database) {
-      return Result::DATABASE_NOT_OPENED;
-    }
 
     // Ensure that databases are processed in order (i.e. first all messages for databaseA, then all messages for databaseB, not mixed)
     // This grouping is necessary to perform an efficient database snapshot update by simply passing it a contiguous range of messages, which
     // apply to the specified database.
-    auto pos = std::find(touchedDatabases.begin(), touchedDatabases.end(), database);
+    auto pos = std::find(touchedDatabases.begin(), touchedDatabases.end(), message.databaseId);
     if (pos == touchedDatabases.end()) {
       // This database has not yet been processed
-      touchedDatabases.push_back(database);
-      implicitWriteLocks.push_back(std::make_pair(message.databaseId, std::vector<BlobLocation>{}));
+      touchedDatabases.push_back(message.databaseId);
     } else {
       // If the database was already mentioned in a previous commit message, then it must be the last mentioned one
       if (++pos != touchedDatabases.end()) {
         return Result::DATABASE_ORDER_VIOLATED;
       }
     }
+  }
 
-    // Since we process databases in order we can track this database's write locks in the last entry
-    auto& implicitDbWriteLocks = implicitWriteLocks.back().second;
 
+  auto messagesPos = client.commitMessages.begin();
+  auto messagesEnd = client.commitMessages.end();
+
+  for (auto databaseId : touchedDatabases) {
+    auto database = client.GetDatabase(databaseId);
+    if (!database) {
+      return Result::DATABASE_NOT_OPENED;
+    }
 
     // In case the client created some blobs, this vector will be filled with ranges of created blobs
+    // This range of created blobs is tracked per database
     BlobLocationRanges createdBlobs;
 
-
-    for (auto pos = message.begin(), end = message.end(); pos != end; ++pos) {
-      auto& location = *pos;
-
-      // Use AllLocksForLocation() to also handle the case of DeleteClusterId, which requires the client
-      // to hold locks on the whole cluster.
-      if (!AllLocksForLocation(*database, location, [&](const BlobLocation& location) { return database->ClientOwnsWriteLock(client.id, location) || createdBlobs.Encompasses(location); }, &createdBlobs)) {
-        // If the client doesn't own a write lock for a location we want to write to 
-        // AND the client doesn't own the write lock implicitly by creating the blob/cluster/segment, then 
-        // the client is missing the required lock for this commit and this is an illegal commit.
-        return Result::MISSING_WRITE_LOCK;
-      }
+    // Track implicitly granted write locks for this database
+    auto& implicitDbWriteLocks = implicitWriteLocks.emplace_back(databaseId, std::vector<BlobLocation>{}).second;
 
 
-      if (location.segment == constants::NextFreeSegmentId) {
-        // The client has creatd one or more segments in the database
-        if (location.cluster != constants::NextFreeClusterId || location.blob != constants::NextFreeBlobId) {
-          // If segment is NextFreeSegmentId, then cluster MUST be NextFreeClusterId and blob MUST be NextFreeBlobId
-          return Result::BLOB_DOES_NOT_EXIST;
+    // Process all messages for this database id
+    for (;  messagesPos != messagesEnd && (*messagesPos)->databaseId == databaseId; ++messagesPos) {
+      auto& message = **messagesPos;
+
+
+      // Process all touched blobs for this message
+      for (auto pos = message.begin(), end = message.end(); pos != end; ++pos) {
+        auto& location = *pos;
+
+        // Use AllLocksForLocation() to also handle the case of DeleteClusterId, which requires the client
+        // to hold locks on the whole cluster.
+        if (!AllLocksForLocation(*database, location, [&](const BlobLocation& location) { return database->ClientOwnsWriteLock(client.id, location) || createdBlobs.Encompasses(location); }, &createdBlobs)) {
+          // If the client doesn't own a write lock for a location we want to write to 
+          // AND the client doesn't own the write lock implicitly by creating the blob/cluster/segment, then 
+          // the client is missing the required lock for this commit and this is an illegal commit.
+          return Result::MISSING_WRITE_LOCK;
         }
 
 
-        auto committedContent = pos.ReadData();
-        // Validate size of transmitted segment id blob
-        if (committedContent.size() != sizeof(segment_id)) {
-          // We expect exactly segment_id-bytes to be written, nothing more, nothing less!
-          return Result::ILLEGAL_NEXT_FREE_SEGMENT_ID;
-        }
-
-        // Validate range of transmitted segment id. It cannot be smaller than the previous value.
-        // An equal value is a bit weird, because the client decided to not create a new segment after all
-        // The maximum value is MaxSegmentId+1, which is reached after the segment with id = MaxSegmentId has been created to mark a full database.
-        auto newNextFreeId = *reinterpret_cast<const segment_id*>(committedContent.data());
-        if (newNextFreeId < database->GetNextFreeSegmentId() || newNextFreeId > constants::MaxSegmentId + 1) {
-          return Result::ILLEGAL_NEXT_FREE_SEGMENT_ID;
-        }
-
-        // Now construct the blob/cluster ranges for each segment created. We will NOT simply create one huge range for all segments 
-        // created as this would allow the client to write into arbitrary blobs, which haven't been created according to the NextFreeBlobId entry
-        for (segment_id segment = database->GetNextFreeSegmentId(); segment < newNextFreeId; ++segment) {
-          createdBlobs.EnterNewSegment(segment);
-        }
-
-      } else if (location.cluster == constants::NextFreeClusterId) {
-        // The client has creatd one or more clusters in the specified segment
-        if (location.blob != constants::NextFreeBlobId) {
-          // If cluster is NextFreeClusterId, then blob MUST be NextFreeBlobId
-          return Result::BLOB_DOES_NOT_EXIST;
-        }
-
-        cluster_id nextFreeClusterId; // The current nextFreeClusterId of the segment
-
-        if (auto segment = database->GetLoadedSegment(location.segment)) {
-          // Creating a cluster in an already existing segment
-          nextFreeClusterId = segment->GetNextFreeClusterId();
-        } else if (createdBlobs.Encompasses(location)) {
-          // This segment's (NextFreeClusterId,NextFreeBlobId) has been created in this transaction -> the segment does exist (just not in the database yet)
-          nextFreeClusterId = 1; // The default nextFreeClusterId for newly created segments is 1
-        } else {
-          // This should actually not happen, because the client cannot acquire a lock in a not existing segment, right?
-          return Result::SEGMENT_DOES_NOT_EXIST;
-        }
-
-        auto committedContent = pos.ReadData();
-        // Validate size of transmitted cluster id blob
-        if (committedContent.size() != sizeof(cluster_id)) {
-          // We expect exactly cluster_id-bytes to be written, nothing more, nothing less!
-          return Result::ILLEGAL_NEXT_FREE_CLUSTER_ID;
-        }
-
-        // Validate range of transmitted cluster id. It cannot be smaller than the previous value.
-        // An equal value is a bit weird, because the client decided to not create a new cluster after all
-        // The maximum value is MaxClusterId+1, which is reached after the cluster with id = MaxClusterId has been created to mark a full segment.
-        auto newNextFreeClusterId = *reinterpret_cast<const cluster_id*>(committedContent.data());
-        if (newNextFreeClusterId < nextFreeClusterId || newNextFreeClusterId > constants::MaxClusterId + 1) {
-          return Result::ILLEGAL_NEXT_FREE_CLUSTER_ID;
-        }
-
-
-        // Now construct the blob ranges for each cluster created. We will NOT simply create one huge range for all clusters
-        // created as this would allow the client to write into arbitrary blobs, which haven't been created according to the NextFreeBlobId entry
-        for (cluster_id cluster = nextFreeClusterId; cluster < newNextFreeClusterId; ++cluster) {
-          createdBlobs.EnterNewCluster(location.segment, cluster);
-        }
-
-      } else if (location.blob == constants::NextFreeBlobId) {
-        // The client has created one or more new blobs in the specified cluster
-
-        blob_id nextFreeBlobId; // The current next free blob id value
-
-        if (createdBlobs.Encompasses(location)) {
-          // The cluster and or segment have been created in this transaction so there is no point in performing the segment/cluster lookup
-          // We can assume the nextFreeBlobId to have been 1 as the 0'th blob is always implicitly created
-          nextFreeBlobId = 1;
-        } else if (auto segment = database->GetLoadedSegment(location.segment)) {
-          if (auto cluster = segment->GetCluster(location.cluster)) {
-            nextFreeBlobId = cluster->GetNextFreeBlobId();
-          } else {
-            // This should actually not happen, because the client cannot acquire a lock in a not existing cluster, right?
-            return Result::CLUSTER_DOES_NOT_EXIST;
+        if (location.segment == constants::NextFreeSegmentId) {
+          // The client has creatd one or more segments in the database
+          if (location.cluster != constants::NextFreeClusterId || location.blob != constants::NextFreeBlobId) {
+            // If segment is NextFreeSegmentId, then cluster MUST be NextFreeClusterId and blob MUST be NextFreeBlobId
+            return Result::BLOB_DOES_NOT_EXIST;
           }
-        } else {
-          // This should actually not happen, because the client cannot acquire a lock in a not existing segment, right?
-          return Result::SEGMENT_DOES_NOT_EXIST;
+
+
+          auto committedContent = pos.ReadData();
+          // Validate size of transmitted segment id blob
+          if (committedContent.size() != sizeof(segment_id)) {
+            // We expect exactly segment_id-bytes to be written, nothing more, nothing less!
+            return Result::ILLEGAL_NEXT_FREE_SEGMENT_ID;
+          }
+
+          // Validate range of transmitted segment id. It cannot be smaller than the previous value.
+          // An equal value is a bit weird, because the client decided to not create a new segment after all
+          // The maximum value is MaxSegmentId+1, which is reached after the segment with id = MaxSegmentId has been created to mark a full database.
+          auto newNextFreeId = *reinterpret_cast<const segment_id*>(committedContent.data());
+          if (newNextFreeId < database->GetNextFreeSegmentId() || newNextFreeId > constants::MaxSegmentId + 1) {
+            return Result::ILLEGAL_NEXT_FREE_SEGMENT_ID;
+          }
+
+          // Now construct the blob/cluster ranges for each segment created. We will NOT simply create one huge range for all segments 
+          // created as this would allow the client to write into arbitrary blobs, which haven't been created according to the NextFreeBlobId entry
+          for (segment_id segment = database->GetNextFreeSegmentId(); segment < newNextFreeId; ++segment) {
+            createdBlobs.EnterNewSegment(segment);
+          }
+
+        } else if (location.cluster == constants::NextFreeClusterId) {
+          // The client has creatd one or more clusters in the specified segment
+          if (location.blob != constants::NextFreeBlobId) {
+            // If cluster is NextFreeClusterId, then blob MUST be NextFreeBlobId
+            return Result::BLOB_DOES_NOT_EXIST;
+          }
+
+          cluster_id nextFreeClusterId; // The current nextFreeClusterId of the segment
+
+          if (auto segment = database->GetLoadedSegment(location.segment)) {
+            // Creating a cluster in an already existing segment
+            nextFreeClusterId = segment->GetNextFreeClusterId();
+          } else if (createdBlobs.Encompasses(location)) {
+            // This segment's (NextFreeClusterId,NextFreeBlobId) has been created in this transaction -> the segment does exist (just not in the database yet)
+            nextFreeClusterId = 1; // The default nextFreeClusterId for newly created segments is 1
+          } else {
+            // This should actually not happen, because the client cannot acquire a lock in a not existing segment, right?
+            return Result::SEGMENT_DOES_NOT_EXIST;
+          }
+
+          auto committedContent = pos.ReadData();
+          // Validate size of transmitted cluster id blob
+          if (committedContent.size() != sizeof(cluster_id)) {
+            // We expect exactly cluster_id-bytes to be written, nothing more, nothing less!
+            return Result::ILLEGAL_NEXT_FREE_CLUSTER_ID;
+          }
+
+          // Validate range of transmitted cluster id. It cannot be smaller than the previous value.
+          // An equal value is a bit weird, because the client decided to not create a new cluster after all
+          // The maximum value is MaxClusterId+1, which is reached after the cluster with id = MaxClusterId has been created to mark a full segment.
+          auto newNextFreeClusterId = *reinterpret_cast<const cluster_id*>(committedContent.data());
+          if (newNextFreeClusterId < nextFreeClusterId || newNextFreeClusterId > constants::MaxClusterId + 1) {
+            return Result::ILLEGAL_NEXT_FREE_CLUSTER_ID;
+          }
+
+
+          // Now construct the blob ranges for each cluster created. We will NOT simply create one huge range for all clusters
+          // created as this would allow the client to write into arbitrary blobs, which haven't been created according to the NextFreeBlobId entry
+          for (cluster_id cluster = nextFreeClusterId; cluster < newNextFreeClusterId; ++cluster) {
+            createdBlobs.EnterNewCluster(location.segment, cluster);
+          }
+
+        } else if (location.blob == constants::NextFreeBlobId) {
+          // The client has created one or more new blobs in the specified cluster
+
+          blob_id nextFreeBlobId; // The current next free blob id value
+
+          if (createdBlobs.Encompasses(location)) {
+            // The cluster and or segment have been created in this transaction so there is no point in performing the segment/cluster lookup
+            // We can assume the nextFreeBlobId to have been 1 as the 0'th blob is always implicitly created
+            nextFreeBlobId = 1;
+          } else if (auto segment = database->GetLoadedSegment(location.segment)) {
+            if (auto cluster = segment->GetCluster(location.cluster)) {
+              nextFreeBlobId = cluster->GetNextFreeBlobId();
+            } else {
+              // This should actually not happen, because the client cannot acquire a lock in a not existing cluster, right?
+              return Result::CLUSTER_DOES_NOT_EXIST;
+            }
+          } else {
+            // This should actually not happen, because the client cannot acquire a lock in a not existing segment, right?
+            return Result::SEGMENT_DOES_NOT_EXIST;
+          }
+
+
+          auto committedContent = pos.ReadData();
+
+          // Validate size of transmitted blob id blob
+          if (committedContent.size() != sizeof(blob_id)) {
+            // We expect exactly blob_id-bytes to be written, nothing more, nothing less!
+            return Result::ILLEGAL_NEXT_FREE_BLOB_ID;
+          }
+
+          // Validate range of transmitted blob id. It cannot be smaller than the previous value.
+          // An equal value is a bit weird, because the client decided to not create a new blob after all
+          // The maximum value is MaxBlobId+1, which is reached after the blob with id = MaxBlobId has been created to mark a full cluster.
+          auto newNextFreeBlobId = *reinterpret_cast<const blob_id*>(committedContent.data());
+          if (newNextFreeBlobId < nextFreeBlobId || newNextFreeBlobId > constants::MaxBlobId + 1) {
+            return Result::ILLEGAL_NEXT_FREE_BLOB_ID;
+          }
+
+          // Add the range to the list of created blobs to not fail our lock check for newly created blobs
+          createdBlobs.Enter(BlobLocationRange(location.segment, location.cluster, nextFreeBlobId, newNextFreeBlobId));
         }
-
-
-        auto committedContent = pos.ReadData();
-
-        // Validate size of transmitted blob id blob
-        if (committedContent.size() != sizeof(blob_id)) {
-          // We expect exactly blob_id-bytes to be written, nothing more, nothing less!
-          return Result::ILLEGAL_NEXT_FREE_BLOB_ID;
-        }
-
-        // Validate range of transmitted blob id. It cannot be smaller than the previous value.
-        // An equal value is a bit weird, because the client decided to not create a new blob after all
-        // The maximum value is MaxBlobId+1, which is reached after the blob with id = MaxBlobId has been created to mark a full cluster.
-        auto newNextFreeBlobId = *reinterpret_cast<const blob_id*>(committedContent.data());
-        if (newNextFreeBlobId < nextFreeBlobId || newNextFreeBlobId > constants::MaxBlobId + 1) {
-          return Result::ILLEGAL_NEXT_FREE_BLOB_ID;
-        }
-
-        // Add the range to the list of created blobs to not fail our lock check for newly created blobs
-        createdBlobs.Enter(BlobLocationRange(location.segment, location.cluster, nextFreeBlobId, newNextFreeBlobId));
       }
     }
 
+    // We finished processing all messages for this database
     // Now acquire implicit write locks for all implicitly created blobs/clusters/segments
     for (auto& range : createdBlobs) {
       if (range.IsCreatedSegment()) {

@@ -164,6 +164,7 @@
     <ClCompile Include="testDirtyRead.cpp" />
     <ClCompile Include="testGetAllBlobs.cpp" />
     <ClCompile Include="testGetAllClusters.cpp" />
+    <ClCompile Include="testHugeCommit.cpp" />
     <ClCompile Include="testKeepStickyLocks.cpp" />
     <ClCompile Include="testMultipleThreadsSingleSession.cpp" />
     <ClCompile Include="testOpenDatabase.cpp" />
