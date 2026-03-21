@@ -4,6 +4,7 @@
 #include "Session.hpp"
 #include "Range.hpp"
 
+#include <string_view>
 #include <string>
 #include <vector>
 #include <memory>
@@ -189,8 +190,16 @@ public:
 
   /** Convenience method to create a blob from the given string content
    */
-  template<typename CharT = char>
-  blob_id CreateString(segment_id segment, cluster_id cluster, std::basic_string_view<CharT> string) {
+  template<typename CharT = char, typename Traits = std::char_traits<CharT>>
+  blob_id CreateString(segment_id segment, cluster_id cluster, std::basic_string_view<CharT, Traits> string) {
+    return CreateBlob(segment, cluster, string.data(), string.size() * sizeof(CharT));
+  }
+
+  /** Convenience method to pass std::string directly wihtout the need to manually convert it into std::string_view.
+   *  The compiler cannot derive the template arguments for std::basic_string_view from std::basic_string's type
+   */
+  template<typename CharT = char, typename Traits = std::char_traits<CharT>, typename Alloc = std::allocator<CharT>>
+  blob_id CreateString(segment_id segment, cluster_id cluster, const std::basic_string<CharT, Traits, Alloc>& string) {
     return CreateBlob(segment, cluster, string.data(), string.size() * sizeof(CharT));
   }
 
