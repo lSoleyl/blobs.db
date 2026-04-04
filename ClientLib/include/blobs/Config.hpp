@@ -85,7 +85,7 @@ namespace blobs {
 
     /** Sepcial segment id that is used as (SegmentListId, ClusterListId, BlobListId) to read the list of all segments in the database,.
      */
-    constexpr segment_id SegmentListId = MaxSegmentId + 1;
+    constexpr segment_id SegmentListId = MaxSegmentId + 2;
   }
 }
 
