@@ -3,8 +3,6 @@
 
 #include <common/Exception.hpp>
 
-#include <string>
-
 namespace blobs {
 
 Exception::Exception(std::string_view reason, ExceptionCode code) : reason(reason), code(code) {}
