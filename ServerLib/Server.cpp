@@ -420,6 +420,16 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
           return Result::MISSING_WRITE_LOCK;
         }
 
+        if (location.segment == constants::SegmentListId || location.cluster == constants::ClusterListId || location.blob == constants::BlobListId) {
+          // Writing directly into any of the artificial list blobs is not permitted
+          return Result::BLOB_DOES_NOT_EXIST;
+        }
+
+        if (location.cluster == constants::SegmentDeleteId && location.blob != constants::ClusterDeleteId) {
+          // When deleting a segment, the blob must always be set to ClusterDeleteId
+          return Result::BLOB_DOES_NOT_EXIST;
+        }
+
 
         if (location.segment == constants::NextFreeSegmentId) {
           // The client has creatd one or more segments in the database
