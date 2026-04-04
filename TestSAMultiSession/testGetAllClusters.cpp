@@ -48,7 +48,7 @@ TEST_CASE("GetAllClusters tests with default segment") {
   clusters = intoVector(db->GetAllClusters(0));
   REQUIRE_MESSAGE(clusters == (std::vector<cluster_id>{0}), "Expected 0 after aborting the transaction");
 
-  // Create blobs and delete one
+  // Create clusters and delete one
   REQUIRE(db->CreateCluster(0) == 1);
   REQUIRE(db->CreateCluster(0) == 2);
   REQUIRE(db->CreateCluster(0) == 3);
@@ -149,7 +149,7 @@ TEST_CASE("Querying all clusters should block cluster creation/deletion and segm
       Transaction::Commit(session);
     },
 
-    // The sixth client will simply write the default blob of cluster 1, whcih should not be blocked
+    // The sixth client will simply write the default blob of cluster 1, which should not be blocked
     [&]() {
       auto session = Session::Create();
       database_ptr db(Database::Open(session, "localhost", dbName));
@@ -285,7 +285,6 @@ TEST_CASE("Create segment sticky lock on ClusterListId") {
 
 
 
-
 TEST_CASE("GetAllClusters after CreateSegment in same transaction") {
   const auto dbName = "mem:testGetAllClustersAfterCreateSegment";
   auto session = Session::Create();
@@ -299,6 +298,3 @@ TEST_CASE("GetAllClusters after CreateSegment in same transaction") {
   REQUIRE_MESSAGE(clusters.size() == 1, "The returned cluster range should contain one cluster");
   REQUIRE_MESSAGE(*clusters.begin() == 0, "The new segment should only consist of the cluster 0");
 }
-
-
-//TODO: we could also test that segment creation implicitly grants locks on the blob id list of the default cluster in that segment

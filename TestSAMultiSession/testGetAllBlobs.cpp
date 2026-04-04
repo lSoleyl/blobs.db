@@ -233,9 +233,6 @@ TEST_CASE("Querying blob list") {
 }
 
 
-
-
-
 // This test will ensure that cluster creation will implcitly grant a lock (transferred as sticky lock into the next transaction) on the 
 // BlobListId of the created cluster.
 TEST_CASE("Create cluster sticky lock on BlobListId") {
@@ -270,6 +267,45 @@ TEST_CASE("Create cluster sticky lock on BlobListId") {
       CHECK(blobs == std::vector<blob_id>{0}); // Only the default blob should exist in the newly created cluster
     }
   });
+
+  REQUIRE_MESSAGE(firstClientCommit.load() < secondClientReadBlobs.load(), "The second client's read should have been blocked until the first client completes its transaction");
+}
+
+
+// This test will ensure that segment creation will implcitly grant a lock (transferred as sticky lock into the next transaction) on the 
+// BlobListId of the default cluster of the created segment.
+TEST_CASE("Create cluster sticky lock on BlobListId") {
+  const auto dbName = "mem:testCreateSegmentLockBlobList";
+  parallel::sync_point syncPoint(2);
+
+  std::atomic<std::chrono::high_resolution_clock::time_point> firstClientCommit, secondClientReadBlobs;
+  parallel::run({
+    // The first client will create a cluster, commit and then start a new transaction (thus holding the lock on the blob list)
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      CHECK(db->CreateSegment() == 1);
+      Transaction::Commit(session);
+
+      // Start a new transaction by reading an unrelated blob
+      CHECK(db->ReadString(0, 0, 0) == "");
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to measure the lock
+      firstClientCommit = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
+
+    // The second client will wait for the first client to finish preparations and then attempt to simply read the blob list of the default cluster
+    // in the created segment. This should be blocked for as long as the first client doesn't commit his transaction
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      syncPoint.wait();
+      auto blobs = intoVector(db->GetAllBlobs(1, 0));
+      secondClientReadBlobs = std::chrono::high_resolution_clock::now();
+      CHECK(blobs == std::vector<blob_id>{0}); // Only the default blob should exist in the newly created cluster
+    }
+    });
 
   REQUIRE_MESSAGE(firstClientCommit.load() < secondClientReadBlobs.load(), "The second client's read should have been blocked until the first client completes its transaction");
 }
