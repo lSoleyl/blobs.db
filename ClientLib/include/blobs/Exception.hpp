@@ -12,6 +12,11 @@ enum class ExceptionCode {
   DbAlreadyOpen,          // Attempt to open a already opened database a second time without closing it first
   DbCloseDuringTxn,       // Attempt to close a databse while a transaction is active
   DbNotOpen,              // Attempt to close a database, which wasn't opened or was already closed
+  TooManyDbsOpen,         // Attempt to open a database, but the client has already too many databases opened
+  DbDoesNotExist,         // Attempt to open a database with OpenMode::OpenFailIfNotExist and the database does not exist yet
+  DbAlreadyExists,        // Attempt to open a database with OpenMode::CreateFailIfExist and the database already exists
+  OverwriteOpenedDatabase,// Attempt to open a database with OpenMode::CreateAlways, but the database is already opened by a client
+  IllegalDatabasePath,    // Attempt to open database with a path, that is outside the database root directory
   LockTimeout,            // Lock timeout while waiting for attempting to read/write lock a blob
   Deadlock,               // Deadlock while attempting to read/write a blob
   BlobTooLarge,           // Attempted to write a blob, which is too large to write into the database
@@ -50,16 +55,56 @@ namespace exception {
 class DbAlreadyOpen : public Exception {
 public:
   DbAlreadyOpen(const std::string& dbName);
+
+  std::string dbName;
+};
+
+class TooManyDbsOpen : public Exception {
+public:
+  TooManyDbsOpen();
+};
+
+
+class DbDoesNotExist : public Exception {
+public:
+  DbDoesNotExist(const std::string& dbName);
+
+  std::string dbName;
+};
+
+class DbAlreadyExists : public Exception {
+public:
+  DbAlreadyExists(const std::string& dbName);
+
+  std::string dbName;
+};
+
+class OverwriteOpenedDatabase : public Exception {
+public:
+  OverwriteOpenedDatabase(const std::string& dbName);
+
+  std::string dbName;
+};
+
+class IllegalDatabasePath : public Exception {
+public:
+  IllegalDatabasePath(const std::string& dbName);
+
+  std::string dbName;
 };
 
 class DbCloseDuringTxn : public Exception {
 public:
   DbCloseDuringTxn(const std::string& dbName);
+
+  std::string dbName;
 };
 
 class DbNotOpen : public Exception {
 public:
   DbNotOpen(const std::string& dbName);
+
+  std::string dbName;
 };
 
 

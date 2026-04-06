@@ -12,7 +12,7 @@ namespace server {
 
 std::vector<std::unique_ptr<Database>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), useCount(0), loaded(false), stickyLockHandler(*this) {
+Database::Database(std::string name) : name(std::move(name)), useCount(0), stickyLockHandler(*this) {
   // In-Memory databases start with "mem:" prefix and are always loaded
   fileDatabase = !this->name._Starts_with("mem:");
 }
@@ -23,13 +23,20 @@ Database* Database::Get(std::string_view databaseName) {
 }
 
 
+Database::OpenResultStruct::OpenResultStruct(Database* db) : db(db), result(OpenResult::SUCCESS) {}
+Database::OpenResultStruct::OpenResultStruct(OpenResult result) : db(nullptr), result(result) {}
 
-void Database::Open(std::string_view databaseName, client_id clientId) {
+Database::OpenResultStruct::operator bool() const {
+  return result == OpenResult::SUCCESS;
+}
+
+Database::OpenResultStruct Database::Open(std::string_view databaseName, OpenMode openMode) {
   // Check whether database was already opened
 
   std::string resolvedDbPath;
   Database* database = nullptr;
-  if (databaseName._Starts_with("mem:")) {
+  bool memoryDatabase = databaseName._Starts_with("mem:");
+  if (memoryDatabase) {
     // An in-memory database: this is the simple case, just lookup the database in our database map
     database = Get(databaseName);
   } else {
@@ -47,37 +54,57 @@ void Database::Open(std::string_view databaseName, client_id clientId) {
 
     } else {
       // Failed to resolve path (which means a path outside of the db root dir has been specified)
-      Server::Instance().HandleDatabaseOpenResult(*database, network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED, clientId);
-      return;
+      return OpenResult::ILLEGAL_DATABASE_PATH;
+    }
+  }
+
+  // Handle simple open mode error conditions where database creation is not possible
+  if (database) {
+    if (openMode == OpenMode::CreateAlways) {
+      if (database->useCount > 0) {
+        // Cannot re-create a database that is in active use
+        return OpenResult::CANNOT_OVERWRITE_OPEN_DATABASE;
+      } else {
+        // Database is still known, but not in use (this cannot happen at the moment, but is possible if we introduce a delayed close)
+        // To simplify the logic below, simply close the database and reopen it.
+        database->Close();
+        database = nullptr;
+      }
+    } else if (openMode == OpenMode::CreateFailIfExist) {
+      // Database already exists -> fail
+      return OpenResult::DATABASE_ALREADY_EXISTS;
     }
   }
 
 
+  auto openResult = OpenResult::SUCCESS;
   if (!database) {
+    if (memoryDatabase && openMode == OpenMode::OpenFailIfNotExist) {
+      // Attempt to open a not opened memory database -> fail
+      return OpenResult::DATABASE_DOES_NOT_EXIST;
+    }
+
+
     // Database wasn't opened yet -> enter new database
     std::string nameStr(databaseName.data(), databaseName.size());
     database = databases.emplace_back(new Database(nameStr)).get();
     // The newly created database may already be fully loaded in case of an in-memory database
 
-    // Start the loading process if necessary
-    if (database->fileDatabase) {
-      database->LoadFromFile();
-    } else {
-      database->InitializeInMemory();
-    }
+    // Load the database from file or memry
+    openResult = database->fileDatabase ? database->LoadFromFile(openMode) : database->InitializeInMemory();
   }
 
-
-  if (database->loaded) {
-    // Database is already fully loaded -> call callback for client immediately
-    Server::Instance().HandleDatabaseOpenResult(*database, network::message::DatabaseOpenResponse::Result::SUCCESS, clientId);
-  } else {
-    // Database is in the process of being loaded -> register client for callback
-    database->clientsWaitingForLoading.push_back(clientId);
+  if (openResult != OpenResult::SUCCESS) {
+    // Loading failed -> close it and send error code back to the client
+    database->Close();
+    return openResult;
   }
-
+   
   // One more client is using this database
   ++database->useCount;
+
+  // Database sucessfully opened -> return it
+  return database;
 }
 
 
@@ -92,7 +119,6 @@ void Database::Release() {
 
 
 void Database::Close() {
-  TODO("In some scenarios the database load thread may not be done yet.");
   file.Close();
 
   // Delete this object by removing it from the databases list
@@ -102,7 +128,7 @@ void Database::Close() {
 
 
 
-void Database::InitializeInMemory() {
+Database::OpenResult Database::InitializeInMemory() {
   // Create the snapshot with segment cluster and blob
   auto snapshot = std::make_unique<Snapshot>();
   auto segment = snapshot->UpdateSegment(0, nullptr);
@@ -110,56 +136,65 @@ void Database::InitializeInMemory() {
 
   // Cluster 0 and Blob 0 are created implicitly
   this->snapshot = std::move(snapshot);
-  loaded = true;
+  return OpenResult::SUCCESS; // this operation can never fail
+}
+
+namespace {
+
+DWORD convertDbOpenMode(Database::OpenMode openMode) {
+  switch (openMode) {
+    case Database::OpenMode::CreateIfNotExist: return OPEN_ALWAYS;
+    case Database::OpenMode::OpenFailIfNotExist: return OPEN_EXISTING;
+    case Database::OpenMode::CreateFailIfExist: return CREATE_NEW;
+    case Database::OpenMode::CreateAlways: return CREATE_ALWAYS;
+  }
+
+  assert(false); // new unhandled open mode?
+  return 0;
+}
+
 }
 
 
 
-void Database::LoadFromFile() {
-  TODO("Maybe we should just load the database in the main thread... I mean how often do we open a new database? Is it really worth it?");
+Database::OpenResult Database::LoadFromFile(OpenMode openMode) {
+  TODO("We could create a database IO thread per database to avoid waiting for IO in the main thread. This would however complicate synchronization of operations.");
 
-
-  TODO("Maybe this should be the Database-Thread and we simply create one thread per database, which exclusively performs read/write operations on the database");
-  TODO("This could become the main IO thread for the database and we could also post tasks to it via an IOCompletionPort to process if the thread is idle");
-  std::thread loadThread([this]() {
-    try {
-      bool exists;
-      file = FileBackend::OpenExclusive(name.c_str(), exists);
-      if (!file) {
-        TODO("Check what the reason was and translate the most common ones into own error codes/messages to return");
-        throw std::exception("Failed to open/create database file for exclusive writing");
+  try {
+    bool emptyFile;
+    bool modeSpecificError;
+    file = FileBackend::OpenExclusive(name.c_str(), convertDbOpenMode(openMode), emptyFile, modeSpecificError);
+    if (!file) {
+      if (modeSpecificError) {
+        // The following error codes are only correct if modeSpecifcError is set, because they could also fail, because
+        // the file is already opened for exclusive access or because the process has insufficient permissions to open/create the file.
+        if (openMode == OpenMode::CreateFailIfExist) {
+          return OpenResult::DATABASE_ALREADY_EXISTS;
+        } else if (openMode == OpenMode::OpenFailIfNotExist) {
+          return OpenResult::DATABASE_DOES_NOT_EXIST;
+        }
       }
 
-      if (!exists) {
-        // Database doesn't exist yet -> initialize it
-        InitializeDatabaseFile();
-      }
-
-      // Now the database file exists -> read it and convert it into memory objects
-      ReadInitialFileDatabaseData();
-
-
-      // Notify the server about the completed database load
-      Server::Instance().GetCompletionPort().PostSimpleTask([this]() { CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::SUCCESS); });
-
-
-
-      TODO("Should we now loop and wait for our own completion port to support running tasks in this database thread?");
-      TODO("Or should we simply have a queue of load/write requests to process?");
-
-    } catch (std::exception& ex) {
-      // Opening the database failed for some reason
-      Server::Instance().GetCompletionPort().PostSimpleTask([this]() {
-        CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED);
-        // And close the database
-        Close();
-      });
+      TODO("Check what the reason was and translate the most common ones into own error codes/messages to return");
+      throw std::exception("Failed to open/create database file for exclusive writing");
     }
-  });
+
+    if (emptyFile) {
+      // Database doesn't exist yet -> initialize it
+      InitializeDatabaseFile();
+    }
+
+    // Now the database file exists -> read it and convert it into memory objects
+    ReadInitialFileDatabaseData();
 
 
-  // don't wait for this thread to complete
-  loadThread.detach();
+    // Database successfully loaded
+    return OpenResult::SUCCESS;
+
+  } catch (std::exception& ex) {
+    // Opening the database failed for some reason. The caller is responsible for calling Close()!
+    return OpenResult::DATABASE_OPEN_FAILED;
+  }
 }
 
 
@@ -295,13 +330,6 @@ void Database::ReadInitialFileDatabaseData() {
   this->freeList = std::move(freeList);
 }
 
-
-void Database::CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode) {
-  loaded = true;
-  for (auto clientId : clientsWaitingForLoading) {
-    Server::Instance().HandleDatabaseOpenResult(*this, completionCode, clientId);
-  }
-}
 
 Blob* Database::GetLoadedBlob(const BlobLocation& location) {
   return snapshot->GetLoadedBlob(location, file);

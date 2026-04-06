@@ -18,13 +18,29 @@ const char* Exception::what() const {
 namespace exception {
 
 DbAlreadyOpen::DbAlreadyOpen(const std::string& dbName) :
-  Exception("Attempted to open database: '" + dbName + "' a second time before closing it first", ExceptionCode::DbAlreadyOpen) {}
+  Exception("Attempted to open database: '" + dbName + "' a second time before closing it first", ExceptionCode::DbAlreadyOpen), dbName(dbName) {}
+
+TooManyDbsOpen::TooManyDbsOpen() : Exception("Too many databases already open. Close unused databases and retry.", ExceptionCode::TooManyDbsOpen) {}
+
+
+DbDoesNotExist::DbDoesNotExist(const std::string& dbName) : 
+  Exception("Attempted to open database: '" + dbName + "', but it does not exist", ExceptionCode::DbDoesNotExist), dbName(dbName) {}
+
+
+DbAlreadyExists::DbAlreadyExists(const std::string& dbName) : 
+  Exception("Attempted to create database: '" + dbName + "', but it already exists", ExceptionCode::DbAlreadyExists), dbName(dbName) {}
+
+OverwriteOpenedDatabase::OverwriteOpenedDatabase(const std::string& dbName) : 
+  Exception("Cannot create empty database: '" + dbName + "', becaus it is already opened", ExceptionCode::OverwriteOpenedDatabase), dbName(dbName) {}
+
+IllegalDatabasePath::IllegalDatabasePath(const std::string& dbName) : 
+  Exception("Attempted to open database: '" + dbName + "', but specified path is outside the databse root dir", ExceptionCode::IllegalDatabasePath), dbName(dbName) {}
 
 DbCloseDuringTxn::DbCloseDuringTxn(const std::string& dbName) : 
-  Exception("Attempted to close database: '" + dbName + "' while a transaction is still in progress", ExceptionCode::DbCloseDuringTxn) {}
+  Exception("Attempted to close database: '" + dbName + "' while a transaction is still in progress", ExceptionCode::DbCloseDuringTxn), dbName(dbName) {}
 
 DbNotOpen::DbNotOpen(const std::string& dbName) :
-  Exception("Attempted to close database: '" + dbName + "', but it was not opened or has already been closed", ExceptionCode::DbNotOpen) {}
+  Exception("Attempted to close database: '" + dbName + "', but it was not opened or has already been closed", ExceptionCode::DbNotOpen), dbName(dbName) {}
 
 LockTimeout::LockTimeout() : Exception("Waiting for a lock timed out", ExceptionCode::LockTimeout) {}
 

@@ -3,6 +3,7 @@
 #include <common/BlobLocation.hpp>
 #include <network/message/BlobsRead.hpp>
 #include <network/message/TransactionCommit.hpp>
+#include <network/message/DatabaseOpen.hpp>
 #include <network/message/DatabaseOpenResponse.hpp>
 
 #include "Segment.hpp"
@@ -19,18 +20,34 @@ class Database {
   class Snapshot;
   class FreeList;
 public:
+  using OpenMode = network::message::DatabaseOpen::OpenMode;
+  using OpenResult = network::message::DatabaseOpenResponse::Result;
+
   /** Fetch an already opened database or return nullptr
    *  The returned database may still be in a loading state.
    */
   static Database* Get(std::string_view databaseName);
 
-  /** Opens the the database for the specified client, which will always end with a call to Server::HandleDatabaseOpenResult() for that
-   *  client once the database is fully loaded (which may happen immediately).
+
+  /** The object returned by Database::Open(). It holds the database and the error/success code
+   */
+  struct OpenResultStruct {
+    OpenResultStruct(Database* db); // success
+    OpenResultStruct(OpenResult result); // failure;
+
+    Database* db;
+    OpenResult result;
+
+    explicit operator bool() const;
+  };
+
+  /** Opens the the database for the specified client and returns the fully loaded database or an error status in response.
+   *  The returned database's use count will have already been incremented in case of success.
    * 
    * @param databaseName the database name as specified in the message (may start with "mem:" to refer to an in memory database)
-   * @param clientId the client, which requested the database open and to which the reply should be sent
+   * @param openMode how the client requested to open/create the database
    */
-  static void Open(std::string_view databaseName, client_id clientId);
+  static OpenResultStruct Open(std::string_view databaseName, OpenMode openMode);
 
 
   /** Should be called by clients if they don't use this database anymore to delete it once the last client stopped using it.
@@ -158,13 +175,16 @@ private:
 
   /** Initializes the database to an in memory database structure with one segment, one cluster and one blob
    */
-  void InitializeInMemory();
+  OpenResult InitializeInMemory();
 
-  /** Called to load the database structure form file. 
-   *  Loading is performed in a separate thread to be able to use synchronous IO calles without blocking the server's main thread.
-   *  An IOCompletionHandler will be posted to the server's IOCompletionPort upon completion to notify all waiting clients about the completed database load.
+  /** Called to load the database structure form file.
+   *  Loading is performed synchronously in the main thread for now (opening a new file database will thus block the whole server).
+   * 
+   * @param openMode the opening/creation mode specified by the client
+   * 
+   * @return the database loading result code
    */
-  void LoadFromFile();
+  OpenResult LoadFromFile(OpenMode openMode);
 
   /** Used internally called by LoadFromFile to write the initial file structure of the database containing a single blob
    *  This should be called after the file has been created, but not yet initialized.
@@ -178,11 +198,6 @@ private:
    * @throws std::exception if the database is in an invalid state
    */
   void ReadInitialFileDatabaseData();
-
-
-  /** Run in the server's IO completion handler once loading succeeded or failed to mark the database as loaded and inform all waiting clients about the status.
-   */
-  void CompleteDatabaseOpen(network::message::DatabaseOpenResponse::Result completionCode);
 
 
   /** The database snapshot representing the current transaction state, which will be replaced by a new state on each transaction commit.
@@ -460,8 +475,6 @@ private:
   std::set<Lock, std::less<>> locks;
 
   bool fileDatabase; // true if the database is a file database (in contrast to a pure in-memory database)
-  bool loaded;       // true if the the FILE database has been fully loaded and is ready to be used by clients
-  std::vector<client_id> clientsWaitingForLoading; // Clients to notify once the database has completed loading to complete their OpenDatabse requests
   FileBackend file;
   file::Database fileHeader; // The current database file header (this is stored here to avoid having to read it to update the database) - the header state is undefined for in memory databases
   int useCount;      // How many clients are currently using this database - the Database is closed once this count reaches 0

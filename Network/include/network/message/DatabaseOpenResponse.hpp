@@ -14,8 +14,12 @@ struct DatabaseOpenResponse : public Message {
   enum class Result : uint8_t {
     SUCCESS,
     DATABASE_OPEN_FAILED,
+    ILLEGAL_DATABASE_PATH,  // Specified path is outside of the database root directory
     DATABASE_ALREADY_OPEN,
-    TOO_MANY_DATABASES_OPEN
+    TOO_MANY_DATABASES_OPEN,
+    DATABASE_DOES_NOT_EXIST, // When opening with OpenMode::OpenFailIfNotExist and the database does not exist
+    DATABASE_ALREADY_EXISTS, // When opening with OpenMode::CreateFailIfExist and the database already exists
+    CANNOT_OVERWRITE_OPEN_DATABASE, // When opening with OpenMode::CreateAlways
   };
 
 

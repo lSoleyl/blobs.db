@@ -26,7 +26,7 @@ FileBackend::~FileBackend() noexcept {
 }
 
 
-FileBackend FileBackend::OpenExclusive(const char* filePath, bool& exists) {
+FileBackend FileBackend::OpenExclusive(const char* filePath, DWORD openMode, bool& emptyFile, bool& modeSpecificError) {
   
   auto utf16Path = encoding::ToUTF16(filePath);
 
@@ -43,11 +43,25 @@ FileBackend FileBackend::OpenExclusive(const char* filePath, bool& exists) {
     // for now no FILE_FLAG_OVERLAPPED as we want to perform serial reads/writes in this thread alone
     // We don't specify FILE_FLAG_NO_BUFFERING as it requires us to always read/write whole sectors, which would only complicate things
     // We don't specify FILE_FLAG_WRITE_THROUGH because we only need to flush the writes once we perform the final pointer update (or right before and right after).
-    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS,
+    openMode, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_RANDOM_ACCESS,
     NULL
   );
 
-  exists = (result && GetLastError() == ERROR_ALREADY_EXISTS);
+  auto lastError = GetLastError();
+
+  if (result) {
+    // Specify all the combinations which result in an empty file being opened
+    emptyFile = (openMode == CREATE_ALWAYS && lastError == ERROR_ALREADY_EXISTS)
+             || (openMode == CREATE_NEW)
+             || (openMode == OPEN_ALWAYS && lastError == 0)
+             || (openMode == TRUNCATE_EXISTING);
+  } else {
+    // For more precise error codes in the caller
+    modeSpecificError = (openMode == CREATE_NEW && lastError == ERROR_FILE_EXISTS)
+                     || (openMode == OPEN_EXISTING && lastError == ERROR_FILE_NOT_FOUND)
+                     || (openMode == TRUNCATE_EXISTING && lastError == ERROR_FILE_NOT_FOUND);
+  }
+
   return result;
 }
 

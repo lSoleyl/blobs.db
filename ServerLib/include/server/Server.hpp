@@ -42,11 +42,6 @@ public:
    */
   network::IOCompletionPort& GetCompletionPort();
 
-
-  /** When a database completes/fails loading this will be called for each client, which registered itself to the database
-   */
-  void HandleDatabaseOpenResult(Database& database, network::message::DatabaseOpenResponse::Result result, client_id clientId);
-
   /** Resolves the passed database name into an absolute path base don the configured dbRootDir.
    *  Returns an empty optional if databaseName refers to a path located outside of dbRootDir.
    */

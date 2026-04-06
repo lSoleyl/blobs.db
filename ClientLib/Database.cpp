@@ -140,7 +140,7 @@ Database::~Database() {
 }
 
 
-Database* Database::Open(const Session::Handle& session, const char* connectionStringBegin, size_t connectionStringLen) {
+Database* Database::Open(const Session::Handle& session, const char* connectionStringBegin, size_t connectionStringLen, OpenMode openMode) {
   std::string_view connectionString(connectionStringBegin, connectionStringLen);
 
   auto slashPos = connectionString.find('/');
@@ -165,18 +165,26 @@ Database* Database::Open(const Session::Handle& session, const char* connectionS
     }
   }
 
-  return Open(session, hostName, databaseName, port);
+  return Open(session, hostName, databaseName, openMode, port);
 }
 
 
-Database* Database::Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen) {
+Database* Database::Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen, OpenMode openMode) {
   // Simply encode into UTF-8 and then call the regular version
   std::string u8ConnectionString = encoding::ToUTF8(std::wstring_view(connectionString, connectionStringLen));
-  return Open(session, u8ConnectionString.data(), u8ConnectionString.length());
+  return Open(session, u8ConnectionString.data(), u8ConnectionString.length(), openMode);
 }
 
 
-Database* Database::Open(const Session::Handle& session, const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, int port) {
+Database* Database::Open(const Session::Handle& session, const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, OpenMode openMode, int port) {
+  // Ensure direct conversion is possible
+  static_assert(static_cast<int>(OpenMode::CreateIfNotExist) == static_cast<int>(network::message::DatabaseOpen::OpenMode::CreateIfNotExist));
+  static_assert(static_cast<int>(OpenMode::OpenFailIfNotExist) == static_cast<int>(network::message::DatabaseOpen::OpenMode::OpenFailIfNotExist));
+  static_assert(static_cast<int>(OpenMode::CreateFailIfExist) == static_cast<int>(network::message::DatabaseOpen::OpenMode::CreateFailIfExist));
+  static_assert(static_cast<int>(OpenMode::CreateAlways) == static_cast<int>(network::message::DatabaseOpen::OpenMode::CreateAlways));
+
+
+
   std::string_view hostName(hostNameData, hostNameLen);
   std::string_view databaseName(databaseNameData, databaseNameLen);
 
@@ -186,7 +194,7 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
   auto connectionId = network.Get(hostName, port);
 
   auto& client = network.Get(connectionId);
-  client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName));
+  client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName, static_cast<network::message::DatabaseOpen::OpenMode>(openMode)));
 
   // Await the DatabaseOpenResponse
   auto message = network.ExpectMessage<network::message::DatabaseOpenResponse>(client);
@@ -198,12 +206,29 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
   // Opening the database failed for some reason -> release the network connection to not leak it since
   // no database has been created to hold on to it.
   network.Release(connectionId);
-  if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED) {
-    throw Exception("Failed to open database!");
-  } else if (message->result == network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN) {
-    throw Exception("Too many databases already open. Close unused databases and retry.");
-  } else if (message->result == network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN) {
-    throw exception::DbAlreadyOpen(std::string(databaseName));
+
+  switch (message->result) {
+    case network::message::DatabaseOpenResponse::Result::DATABASE_OPEN_FAILED:
+      TODO("Get more details for the failure");
+      throw Exception("Failed to open database!");
+
+    case network::message::DatabaseOpenResponse::Result::ILLEGAL_DATABASE_PATH:
+      throw exception::IllegalDatabasePath(std::string(databaseName));
+
+    case network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN:
+      throw exception::DbAlreadyOpen(std::string(databaseName));
+
+    case network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN:
+      throw exception::TooManyDbsOpen();
+
+    case network::message::DatabaseOpenResponse::Result::DATABASE_DOES_NOT_EXIST:
+      throw exception::DbDoesNotExist(std::string(databaseName));
+
+    case network::message::DatabaseOpenResponse::Result::DATABASE_ALREADY_EXISTS:
+      throw exception::DbAlreadyExists(std::string(databaseName));
+
+    case network::message::DatabaseOpenResponse::Result::CANNOT_OVERWRITE_OPEN_DATABASE:
+      throw exception::OverwriteOpenedDatabase(std::string(databaseName));
   }
   
   assert(false); // unhandled result type
@@ -211,10 +236,10 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
   return nullptr;
 }
 
-Database* Database::Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, int port) {
+Database* Database::Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, OpenMode openMode, int port) {
   // Simply convert the UTF-16 database name into UTF-8 and call the regular Open() function
   auto u8DatabaseName = encoding::ToUTF8(std::wstring_view(databaseName, databaseNameLen));
-  return Database::Open(session, hostName, hostNameLen, u8DatabaseName.data(), u8DatabaseName.length(), port);
+  return Database::Open(session, hostName, hostNameLen, u8DatabaseName.data(), u8DatabaseName.length(), openMode, port);
 }
 
 

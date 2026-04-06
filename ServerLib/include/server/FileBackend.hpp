@@ -24,11 +24,14 @@ public:
    *  the file backend object. 
    *  
    * @param filePath the utf-8 encoded file path to open
-   * @param exists out parameter, which is set to true if the file alredy exists
+   * @param openMode the open mode to pass into CreateFileW
+   * @param emptyFile out parameter, which is set to true if opening was successful and the opened file is empty (new/truncated)
+   * @param modeSpecificError if opening fails, this will be set to true if the error is caused by the opening mode 
+   *                          ie. fail because we only open a file, which does not exist or want to create a new file, but it already exists.
    * 
    * @return the file backend or an uninitialized file backend if opening the file failed
    */
-  static FileBackend OpenExclusive(const char* filePath, bool& exists);
+  static FileBackend OpenExclusive(const char* filePath, DWORD openMode, bool& emptyFile, bool& modeSpecificError);
 
   /** Evaluates to true if file handle is initialized
    */

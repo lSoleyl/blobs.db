@@ -49,46 +49,69 @@ enum class Lock {
 
 class Database {
 public:
+  /** This enumeration can be passed to Database::Open() to control how the database is opened
+   */
+  enum class OpenMode {
+    /** Open database and create the database if it doesn't exist yet (default)
+     */
+    CreateIfNotExist,
+
+    /** Try to open the database and throw an exception if the database does not exist yet
+     */
+    OpenFailIfNotExist,
+
+    /** Create a new database. Throws an exception if the database already exists
+     */
+    CreateFailIfExist,
+
+    /** Always creates a new database. An existing database is overwritten with an empty database (WARNING: potential data loss!).
+     *  This operation will fail if this database is currently opened by any other client.
+     */
+    CreateAlways
+  };
+
+
   /** Opens a new database in the global session via the given connection string of the following form:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be encoded in ASCII, the database name supports UTF-8 encoded file paths.
    */
-  static Database* Open(std::string_view connectionString) {
-    return Open(Session::GetGlobalSession(), connectionString.data(), connectionString.size());
+  static Database* Open(std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(Session::GetGlobalSession(), connectionString.data(), connectionString.size(), openMode);
   }
 
   /** Opens a new database in the specified session via the given connection string of the following form:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be encoded in ASCII, the database name supports UTF-8 encoded file paths.
    */
-  static Database* Open(const Session::Handle& session, std::string_view connectionString) {
-    return Open(session, connectionString.data(), connectionString.size());
+  static Database* Open(const Session::Handle& session, std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(session, connectionString.data(), connectionString.size(), openMode);
   }
 
   /** Opens a new database in the global session via the given unicode encoded connection string of the following form:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be made up of only ASCII characters while the database name supports any unicode character.
    */
-  static Database* Open(std::wstring_view u16ConnectionString) {
-    return Open(Session::GetGlobalSession(), u16ConnectionString.data(), u16ConnectionString.size());
+  static Database* Open(std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(Session::GetGlobalSession(), u16ConnectionString.data(), u16ConnectionString.size(), openMode);
   }
 
   /** Opens a new database in the specified session via the given unicode encoded connection string of the following form:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be made up of only ASCII characters while the database name supports any unicode character.
    */
-  static Database* Open(const Session::Handle& session, std::wstring_view u16ConnectionString) {
-    return Open(session, u16ConnectionString.data(), u16ConnectionString.size());
+  static Database* Open(const Session::Handle& session, std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(session, u16ConnectionString.data(), u16ConnectionString.size(), openMode);
   }
 
   /** Opens a new database in the global session at the specified hostName with the given database name and optional port to use.
    * 
    * @param database hostname/ip address to connect to (ASCII encoded)
    * @param databaseName path/filename of the database to open (UTF-8 encoded)
+   * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
    */
-  static Database* Open(std::string_view hostName, std::string_view databaseName, int port = 8108) {
-    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), port);
+  static Database* Open(std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port);
   }
 
   /** Opens a new database in the sepcified session at the specified hostName with the given database name and optional port to use.
@@ -96,20 +119,22 @@ public:
    * @param session the session to open the database in
    * @param database hostname/ip address to connect to (ASCII encoded)
    * @param databaseName path/filename of the database to open (UTF-8 encoded)
+   * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
    */
-  static Database* Open(const Session::Handle& session, std::string_view hostName, std::string_view databaseName, int port = 8108) {
-    return Open(session, hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), port);
+  static Database* Open(const Session::Handle& session, std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(session, hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port);
   }
 
   /** Opens a new database in the global session at the specified hostName with the given database name and optional port to use.
    *
    * @param database hostname/ip address to connect to (ASCII encoded)
    * @param databaseName path/filename of the database to open (UTF-16 encoded)
+   * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
    */
-  static Database* Open(std::string_view hostName, std::wstring_view u16DatabaseName, int port = 8108) {
-    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), port);
+  static Database* Open(std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port);
   }
 
   /** Opens a new database in the specified session at the specified hostName with the given database name and optional port to use.
@@ -117,10 +142,11 @@ public:
    * @param session the session to open the database in
    * @param database hostname/ip address to connect to (ASCII encoded)
    * @param databaseName path/filename of the database to open (UTF-16 encoded)
+   * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
    */
-  static Database* Open(const Session::Handle& session, std::string_view hostName, std::wstring_view u16DatabaseName, int port = 8108) {
-    return Open(session, hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), port);
+  static Database* Open(const Session::Handle& session, std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(session, hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port);
   }
 
 
@@ -329,22 +355,22 @@ private:
 
   /** Private overload exported by the DLL and used by the std::string_view overload.
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* connectionString, size_t connectionStringLen);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* connectionString, size_t connectionStringLen, OpenMode openMode);
 
   /** Private overload exported by the DLL to support UTF-16 encoded connection strings
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen, OpenMode openMode);
 
 
   /** Private overload exported by the DLL and used by the std::string_view overload. 
    *  We don't export string_view through the interface to avoid the risk of ABI incompatibilities
    *  for classes like std::string and std::string_view
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const char* databaseName, size_t databaseNameLen, int port = 8108);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const char* databaseName, size_t databaseNameLen, OpenMode openMode, int port = 8108);
   
   /** Another private overload but for UTF16 encoded database paths
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, int port = 8108);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, OpenMode openMode, int port = 8108);
 
   /** Just creates the new blob without writing data into. After creation the client will be considered holding a write lock on that blob.
    *  This method can be called multiple times in a single transaction and only the first call (for this cluster) will actually require communication

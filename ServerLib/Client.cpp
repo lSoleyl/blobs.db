@@ -41,7 +41,7 @@ bool Client::HasDatabaseOpened(Database& db) const {
 
 
 database_id Client::OpenDatabase(Database& db) {
-  TODO("Increment database use count");
+  // The database use count is not modified here, this happens in Database::Open()
 
   // First find a nullptr to use inside 
   auto pos = std::find_if(openDatabases.begin(), openDatabases.end(), [](const DatabaseLocks& entry) { return entry.database == nullptr; });

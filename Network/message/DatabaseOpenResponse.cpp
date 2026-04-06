@@ -26,12 +26,28 @@ std::ostream& operator<<(std::ostream& out, const DatabaseOpenResponse& message)
       out << "DATABASE_OPEN_FAILED";
       break;
 
+    case DatabaseOpenResponse::Result::ILLEGAL_DATABASE_PATH:
+      out << "ILLEGAL_DATABASE_PATH";
+      break;
+
     case DatabaseOpenResponse::Result::DATABASE_ALREADY_OPEN:
       out << "DATABASE_ALREADY_OPEN";
       break;
 
     case DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN:
       out << "TOO_MANY_DATABASES_OPEN";
+      break;
+
+    case DatabaseOpenResponse::Result::DATABASE_DOES_NOT_EXIST:
+      out << "DATABASE_DOES_NOT_EXIST";
+      break;
+
+    case DatabaseOpenResponse::Result::DATABASE_ALREADY_EXISTS:
+      out << "DATABASE_ALREADY_EXISTS";
+      break;
+
+    case DatabaseOpenResponse::Result::CANNOT_OVERWRITE_OPEN_DATABASE:
+      out << "CANNOT_OVERWRITE_OPEN_DATABASE";
       break;
 
     default:
