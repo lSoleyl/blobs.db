@@ -51,7 +51,7 @@ FileBackend FileBackend::OpenExclusive(const char* filePath, DWORD openMode, boo
 
   if (result) {
     // Specify all the combinations which result in an empty file being opened
-    emptyFile = (openMode == CREATE_ALWAYS && lastError == ERROR_ALREADY_EXISTS)
+    emptyFile = (openMode == CREATE_ALWAYS)
              || (openMode == CREATE_NEW)
              || (openMode == OPEN_ALWAYS && lastError == 0)
              || (openMode == TRUNCATE_EXISTING);
