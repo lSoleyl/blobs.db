@@ -394,7 +394,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
 
     // In case the client created some blobs, this vector will be filled with ranges of created blobs
     // This range of created blobs is tracked per database
-    BlobLocationRanges createdBlobs;
+    BlobCreationRanges createdBlobs;
 
     // Track implicitly granted write locks for this database
     auto& implicitDbWriteLocks = implicitWriteLocks.emplace_back(databaseId, std::vector<BlobLocation>{}).second;
@@ -411,7 +411,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
 
         // Use AllLocksForLocation() to also handle the case of DeleteClusterId, which requires the client
         // to hold locks on the whole cluster.
-        if (!AllLocksForLocation(*database, location, [&](const BlobLocation& location) { return database->ClientOwnsWriteLock(client.id, location) || createdBlobs.Encompasses(location); }, &createdBlobs)) {
+        if (!AllLocksForLocation(*database, location, [&](const BlobLocation& location) { return database->ClientOwnsWriteLock(client.id, location) || createdBlobs.EncompassesWithBlobCreation(location, *database); }, &createdBlobs)) {
           // If the client doesn't own a write lock for a location we want to write to 
           // AND the client doesn't own the write lock implicitly by creating the blob/cluster/segment, then 
           // the client is missing the required lock for this commit and this is an illegal commit.
@@ -539,7 +539,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
           }
 
           // Add the range to the list of created blobs to not fail our lock check for newly created blobs
-          createdBlobs.Enter(BlobLocationRange(location.segment, location.cluster, nextFreeBlobId, newNextFreeBlobId));
+          createdBlobs.NextFreeBlobIdCommitted(location.segment, location.cluster, newNextFreeBlobId);
         }
       }
     }

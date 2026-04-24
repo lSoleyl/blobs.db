@@ -157,6 +157,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="testCreateBlob.cpp" />
+    <ClCompile Include="testCreateBlobAt.cpp" />
     <ClCompile Include="testDbRootDir.cpp" />
     <ClCompile Include="testDeadlock.cpp" />
     <ClCompile Include="testDeleteCluster.cpp" />

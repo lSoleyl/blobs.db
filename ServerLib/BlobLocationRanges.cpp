@@ -43,7 +43,12 @@ bool BlobLocationRanges::EncompassesCreatedSegment(segment_id segment) const {
 
 
 void BlobLocationRanges::Enter(const BlobLocationRange& range) {
-  ranges.push_back(range);
+  if (!ranges.empty() && ranges.back().end == range.begin) {
+    // join the two ranges together instead of adding a new one
+    ranges.back().end = range.end;
+  } else {
+    ranges.push_back(range);
+  }
 }
 
 
@@ -84,6 +89,49 @@ BlobLocationRanges::const_iterator BlobLocationRanges::begin() const {
 BlobLocationRanges::const_iterator BlobLocationRanges::end() const {
   return ranges.end();
 }
+
+
+
+void BlobCreationRanges::NextFreeBlobIdCommitted(segment_id segment, cluster_id cluster, blob_id nextFreeBlobId) {
+  committedNextFreeBlobIds.emplace_back(segment, cluster, nextFreeBlobId);
+}
+
+
+bool BlobCreationRanges::TryCreateBlob(const BlobLocation& location) {
+  auto pos = std::find_if(committedNextFreeBlobIds.begin(), committedNextFreeBlobIds.end(), [&](auto& entry) { return entry.segment == location.segment && entry.cluster == location.cluster; });
+  if (pos == committedNextFreeBlobIds.end() || pos->blob <= location.blob) {
+    // No matching NextFreeBlobId committed or committed blob id is higher than the committed NextFreeBlobId
+    return false;
+  }
+
+  // Mark blob as created
+  Enter(BlobLocationRange(location.segment, location.cluster, location.blob));
+  return true;
+}
+
+
+
+bool BlobCreationRanges::EncompassesWithBlobCreation(const BlobLocation& location, Database& database) {
+  if (Encompasses(location)) {
+    return true;
+  }
+
+  if (EncompassesCreatedCluster(location.segment, location.cluster)) {
+    // Cluster does not exist, but it has been created by the client during this commit
+    // If the client committed a matching NextFreeBlobId then we can also grant the lock
+    return TryCreateBlob(location);
+  } else if (auto cluster = database.GetLoadedCluster(location.segment, location.cluster)) {
+    FIXME("This codepath probably slows down the commit of lots of default created blobs...");
+    FIXME("We could track the previous NextFreeBlobId as well to be able to perform a quicker check whether the creation request is valid");
+
+    // The cluster exists
+    // If the blob doesn't yet exist, but the client committed a matching NextFreeBlobId then he also implicitly holds the matching lock
+    return !cluster->GetBlob(location.blob) && TryCreateBlob(location);
+  }
+
+  return false;
+}
+
 
 
 }

@@ -21,6 +21,7 @@ enum class ExceptionCode {
   Deadlock,               // Deadlock while attempting to read/write a blob
   BlobTooLarge,           // Attempted to write a blob, which is too large to write into the database
   BlobDoesNotExist,       // Attempt to read/write a blob, which doesn't exist in the database
+  BlobAlreadyExists,      // Attempted to create a blob that already exists
   BlobDeleted,            // Attempted to read/write a blob, which has been deleted in the current transaction
   ClusterDoesNotExist,    // Attempt to delete a cluster, which does not exist in the database
   ClusterDeleted,         // Attempt to read/write/create/delete a blob in a cluster, which has already been deleted
@@ -128,6 +129,11 @@ public:
 class BlobDoesNotExist : public Exception {
 public:
   BlobDoesNotExist();
+};
+
+class BlobAlreadyExists : public Exception {
+public:
+  BlobAlreadyExists();
 };
 
 class BlobDeleted : public Exception {

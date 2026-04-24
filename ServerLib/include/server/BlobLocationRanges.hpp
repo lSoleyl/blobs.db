@@ -1,6 +1,7 @@
 #pragma once
 
 #include <common/BlobLocation.hpp>
+#include "Database.hpp"
 
 namespace blobs::server {
 
@@ -76,5 +77,38 @@ public:
 private:
   std::vector<BlobLocationRange> ranges;
 };
+
+/** This data structure is used during commit message validation to keep track of all created blob ranges and validate that a client is 
+ *  allowed to create a certain blob. Implementing this structure was necessary to support CreateBlobAt()
+ */
+class BlobCreationRanges : public BlobLocationRanges {
+public:
+  /** This method is used to track all committed NextFreeBlobId blobs to be able to validate whether a 
+   *  blob creation is allowed or not.
+   */
+  void NextFreeBlobIdCommitted(segment_id segment, cluster_id cluster, blob_id nextFreeBlobId);
+
+
+  /** This method will validate that a NextFreeBlobId has been committed for the corresponding cluster and
+   *  that the blob id doesn't exceed the committed NextFreeBlobId and if so will also enter this location as created blob
+   *  to later transfer a sticky write lock to the client.
+   */
+  bool TryCreateBlob(const BlobLocation& location);
+
+
+  /** Returns true if the location is encompassed by any created blob range.
+   *  If not then it will check whether the blob does not exist in the database and can be created according to the committed NextFreeBlobId.
+   *  If so then the location will be marked in the created ranges to transfer a sticky lock to the client.
+   */
+  bool EncompassesWithBlobCreation(const BlobLocation& location, Database& database);
+
+private:
+  /** All committed NextFreeBlobIds this is used to determine whether a specific blob may be created by the client.
+   */
+  std::vector<BlobLocation> committedNextFreeBlobIds;
+};
+
+
+
 
 }

@@ -597,8 +597,11 @@ void Transaction::CreateBlob(Database* database, const BlobLocation& location) {
   assert(session->OwnsLock());
   auto& dbState = state->AccessDatabaseState(database);
 
-  // We cannot create a blob that has been marked for deletion
-  assert(!dbState.IsBlobDeleted(location)); 
+  // We cannot create a blob in a deleted cluster
+  assert(!dbState.IsClusterDeleted(location.segment, location.cluster)); 
+
+  // In case we marked this blob for deletion in this transaction -> unmark it
+  dbState.deletedBlobs.erase(location);
 
   // Mark the blob as created
   dbState.createdBlobs.insert(location);

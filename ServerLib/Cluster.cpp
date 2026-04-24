@@ -15,6 +15,12 @@ Cluster::Cluster(const Cluster& other, commit_id commitId) : id(other.id), commi
   nextFreeBlobIdBlob.SetIdContent(nextFreeBlobId);
 }
 
+
+Blob* Cluster::GetBlob(blob_id blob) {
+  auto pos = blobs.find(blob);
+  return (pos != blobs.end()) ? pos->second.get() : nullptr;
+}
+
 Blob* Cluster::GetLoadedBlob(blob_id blob, const FileBackend& file) {
   if (blob == constants::NextFreeBlobId) {
     // special blob holding the next free blob id

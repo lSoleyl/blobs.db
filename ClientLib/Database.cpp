@@ -456,6 +456,38 @@ blob_id Database::CreateBlob(segment_id segment, cluster_id cluster, const void*
 
 
 
+
+void Database::CreateBlobAt(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
+  // We perform this size check before actually creating the blob or else the exception is thrown after the blob 
+  // has already been logically created, so we sadly have to perform this size check twice, but the alternative would be worse.
+  if (blobSize > constants::MaxBlobSize) {
+    throw exception::BlobTooLarge(blobSize);
+  }
+
+  if (segment > constants::MaxSegmentId) {
+    throw Exception("Invalid segment id");
+  }
+
+  if (cluster > constants::MaxClusterId) {
+    throw Exception("Invalid cluster id");
+  }
+
+  if (blob > constants::MaxBlobId) {
+    throw Exception("Invalid blob id");
+  }
+  
+  // Only one thread at a time may create a blob
+  auto sessionLock = session->Lock();
+
+  // Create the blob and write the data into it
+  CreateBlobInternalAt(segment, cluster, blob);
+  WriteBlobInternal(segment, cluster, blob, blobData, blobSize);
+}
+
+
+
+
+
 cluster_id Database::CreateCluster(segment_id segment) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");
@@ -866,6 +898,49 @@ blob_id Database::CreateBlobInternal(segment_id segment, cluster_id cluster) {
   // Now we logically created the blob and we implicitly created the write lock, now the caller just has to actually write some
   // blob data for this blob or else it won't actually be created on transaction commit.
   return newLocation.blob;
+}
+
+void Database::CreateBlobInternalAt(segment_id segment, cluster_id cluster, blob_id blob) {
+  // Acquire a write lock on the NextFreeBlobId id, which will allow us to create blobs in this cluster.
+  auto [data, size] = ReadBlobInternal(segment, cluster, constants::NextFreeBlobId, Lock::Write);
+  assert(size == sizeof(blob_id)); // This blob only consists of the blob_id value
+
+  auto transaction = Transaction::Get(session, connectionId); // ReadBlobInternal() has already started a transaction if not already
+  // When acquring the lock on NextFreeBlobId we are implicitly acquring also the lock on the cluster's list of all blobs
+  // This implicit locking is performed by the server.
+  transaction->AcquiredLock(this, BlobLocation(segment, cluster, constants::BlobListId), Transaction::LockMode::Write);
+
+
+  blob_id nextFreeBlobId = *static_cast<const blob_id*>(data);
+  BlobLocation newLocation(segment, cluster, blob);
+  if (blob >= nextFreeBlobId) {
+    // We must update nextFreeBlobId as we just created a blob with an id equal or higher to it
+    nextFreeBlobId = blob + 1;
+  } else {
+    // We are attempting to create a blob in a range where blobs already exist, so we must validate that it doesn't yet exist!
+    // We perform this check on the client as this has the advantage of requiring only one server message per transaction.
+    // Creating this range on each call to CreateBlobAt() may not be optimal and a certain overhead compared to the regular CreatBlob()
+    auto allBlobs = GetAllBlobs(segment, cluster);
+    
+    // Perform binary search to speed up search across huge ranges
+    auto pos = std::lower_bound(allBlobs.begin(), allBlobs.end(), blob);
+    if (pos != allBlobs.end() && *pos == blob) {
+      // This blob already exists
+      throw exception::BlobAlreadyExists();
+    }
+  }
+
+  // Always write back the NextFreeBlobId to the server even if it didn't change. This simplifies commit validation a lot.
+  WriteBlobInternal(segment, cluster, constants::NextFreeBlobId, &nextFreeBlobId, sizeof(blob_id));
+
+  // The blob is now logically created, so we also implicitly hold a write lock to it
+  transaction->AcquiredLock(this, newLocation, Transaction::LockMode::Write);
+
+  // Mark the blob as created during this transaction
+  transaction->CreateBlob(this, newLocation);
+
+  // Now we logically created the blob and we implicitly created the write lock, now the caller just has to actually write some
+  // blob data for this blob or else it won't actually be created on transaction commit.
 }
 
 

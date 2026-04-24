@@ -19,6 +19,13 @@ public:
    */
   Cluster(const Cluster& other, commit_id commitId);
 
+  /** Returns the blob or nullptr if it doesn't exist.
+   *  The blob is returned in the state it is in without loading it.
+   *
+   * @param blob the id of the blob to retrieve
+   */
+  Blob* GetBlob(blob_id blob);
+
   /** Returns the blob or nullptr if it doesn't exist
    *  This will also load the blob from the database file into memory if not already done.
    * 

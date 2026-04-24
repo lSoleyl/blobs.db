@@ -221,7 +221,7 @@ public:
     return CreateBlob(segment, cluster, string.data(), string.size() * sizeof(CharT));
   }
 
-  /** Convenience method to pass std::string directly wihtout the need to manually convert it into std::string_view.
+  /** Convenience overload to pass std::string directly wihtout the need to manually convert it into std::string_view.
    *  The compiler cannot derive the template arguments for std::basic_string_view from std::basic_string's type
    */
   template<typename CharT = char, typename Traits = std::char_traits<CharT>, typename Alloc = std::allocator<CharT>>
@@ -243,6 +243,38 @@ public:
    * @throws exception::BlobLimitReached if no more blobs can be created in the specified cluster
    */
   BLOBS_EXPORT blob_id CreateBlob(segment_id segment, cluster_id cluster, const void* blobData, size_t blobSize);
+
+
+  /** Convenience method to create a blob from the given string content at a specified location
+   */
+  template<typename CharT = char, typename Traits = std::char_traits<CharT>>
+  void CreateStringAt(segment_id segment, cluster_id cluster, blob_id blob, std::basic_string_view<CharT, Traits> string) {
+    CreateBlobAt(segment, cluster, blob, string.data(), string.size() * sizeof(CharT));
+  }
+
+  /** Convenience overload to pass std::string directly wihtout the need to manually convert it into std::string_view.
+   *  The compiler cannot derive the template arguments for std::basic_string_view from std::basic_string's type
+   */
+  template<typename CharT = char, typename Traits = std::char_traits<CharT>, typename Alloc = std::allocator<CharT>>
+  void CreateStringAt(segment_id segment, cluster_id cluster, blob_id blob, const std::basic_string<CharT, Traits, Alloc>& string) {
+    CreateBlobAt(segment, cluster, blob, string.data(), string.size() * sizeof(CharT));
+  }
+
+  /** Convenience overload to allow the compiler to determine the template type from the argument
+   */
+  template<typename CharT = char>
+  void CreateStringAt(segment_id segment, cluster_id cluster, blob_id blob, const CharT* string) {
+    CreateStringAt(segment, cluster, blob, std::basic_string_view<CharT>(string));
+  }
+
+
+  /** Creates a new blob at the specified blob id and writes the passed data into it. This method may also be used to re-create previously deleted blobs.
+   *  This will influence the cluster's next free blob id and affect the id returned by CreateBlob().
+   * 
+   * @throws exception::BlobAlreadyExists when calling this on an already existing blob
+   */
+  BLOBS_EXPORT void CreateBlobAt(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
+
 
   /** Creates a new cluster in the specified segment. The cluster will be initialized with an empty blob 0, which can be written to afterwards.
    */
@@ -377,6 +409,10 @@ private:
    *  with the database server to facilitate efficient creation of multiple blobs in a single transaction.
    */
   blob_id CreateBlobInternal(segment_id segment, cluster_id cluster);
+
+  /** Creates a new blob without writing data into it at the specified location.
+   */
+  void CreateBlobInternalAt(segment_id segment, cluster_id cluster, blob_id blob);
 
 
   /** This internal helper method will acquire/upgrade to a write lock without requesting the blob's contents.
