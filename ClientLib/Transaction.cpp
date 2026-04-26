@@ -600,11 +600,15 @@ void Transaction::CreateBlob(Database* database, const BlobLocation& location) {
   // We cannot create a blob in a deleted cluster
   assert(!dbState.IsClusterDeleted(location.segment, location.cluster)); 
 
-  // In case we marked this blob for deletion in this transaction -> unmark it
-  dbState.deletedBlobs.erase(location);
-
-  // Mark the blob as created
-  dbState.createdBlobs.insert(location);
+  if (!dbState.deletedBlobs.erase(location)) {
+    // The blob was not deleted in this transaction, so mark it as created
+    dbState.createdBlobs.insert(location);
+  }
+  // Else the blob has been deleted in this same transaction and now re-created... 
+  // This is equivalent to simply performing a write on that blob.
+  // Since CreateBlobInternal always calls Transaction::WriteBlob() after Transaction::CreateBlob() 
+  // we know for sure that this blob will be entered into dbState.writtenBlobs by that call.
+  // We cannot enter it here, because we don't know the data to write into the blob.
 }
 
 void Transaction::CreateCluster(Database* database, segment_id segment, cluster_id cluster) {
@@ -771,14 +775,26 @@ void Transaction::MergeBlobIdList(Database* database, segment_id segment, cluste
     // Remove blobs marked for deletion
     blobs.erase(std::remove_if(blobs.begin(), blobs.end(), [=](blob_id blob) { return dbState->deletedBlobs.count(BlobLocation(segment, cluster, blob)) != 0; }), blobs.end());
 
+    // We may need to sort the blob list after merging if we created a blob at a lower id than the already existing blobs
+    bool needsSort = false;
+
     // Insert created blobs
     auto createdBlobsBegin = dbState->createdBlobs.lower_bound(BlobLocation(segment, cluster, 0));
     auto createdBlobsEnd = dbState->createdBlobs.upper_bound(BlobLocation(segment, cluster, std::numeric_limits<blob_id>::max()));
     for (auto pos = createdBlobsBegin; pos != createdBlobsEnd; ++pos) {
+      if (!needsSort && !blobs.empty() && blobs.back() > pos->blob) {
+        // We are inserting a blob with a lower id at the end (can happen due to CreateBlobAt) so we must sort
+        needsSort = true;
+      }
+
       blobs.push_back(pos->blob);
     }
 
-    // Both deletion and insertion preserve the ascending sort order of the blob ids, so no sort necessary here
+    // Both deletion and insertion (usually) preserve the ascending sort order of the blob ids, so no sort necessary here
+    // unless a blob has been created at a lower id with CreateBlobAt() - we only perform the sort if it is actually necessary
+    if (needsSort) {
+      std::sort(blobs.begin(), blobs.end());
+    }
   }
 }
 

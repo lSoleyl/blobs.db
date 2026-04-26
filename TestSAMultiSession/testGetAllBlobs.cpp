@@ -339,3 +339,65 @@ TEST_CASE("GetAllBlobs after CreateSegment in same transaction") {
   REQUIRE_MESSAGE(*blobs.begin() == 0, "The default cluster in the new segment should only consist of the blob 0");
 }
 
+
+TEST_CASE("GetAllBlobs oder after recreating deleted blob in new transaction") {
+  const auto connStr = "localhost/mem:testGetAllBlobsOrderAfterRecreateBlob";
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, connStr));
+
+  // Prepare database
+  db->WriteString(0, 0, 0, "0");
+  REQUIRE(db->CreateString(0, 0, "1") == 1);
+  REQUIRE(db->CreateString(0, 0, "2") == 2);
+  db->DeleteBlob(0, 0, 1); // we want to leave a gap in the blob numbering
+
+  auto blobs = intoVector(db->GetAllBlobs(0, 0));
+  REQUIRE_MESSAGE(blobs == (std::vector<blob_id>{0, 2}), "Wrong blobs list during setup");
+  Transaction::Commit(session);
+
+
+  // Now perform the actual test in a separate session
+  // Recreate blob 1 and query the blob list in the same transaction
+  {
+    auto session = Session::Create();
+    database_ptr db(Database::Open(session, connStr));
+    db->CreateStringAt(0, 0, 1, "11"); // Re-create blob 1
+
+    // We expect the blob list to be correctly sorted even though we didn't commit blob 1 to the server yet
+    auto blobs = intoVector(db->GetAllBlobs(0, 0));
+    REQUIRE_MESSAGE(blobs == (std::vector<blob_id>{0, 1, 2}), "Wrong blobs list after delete");
+  }
+}
+
+TEST_CASE("GetAllBlobs after deleting and recreating blob in same transaction") {
+  const auto connStr = "localhost/mem:testGetAllBlobsAfterRecreateBlob";
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, connStr));
+
+  // Prepare database
+  db->WriteString(0, 0, 0, "0");
+  REQUIRE(db->CreateString(0, 0, "1") == 1);
+  REQUIRE(db->CreateString(0, 0, "2") == 2);
+
+  auto blobs = intoVector(db->GetAllBlobs(0, 0));
+  REQUIRE_MESSAGE(blobs == (std::vector<blob_id>{0, 1, 2}), "Wrong blobs list during setup");
+  Transaction::Commit(session);
+
+
+  // Now perform the actual test in a separate session
+  // Delete and recreate blob 1 in the same transaction
+  {
+    auto session = Session::Create();
+    database_ptr db(Database::Open(session, connStr));
+    db->DeleteBlob(0, 0, 1);
+
+    auto blobs = intoVector(db->GetAllBlobs(0, 0));
+    REQUIRE_MESSAGE(blobs == (std::vector<blob_id>{0, 2}), "Wrong blobs list after delete");
+
+    db->CreateStringAt(0, 0, 1, "11");
+
+    // Important: The ordering should be correct!
+    blobs = intoVector(db->GetAllBlobs(0, 0));
+    REQUIRE_MESSAGE(blobs == (std::vector<blob_id>{0, 1, 2}), "Wrong blobs list after re-create blob");
+  }
+}
