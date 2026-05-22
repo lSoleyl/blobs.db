@@ -24,7 +24,7 @@ struct Session::State {
   std::atomic<std::thread::id> lockedBy;
   internal::Network network;
   internal::TransactionsState transactions; // Used by Transaction class
-  internal::DatabasesState databases; // used by Database class
+  std::map<connection_id, internal::DatabasesState> databases; // used by Database class
 };
 
 Session::Handle::Handle() noexcept : session(nullptr) {}
@@ -131,8 +131,17 @@ internal::TransactionsState& Session::Transactions() {
   return state->transactions;
 }
 
-internal::DatabasesState& Session::Databases() {
-  return state->databases;
+internal::DatabasesState& Session::Databases(connection_id connectionId) {
+  return state->databases[connectionId];
+}
+
+void Session::EraseDatabase(connection_id connectionId, database_id databaseId) {
+  auto& openedDatabases = state->databases[connectionId].openedDatabases;
+  openedDatabases.erase(databaseId);
+  if (openedDatabases.empty()) {
+    // The last database for this connection id has been closed, remove this entry from the databases state
+    state->databases.erase(connectionId);
+  }
 }
 
 Session::Handle Session::GetGlobalSession() {

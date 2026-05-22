@@ -1,6 +1,9 @@
 #pragma once
 
+#include "Config.hpp"
+
 #include <memory>
+
 
 namespace blobs {
 
@@ -118,9 +121,14 @@ public:
    */
   internal::TransactionsState& Transactions();
 
-  /** Access to the session's database state. Only call this AFTER locking the session through Lock()!
+  /** Access to the session's database state for the given connection id. 
+   *  Only call this AFTER locking the session through Lock()!
    */
-  internal::DatabasesState& Databases();
+  internal::DatabasesState& Databases(connection_id connectionId);
+
+  /** Removes a database (that is about to be deleted) from the session's database map
+   */
+  void EraseDatabase(connection_id connectionId, database_id databaseId);
 
   /** Returns a copy of the global session handle.
    */

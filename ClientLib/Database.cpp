@@ -131,12 +131,12 @@ private:
 
 Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(session) {
   assert(session->OwnsLock());
-  session->Databases().openedDatabases.emplace(id, this);
+  session->Databases(connectionId).openedDatabases.emplace(id, this);
 }
 
 Database::~Database() {
   assert(!session->OwnsLock()); // because we unlock it right before deletion to avoid holding past the session's deletion (in case the database is the last object referencing the session)
-  session->Databases().openedDatabases.erase(id);
+  session->EraseDatabase(connectionId, id);
 }
 
 
@@ -366,7 +366,7 @@ std::pair<const void*, blob_size> Database::DirtyReadBlobInternal(segment_id seg
       auto blobDataEnd = blobDataBegin + blobData.blobSize;
 
       // Copy the blob's data into the dirty read buffer
-      auto& cache = session->Databases().dirtyReadBuffer;
+      auto& cache = session->Databases(connectionId).dirtyReadBuffer;
       cache.resize(blobData.blobSize);
       std::copy(blobDataBegin, blobDataEnd, cache.data());
 
@@ -1053,7 +1053,7 @@ Transaction& Database::GetTransaction() {
 
 
   // Now check all the locks to release (for all databases)
-  auto& databases = session->Databases().openedDatabases;
+  auto& databases = session->Databases(connectionId).openedDatabases;
   for (auto& dbLockEntry : *response) {
     auto pos = databases.find(dbLockEntry.databaseId);
     if (auto database = (pos != databases.end()) ? pos->second : nullptr) {
