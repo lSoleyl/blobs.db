@@ -244,6 +244,20 @@ Database* Database::Open(const Session::Handle& session, const char* hostName, s
 
 
 
+bool Database::SetMVCC(bool enable) {
+  return std::exchange(mvcc.setting, enable);
+}
+
+bool Database::IsMVCC() const {
+  return mvcc.active;
+}
+
+bool Database::HasTransaction() const {
+  auto sessionLock = session->Lock();
+  return Transaction::Get(session, connectionId) != nullptr;
+}
+
+
 std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");

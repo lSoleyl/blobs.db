@@ -150,6 +150,30 @@ public:
   }
 
 
+  /** Controls whether the NEXT transaction started for this database will be started as MVCC (Multi Version Concurrency Control) transaction.
+   *  An MVCC transaction uses a snapshot taken at transaction start (or shortly before) and sets no locks, but also cannot perform any writes.
+   *  The MVCC setting is per database and another database can be simultaneously opene in regular transaction mode. 
+   * 
+   *  Calling this method has NO EFFECT on the transaction mode of the currently running transaction of this database.
+   * 
+   * @param enable true = use mvcc, false = use regular write transaction (default)
+   * 
+   * @return the previous value of this setting
+   */
+  BLOBS_EXPORT bool SetMVCC(bool enable);
+
+  /** Call this method to check whether the database in the currently active transaction is an mvcc transaction or a regular update transaction.
+   *  The return value has no meaning if the database has no active transaction.
+   */
+  BLOBS_EXPORT bool IsMVCC() const;
+
+  /** Returns true if this database takes part in the currently running transaction. This may return false even if Transaction::IsRunning() returns true,
+   *  when having databases on multiple database servers open because transactions are only started on a server when a database is touched there.
+   *  For a single server all databases start their transaction at the moment when the first database is touched.
+   */
+  BLOBS_EXPORT bool HasTransaction() const;
+
+
   /** A convenience access method to blob data, which returns the blob as std::string (or std::wstring).
    *  The method is implemented in the header and not exported to ensure the client can use any STL implementation he sees fit.
    */
@@ -445,6 +469,10 @@ private:
   std::unique_ptr<BlobCache> cache;
   std::unique_ptr<internal::HeldLocks> stickyLocks; // Locks held past the end of the last transaction
   Session::Handle session; // the session, in which this database was created
+  struct MVCC {
+    bool active = false;  // During a transaction this value will be true if the tranaction for this database has been opened in MVCC mode (see IsMVCC)
+    bool setting = false; // Controls whether the next transaction started for this database will be in MVCC mode (see SetMVCC)
+  } mvcc;
 };
 
 
