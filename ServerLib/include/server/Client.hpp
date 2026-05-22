@@ -99,9 +99,9 @@ public:
    */
   bool CommitInProcess() const;
 
-  /** Releases all still held locks in all databases (only used when client requests a transaction begin without keeping sticky locks)
+  /** Releases all still held locks in the specified database (only used when client requests a transaction begin without keeping sticky locks or in mvcc mode)
    */
-  void ReleaseAllLocks();
+  void ReleaseAllLocksForDatabase(database_id database);
 
 
   /** This method is called from inside Lock::AcquireLock() on clients, which are currently not inside a transaction, but hold sticky locks, which

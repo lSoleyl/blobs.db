@@ -428,6 +428,11 @@ private:
    */
   BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, OpenMode openMode, int port = 8108);
 
+  /** Sets the active mvcc mode to what was configured for this database (used when starting a new transaction) 
+   *  and returns the mvcc mode for this database.
+   */
+  bool FixMVCC();
+
   /** Just creates the new blob without writing data into. After creation the client will be considered holding a write lock on that blob.
    *  This method can be called multiple times in a single transaction and only the first call (for this cluster) will actually require communication
    *  with the database server to facilitate efficient creation of multiple blobs in a single transaction.

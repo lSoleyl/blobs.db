@@ -216,16 +216,16 @@ bool Client::CommitInProcess() const {
 }
 
 
-void Client::ReleaseAllLocks() {
-  for (auto& dbEntry : openDatabases) {
-    // First remove all revoked locks from the list of locks (to not release a lock twice and trigger an assertion)
-    dbEntry.ApplyRevokedLocks();
-    dbEntry.revokedLocks.clear();
+void Client::ReleaseAllLocksForDatabase(database_id database) {
+  auto& dbEntry = openDatabases[database];
 
-    // Then release all remaining locks
-    dbEntry.database->ReleaseLocks(id, dbEntry.locks);
-    dbEntry.locks.clear();
-  }
+  // First remove all revoked locks from the list of locks (to not release a lock twice and trigger an assertion)
+  dbEntry.ApplyRevokedLocks();
+  dbEntry.revokedLocks.clear();
+
+  // Then release all remaining locks
+  dbEntry.database->ReleaseLocks(id, dbEntry.locks);
+  dbEntry.locks.clear();
 }
 
 

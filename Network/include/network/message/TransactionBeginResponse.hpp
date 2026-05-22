@@ -15,8 +15,9 @@ namespace blobs::network::message {
  */
 struct TransactionBeginResponse : public Message {
   enum class Result : uint8_t {
-    SUCCESS,                      // Success
-    ERROR_ALREADY_IN_TRANSACTION  // Already inside a transaction
+    SUCCESS,                       // Success
+    ERROR_ALREADY_IN_TRANSACTION,  // Already inside a transaction
+    ERROR_INVALID_DATABASE         // Client specified an invalid databse id in TransactionBegin
   };
 
   Result result;

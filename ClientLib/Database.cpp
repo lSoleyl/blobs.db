@@ -252,6 +252,11 @@ bool Database::IsMVCC() const {
   return mvcc.active;
 }
 
+bool Database::FixMVCC() {
+  mvcc.active = mvcc.setting;
+  return mvcc.active;
+}
+
 bool Database::HasTransaction() const {
   auto sessionLock = session->Lock();
   return Transaction::Get(session, connectionId) != nullptr;
@@ -1048,7 +1053,18 @@ Transaction& Database::GetTransaction() {
   // Start new transaction (for that server connection)
   auto& network = session->Network();
   auto& client = network.Get(connectionId);
-  client.SendMessageToServer(network::message::TransactionBegin::Create(session->Transactions().useStickyLocks));
+
+
+  // Create TransactionBegin message. For each opened database we must tell the server in which txn mode to open it
+  auto& databases = session->Databases(connectionId).openedDatabases;
+  auto transactionBeginMessage = network::message::TransactionBegin::Create(databases.size());
+  auto writePos = transactionBeginMessage->begin();
+  for (auto [dbId, db] : databases) {
+    auto& entry = (*writePos++);
+    entry.Set(dbId, session->Transactions().useStickyLocks, db->FixMVCC());
+  }
+  client.SendMessageToServer(std::move(transactionBeginMessage));
+
   
   // Wait for response from server
   auto response = network.ExpectMessage<network::message::TransactionBeginResponse>(client);
@@ -1058,9 +1074,10 @@ Transaction& Database::GetTransaction() {
       case network::message::TransactionBeginResponse::Result::ERROR_ALREADY_IN_TRANSACTION:
         throw exception::TransactionAlreadyOpen();
 
+      // ERROR_INVALID_DATABASE can only be caused by an invalid client and should thus never be returned by a server to us
       default:
-        throw Exception("Unexpected TransactionBegin error response");
         assert(false); // unhandled error message
+        throw Exception("Unexpected TransactionBegin error response");
     }
   }
 

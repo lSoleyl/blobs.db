@@ -51,6 +51,7 @@ std::ostream& operator<<(std::ostream& out, const Message& message) {
 
     case Type::BlobsRead: return out << static_cast<const BlobsRead&>(message);
 
+    case Type::TransactionBegin: return out << static_cast<const TransactionBegin&>(message);
     case Type::TransactionCommitResponse: return out << static_cast<const TransactionCommitResponse&>(message);
 
     case Type::ConnectionOpened: return out << static_cast<const ConnectionOpened&>(message);

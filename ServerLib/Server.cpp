@@ -247,9 +247,21 @@ void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::
     return;
   }
 
-  if (!message->keepStickyLocks) {
-    // Release all still held locks
-    client.ReleaseAllLocks();
+  // Process lock revokation
+  for (auto& dbEntry : *message) {
+    if (!client.GetDatabase(dbEntry.dbId)) {
+      // The client specified an invalid database id -> this client is probably faulty, don't continue respond with an error response instead
+      SendMessageToClient(client.id, network::message::TransactionBeginResponse::CreateError(network::message::TransactionBeginResponse::Result::ERROR_INVALID_DATABASE));
+      return;
+    }
+    
+    // Release the locks if specified
+    if (dbEntry.txnMode != network::message::TransactionBegin::TxnMode::UpdateKeepStickyLocks) {
+      client.ReleaseAllLocksForDatabase(dbEntry.dbId);
+    }
+
+    TODO("Mark the database as MVCC if set");
+    TODO("Set the active snapshot for each MVCC database");
   }
 
 

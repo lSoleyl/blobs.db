@@ -72,6 +72,7 @@ std::ostream& operator<<(std::ostream& out, TransactionBeginResponse::Result res
   switch (result) {
     case TransactionBeginResponse::Result::SUCCESS: return out << "SUCCESS";
     case TransactionBeginResponse::Result::ERROR_ALREADY_IN_TRANSACTION: return out << "ERROR_ALREADY_IN_TRANSACTION";
+    case TransactionBeginResponse::Result::ERROR_INVALID_DATABASE: return out << "ERROR_INVALID_DATABASE";
   }
   assert(false);
   return out;
