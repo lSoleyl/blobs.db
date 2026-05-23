@@ -1082,9 +1082,7 @@ Transaction& Database::GetTransaction() {
   }
 
 
-
   // Now check all the locks to release (for all databases)
-  auto& databases = session->Databases(connectionId).openedDatabases;
   for (auto& dbLockEntry : *response) {
     auto pos = databases.find(dbLockEntry.databaseId);
     if (auto database = (pos != databases.end()) ? pos->second : nullptr) {
