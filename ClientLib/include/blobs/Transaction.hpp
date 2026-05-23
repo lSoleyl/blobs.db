@@ -52,7 +52,9 @@ public:
   static bool Abort() { return Abort(Session::GetGlobalSession()); }
 
 
-  /** Enables/disables sticky lock usage for the given session. 
+  /** Configures the default sticky lock mode for the given session.
+   *  The default sticky lock mode is applied to all databases opened AFTER the setting has been changed.
+   * 
    *  While enabled the locks from a previous transaction (which have not been revoked by the server) 
    *  are implicitly reacquired on the next transaction (without any added server communication).
    *  Sticky locks are enabled by default and can be disabled in use cases where they cause added locking conflicts.
@@ -60,15 +62,15 @@ public:
    *  After disabling sticky locks, the next transaction will be started with no locks held.
    * 
    * @param session the session to enable/disable the sticky lock mechanism for
-   * @param enable if the the mechanism is enabled, false disabled
+   * @param use if true the mechanism is enabled, false disabled (default is true)
    * 
    * @return the previous setting for sticky lock usage
    */
-  BLOBS_EXPORT static bool EnableStickyLocks(const Session::Handle& session, bool enable);
+  BLOBS_EXPORT static bool UseStickyLocks(const Session::Handle& session, bool use);
 
   /** Enables/disables sticky lock usage for the global session
    */
-  static bool EnableStickyLocks(bool enable) { return EnableStickyLocks(Session::GetGlobalSession(), enable); }
+  static bool UseStickyLocks(bool use) { return UseStickyLocks(Session::GetGlobalSession(), use); }
 
 
   /** This method is called if a transaction is aborted by the server because of a deadlock.

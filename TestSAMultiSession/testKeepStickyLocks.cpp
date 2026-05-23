@@ -123,7 +123,8 @@ TEST_CASE("Synchronization with sticky locks disabled") {
       database_ptr db(Database::Open(session, "localhost", dbName));
       db->WriteString(0, 0, 0, "updated");
       Transaction::Commit(session);
-      CHECK_MESSAGE(Transaction::EnableStickyLocks(session, false) == true, "Sticky locks should be enabled by default");
+      CHECK_MESSAGE(Transaction::UseStickyLocks(session, false) == true, "Sticky locks should be enabled in the session by default");
+      CHECK_MESSAGE(db->UseStickyLocks(false) == true, "Sticky locks should be enabled by default"); // <- the session change should not have affected the database
 
       // Now start the second transaction by reading another blob (the write lock on 0,0,0 will be released now)
       db->ReadBlob(0, 0, 1);
@@ -147,4 +148,17 @@ TEST_CASE("Synchronization with sticky locks disabled") {
 
 
   REQUIRE_MESSAGE(secondReadCompleted.load() < firstTransactionEnded.load(), "The second client should be able to read the blob before the first client finishes");
+}
+
+// Basic test of behavior of Transaction::UseStickyLocks and Database::UseStickyLocks
+TEST_CASE("UseStickyLocksSemantics") {
+  auto session = Session::Create();
+  database_ptr db1(Database::Open(session, "localhost/mem:useStickLocks_1"));
+  REQUIRE_MESSAGE(db1->UseStickyLocks(true) == true, "The first database should use the session's default");
+
+  REQUIRE_MESSAGE(Transaction::UseStickyLocks(session, false) == true, "The session's sticky lock mode should be initialized to enabled");
+  REQUIRE_MESSAGE(db1->UseStickyLocks(true) == true, "The first database's sticky lock mode should not be affected by the session's mode change");
+
+  database_ptr db2(Database::Open(session, "localhost/mem:useStickLocks_2"));
+  REQUIRE_MESSAGE(db2->UseStickyLocks(true) == false, "The second database should use the session's new sticky lock mode upon opening");
 }

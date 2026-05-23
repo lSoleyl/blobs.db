@@ -129,7 +129,7 @@ private:
 
 
 
-Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(session) {
+Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(session), useStickyLocks(session->Transactions().useStickyLocks) {
   assert(session->OwnsLock());
   session->Databases(connectionId).openedDatabases.emplace(id, this);
 }
@@ -262,6 +262,9 @@ bool Database::HasTransaction() const {
   return Transaction::Get(session, connectionId) != nullptr;
 }
 
+bool Database::UseStickyLocks(bool use) {
+  return std::exchange(useStickyLocks, use);
+}
 
 std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock) {
   if (segment > constants::MaxSegmentId) {
@@ -1061,7 +1064,7 @@ Transaction& Database::GetTransaction() {
   auto writePos = transactionBeginMessage->begin();
   for (auto [dbId, db] : databases) {
     auto& entry = (*writePos++);
-    entry.Set(dbId, session->Transactions().useStickyLocks, db->FixMVCC());
+    entry.Set(dbId, db->useStickyLocks, db->FixMVCC());
   }
   client.SendMessageToServer(std::move(transactionBeginMessage));
 

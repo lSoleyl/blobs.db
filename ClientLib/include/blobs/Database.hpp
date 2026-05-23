@@ -173,6 +173,22 @@ public:
    */
   BLOBS_EXPORT bool HasTransaction() const;
 
+  /** Configures whether this database should use sticky locks or not.
+   * 
+   *  While enabled the locks from a previous transaction (which have not been revoked by the server) 
+   *  are implicitly reacquired on the next transaction (without any added server communication).
+   *  Sticky locks are enabled by default and can be disabled in use cases where they cause added locking conflicts.
+   * 
+   *  This setting takes effect right at the start of the next transaction and determines whether locks from a previous transaction
+   *  are kept or discarded. After disabling sticky locks, the next transaction will be started with no locks held. 
+   *  This option is ignored during MVCC transactions as they never hold any locks.
+   * 
+   * @param use true = enable sticky locks, false = disable.
+   *            The default value is controlled by Transaction::UseStickyLocks(), which defaults to true upon initialization
+   * 
+   * @return the previous setting
+   */
+  BLOBS_EXPORT bool UseStickyLocks(bool use);
 
   /** A convenience access method to blob data, which returns the blob as std::string (or std::wstring).
    *  The method is implemented in the header and not exported to ensure the client can use any STL implementation he sees fit.
@@ -478,6 +494,7 @@ private:
     bool active = false;  // During a transaction this value will be true if the tranaction for this database has been opened in MVCC mode (see IsMVCC)
     bool setting = false; // Controls whether the next transaction started for this database will be in MVCC mode (see SetMVCC)
   } mvcc;
+  bool useStickyLocks; // controls whether this database automatically reacquires locks from the previous transaction
 };
 
 

@@ -497,10 +497,10 @@ bool Transaction::Abort(const Session::Handle& session) {
 }
 
 
-bool Transaction::EnableStickyLocks(const Session::Handle& session, bool enable) {
+bool Transaction::UseStickyLocks(const Session::Handle& session, bool use) {
   auto sessionLock = session->Lock();
   auto& transactions = session->Transactions();
-  return std::exchange(transactions.useStickyLocks, enable);
+  return std::exchange(transactions.useStickyLocks, use);
 }
 
 
