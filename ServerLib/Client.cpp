@@ -19,7 +19,7 @@ namespace blobs::server {
 
 std::unordered_map<client_id, Client> Client::clients;
 
-Client::Client(client_id id) : id(id), transaction(Transaction::None) {}
+Client::Client(client_id id) : id(id), hasTransaction(false) {}
 
 
 void Client::ClientConnected(client_id id) {
@@ -40,30 +40,40 @@ bool Client::HasDatabaseOpened(Database& db) const {
 }
 
 
-database_id Client::OpenDatabase(Database& db) {
+database_id Client::OpenDatabase(Database& db, bool mvcc) {
   // The database use count is not modified here, this happens in Database::Open()
 
-  // First find a nullptr to use inside 
+  // First find a nullptr database slot to use reuse
   auto pos = std::find_if(openDatabases.begin(), openDatabases.end(), [](const DatabaseLocks& entry) { return entry.database == nullptr; });
-  if (pos != openDatabases.end()) {
-    // simply reuse the free slot
-    pos->database = &db;
-    return static_cast<database_id>(std::distance(openDatabases.begin(), pos));
+  if (pos == openDatabases.end()) {
+    // No free slot to reuse -> we must grow the databases list (unless we reached the limit)
+    if (openDatabases.size() == std::numeric_limits<database_id>::max() - 1) {
+      // If we were to grow it now, the index would be MAX+1, which is not a valid db index anymore
+      throw std::exception("Too many databases open, cannot open another database");
+    }
+
+    // Add new entry
+    openDatabases.push_back({});
+    pos = openDatabases.end() - 1;
   }
 
-  // We must grow the databases list (unless we reached the limit)
-  if (openDatabases.size() == std::numeric_limits<database_id>::max() - 1) {
-    // If we were to grow it now, the index would be MAX+1, which is not a valid db index anymore
-    throw std::exception("Too many databases open, cannot open another database");
+
+  // Now assign the newly opened database into the slot
+  pos->database = &db;
+  pos->isMVCC = mvcc;
+
+  if (hasTransaction && mvcc) {
+    // We opened a database in MVCC mode while already inside a transaction, so Client::BeginTransaction() could not notify this database about
+    // the requested MVCC snapshot and we must do it now.
+    db.BeginMVCC();
   }
 
-  openDatabases.push_back({ &db });
-  return static_cast<database_id>(openDatabases.size() - 1);
+  return static_cast<database_id>(std::distance(openDatabases.begin(), pos));
 }
 
 
 bool Client::CloseDatabase(database_id id) {
-  assert(transaction == Transaction::None); // We always first have to close a running transaction and only THEN we can close the database
+  assert(!hasTransaction); // We always first have to close a running transaction and only THEN we can close the database
 
   if (auto database = GetDatabase(id)) {
     // Database is actually opened
@@ -129,12 +139,18 @@ database_id Client::GetMaxDatabaseId() const {
 }
 
 void Client::BeginTransaction() {
-  TODO("Accept a parameter to determine the kind of transaction");
-  transaction = Transaction::Write;
+  hasTransaction = true;
+
+  for (auto& dbEntry : openDatabases) {
+    if (dbEntry.database && dbEntry.isMVCC) {
+      // Set the MVCC snapshot/increment the reference count for the snapshot
+      dbEntry.database->BeginMVCC();
+    }
+  }
 }
 
 bool Client::AbortTransaction(bool relaseAllLocks) {
-  if (transaction != Transaction::None) { // Nothing to do if no transaction is in progress
+  if (hasTransaction) { // Nothing to do if no transaction is in progress
 
     // Release the locks held in all databases
     for (auto& dbEntry : openDatabases) {
@@ -150,11 +166,17 @@ bool Client::AbortTransaction(bool relaseAllLocks) {
           // Abort transaction, but don't release any locks -> keep them around as sticky locks for the next transaction
           dbEntry.database->AbortClientTransaction(id, {});
         }
+
+        if (dbEntry.isMVCC) {
+          // We opened this database in MVCC mode, notify it about this transaction end to be able to release the MVCC snapshot once
+          // no other clients refernece it.
+          dbEntry.database->EndMVCC();
+        }
       }
     }
 
     // Mark the transaction as gone
-    transaction = Transaction::None;
+    hasTransaction = false;
     return true;
   }
 
@@ -162,7 +184,7 @@ bool Client::AbortTransaction(bool relaseAllLocks) {
 }
 
 bool Client::IsInsideTransaction() const {
-  return transaction != Transaction::None;
+  return hasTransaction;
 }
 
 
@@ -216,7 +238,17 @@ bool Client::CommitInProcess() const {
 }
 
 
+
+void Client::SetDatabaseMVCCMode(database_id database, bool useMVCC) {
+  assert(database < openDatabases.size() && openDatabases[database].database); // Should be a valid database id
+  auto& dbEntry = openDatabases[database];
+  dbEntry.isMVCC = useMVCC;
+}
+
+
+
 void Client::ReleaseAllLocksForDatabase(database_id database) {
+  assert(database < openDatabases.size() && openDatabases[database].database); // Should be a valid database id
   auto& dbEntry = openDatabases[database];
 
   // First remove all revoked locks from the list of locks (to not release a lock twice and trigger an assertion)

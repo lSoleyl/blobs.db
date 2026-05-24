@@ -54,6 +54,16 @@ public:
    */
   void Release();
 
+  /** This is called by clients on transaction begin for all databases that should be opened in MVCC mode to set the current snapshot 
+   *  or increment the use count on the current snapshot.
+   */
+  void BeginMVCC();
+
+  /** This is called by a client after transaction commit/abort for all databases that were opened in MVCC to reduce the reference count
+   *  on the MVCC snapshot and release the snapshot if it reaches zero.
+   */
+  void EndMVCC();
+
 
   /** Close this database as soon as possible
    */
@@ -135,7 +145,7 @@ public:
   //       smart pointer and the caller needs to be able to hold it...
   class CommitResult {
   public:
-    CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta, Deleted&& deleted);
+    CommitResult(Database& database, std::shared_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta, Deleted&& deleted);
 
     /** Applies the snapshot to the database and returns the commit id of that snapshot
      */
@@ -144,7 +154,7 @@ public:
     Deleted deleted;
   private:
     Database& database;
-    std::unique_ptr<Snapshot> snapshot;
+    std::shared_ptr<Snapshot> snapshot;
     std::unique_ptr<FreeList> freeList;
     std::unique_ptr<MemoryBlockDelta> delta;
   };
@@ -462,9 +472,12 @@ private:
 
   std::string name;
 
-  /** The database snapshot that is currently valid and updated each transaction
+
+
+  /** The database snapshot that is currently valid and updated each transaction.
+   *  This is a shared pointer as the current mvcc snapshot and the active snapshot may reference the same object.
    */
-  std::unique_ptr<Snapshot> snapshot;
+  std::shared_ptr<Snapshot> snapshot;
 
   /** The currently active free list for this database. Only set for file databases (otherwise nullptr)
    */
@@ -474,10 +487,15 @@ private:
    */
   std::set<Lock, std::less<>> locks;
 
+  /** If a client uses this database in MVCC mode, then the current snapshot is copied into the mvccSnapshot for all clients using this database in MVCC.
+   */
+  std::shared_ptr<Snapshot> mvccSnapshot;
+
   bool fileDatabase; // true if the database is a file database (in contrast to a pure in-memory database)
   FileBackend file;
   file::Database fileHeader; // The current database file header (this is stored here to avoid having to read it to update the database) - the header state is undefined for in memory databases
   int useCount;      // How many clients are currently using this database - the Database is closed once this count reaches 0
+  int mvccUseCount;  // How many clients are currently using this databse in MVCC (ie. how many need the current mvcc snapshot). The snapshot is discarded once the count reaches 0.
 
   StickyLockHandler stickyLockHandler;
 

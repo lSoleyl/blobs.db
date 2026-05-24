@@ -129,9 +129,13 @@ private:
 
 
 
-Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(session), useStickyLocks(session->Transactions().useStickyLocks) {
+Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId, bool useMVCC) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(session), useStickyLocks(session->Transactions().useStickyLocks) {
   assert(session->OwnsLock());
   session->Databases(connectionId).openedDatabases.emplace(id, this);
+  mvcc.setting = useMVCC;
+  // We immediately set mvcc.active to the current mvcc setting regardless of a currently running transaction as it is needed in case we
+  // are opening this database inside a transaction and doesn't harm in case no transaction is running.
+  mvcc.active = useMVCC;
 }
 
 Database::~Database() {
@@ -194,13 +198,14 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
   auto connectionId = network.Get(hostName, port);
 
   auto& client = network.Get(connectionId);
-  client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName, static_cast<network::message::DatabaseOpen::OpenMode>(openMode)));
+  TODO("Instead of always using the session default, we could provide an overload to Open, which can explicitly specify to open a new database in MVCC mode.")
+  client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName, static_cast<network::message::DatabaseOpen::OpenMode>(openMode), session->Transactions().useMVCC));
 
   // Await the DatabaseOpenResponse
   auto message = network.ExpectMessage<network::message::DatabaseOpenResponse>(client);
   
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
-    return new Database(session, std::string(databaseName), message->databaseId, connectionId);
+    return new Database(session, std::string(databaseName), message->databaseId, connectionId, session->Transactions().useMVCC);
   }
   
   // Opening the database failed for some reason -> release the network connection to not leak it since

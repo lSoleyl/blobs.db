@@ -4,6 +4,8 @@
 #include <network/message/TransactionCommit.hpp>
 #include <network/message/TransactionBeginResponse.hpp>
 
+#include <optional>
+
 namespace blobs::server {
 
 
@@ -11,13 +13,6 @@ namespace blobs::server {
  */
 class Client {
 public:
-  enum class Transaction {
-    None, 
-    Write,  // Regular write transaction
-    MVCC,   // Not implemented yet 
-  };
-
-
   static void ClientConnected(client_id id);
   
   static Client& Get(client_id id);
@@ -29,8 +24,13 @@ public:
 
   /** Marks the specified database as opened by this client and returns the client local database id for it.
    *  Throws an exception if the client already opened 256 databases.
+   *  If the database should be opened as MVCC database while the client is inside a transaction, this method will notify the database
+   *  of the MVCC client and immediately request an MVCC snapshot (or incrementing its refcount).
+   * 
+   * @param db the database to open
+   * @param mvcc if true, the database should be opened in mvcc mode (only important when opening a database during a transaction)
    */
-  database_id OpenDatabase(Database& db);
+  database_id OpenDatabase(Database& db, bool mvcc);
 
 
   /** Closes the database opened by the client (must not be called if the client is running a transaction) and 
@@ -65,6 +65,7 @@ public:
   database_id GetMaxDatabaseId() const;
 
   /** Marks the client as being inside a transaction
+   *  This will also set the MVCC snapshot for all databases marked for MVCC mode
    */
   void BeginTransaction();
 
@@ -99,6 +100,11 @@ public:
    */
   bool CommitInProcess() const;
 
+  /** This is called when processing TransactionBegin message to assign the mvcc status to each of the client databases, for which 
+   *  it has been specified in the message. The MVCC snapshot will be set in Client::BeginTransaction()
+   */
+  void SetDatabaseMVCCMode(database_id database, bool useMVCC);
+
   /** Releases all still held locks in the specified database (only used when client requests a transaction begin without keeping sticky locks or in mvcc mode)
    */
   void ReleaseAllLocksForDatabase(database_id database);
@@ -130,6 +136,7 @@ private:
     Database* database;
     std::vector<BlobLocation> locks; // All locks held by this client in the database (vector for more memory efficient storage)
     std::vector<BlobLocation> revokedLocks; // sticky locks, which have been revoked by the server, because other clients needed access to the locked ressource
+    bool isMVCC = false; // Set to true in BeginTransaction (or OpenDatabase inside a transaction) if this database is opened in MVCC mode
 
 
     /** Add the specified lock location into the locks vector (if not already there)
@@ -147,9 +154,9 @@ private:
    */ 
   std::vector<DatabaseLocks> openDatabases;
 
-  /** The current transaction mode (if any opened)
+  /** True if this client started a transaction, false otherwise
    */
-  Transaction transaction;
+  bool hasTransaction;
 
   /** A map of all connected clients
    */

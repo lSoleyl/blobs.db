@@ -8,7 +8,7 @@ namespace network {
 namespace message {
 
 
-DatabaseOpen::DatabaseOpen(message_size messageSize, std::string_view databaseName, OpenMode openMode) : Message(messageSize, DatabaseOpen::type), openMode(openMode) {
+DatabaseOpen::DatabaseOpen(message_size messageSize, std::string_view databaseName, OpenMode openMode, bool mvcc) : Message(messageSize, DatabaseOpen::type), openMode(openMode), mvcc(mvcc) {
   std::copy_n(databaseName.data(), databaseName.size(), reinterpret_cast<char*>(this) + sizeof(DatabaseOpen));
 }
 
@@ -18,14 +18,14 @@ std::string_view DatabaseOpen::GetDatabaseName() const {
 }
 
 
-MessagePointer DatabaseOpen::Create(std::string_view databaseName, OpenMode openMode) {
+MessagePointer DatabaseOpen::Create(std::string_view databaseName, OpenMode openMode, bool mvcc) {
   auto messageSize = static_cast<message_size>(sizeof(DatabaseOpen) + databaseName.size());
-  return MessagePointer(new (new char[messageSize]) DatabaseOpen(messageSize, databaseName, openMode));
+  return MessagePointer(new (new char[messageSize]) DatabaseOpen(messageSize, databaseName, openMode, mvcc));
 }
 
 
 std::ostream& operator<<(std::ostream& out, const DatabaseOpen& message) {
-  return out << message.type << '(' << message.GetDatabaseName() << ", " << message.openMode << ')';
+  return out << message.type << '(' << message.GetDatabaseName() << ", " << message.openMode << ", " << (message.mvcc ? "mvcc" : "update") << ')';
 }
 
 

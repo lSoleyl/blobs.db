@@ -61,7 +61,7 @@ public:
    * 
    *  After disabling sticky locks, the next transaction will be started with no locks held.
    * 
-   * @param session the session to enable/disable the sticky lock mechanism for
+   * @param session the session to configure the sticky lock default for
    * @param use if true the mechanism is enabled, false disabled (default is true)
    * 
    * @return the previous setting for sticky lock usage
@@ -71,6 +71,20 @@ public:
   /** Enables/disables sticky lock usage for the global session
    */
   static bool UseStickyLocks(bool use) { return UseStickyLocks(Session::GetGlobalSession(), use); }
+
+
+  /** Configures the default transaction mode for newly opened databases.
+   * 
+   * @param session the session configure the MVCC default for
+   * @param use if true then newly opened databases will be open their transactions in MVCC mode (default = false)
+   * 
+   * @return the previous setting for the mvcc mode
+   */
+  BLOBS_EXPORT static bool UseMVCC(const Session::Handle& session, bool use);
+
+  /** Enables/disables default MVCC open mode fo rthe global session
+   */
+  static bool UseMVCC(bool use) { return UseMVCC(Session::GetGlobalSession(), use); }
 
 
   /** This method is called if a transaction is aborted by the server because of a deadlock.

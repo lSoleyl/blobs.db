@@ -481,7 +481,7 @@ private:
   void ApplyStickyLocksToTansaction(Transaction& transaction);
 
 
-  Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId);
+  Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId, bool mvcc);
   Database(const Database&) = delete;
   ~Database();
   Database& operator=(const Database&) = delete;
@@ -491,8 +491,8 @@ private:
   std::unique_ptr<internal::HeldLocks> stickyLocks; // Locks held past the end of the last transaction
   Session::Handle session; // the session, in which this database was created
   struct MVCC {
-    bool active = false;  // During a transaction this value will be true if the tranaction for this database has been opened in MVCC mode (see IsMVCC)
-    bool setting = false; // Controls whether the next transaction started for this database will be in MVCC mode (see SetMVCC)
+    bool active;  // During a transaction this value will be true if the tranaction for this database has been opened in MVCC mode (see IsMVCC)
+    bool setting; // Controls whether the next transaction started for this database will be in MVCC mode (see SetMVCC)
   } mvcc;
   bool useStickyLocks; // controls whether this database automatically reacquires locks from the previous transaction
 };

@@ -176,7 +176,7 @@ void Server::HandleDatabaseOpen(network::MessagePointer_T<network::message::Data
   } else {
     try {
       // Mark the databse as opened in the client (if possible) and reply with success status code
-      SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(*database)));
+      SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::SUCCESS, client.OpenDatabase(*database, message->mvcc)));
     } catch (std::exception&) {
       SendMessageToClient(client.id, network::message::DatabaseOpenResponse::Create(network::message::DatabaseOpenResponse::Result::TOO_MANY_DATABASES_OPEN, 0));
       database->Release(); // Database::Open() incremented the use count, so we must reduce it here
@@ -247,6 +247,8 @@ void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::
     return;
   }
 
+  TODO("We could keep track of all databases mentioned here and revoke the locks of all omitted databses, but what for?");
+
   // Process lock revokation
   for (auto& dbEntry : *message) {
     if (!client.GetDatabase(dbEntry.dbId)) {
@@ -260,12 +262,12 @@ void Server::HandleTransactionBegin(network::MessagePointer_T<network::message::
       client.ReleaseAllLocksForDatabase(dbEntry.dbId);
     }
 
-    TODO("Mark the database as MVCC if set");
-    TODO("Set the active snapshot for each MVCC database");
+    // Update the mvcc flag of all mentioned database before we begin the transaction on the client
+    client.SetDatabaseMVCCMode(dbEntry.dbId, dbEntry.txnMode == network::message::TransactionBegin::TxnMode::MVCC);
   }
 
 
-  TODO("Support a MVCC transaction in the future by fixing a snapshot of the database");
+  // Start the actual transaction for this client, this will also set the mvcc snapshot for all marked databases.
   client.BeginTransaction();
 
   SendMessageToClient(client.id, client.ConstructTransactionBeginResponse());

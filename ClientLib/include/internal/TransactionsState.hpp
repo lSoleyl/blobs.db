@@ -22,12 +22,22 @@ public:
   std::map<connection_id, Transaction> active; // the currently active transactions (up to one per server connection)
   uint64_t nextId; // The next used transaction id in this session
 
-  /** If true (default) the client will attempt to keep all locks from the previous transaction when the next transaction starts
+  /** The default setting of using sticky locks for newly opened databases. The actual setting is stored in the Database instance itself
+   *  and can be overwritten any time (Database::UseStickyLocks()).
+   * 
+   *  A database with enabled sticky locks will attempt to keep all locks from the previous transaction when the next transaction starts
    *  except for the ones the server revoked between the two transactions.
-   *  If false the client will notify the server to relase all locks on transaction begin. This mode can be useful in case a client
-   *  locked a lot of blobs in a previous transaction that are not needed for the next transaction and would only cause unnecessary locking conflicts.
+   * 
+   *  Default is true
    */
   bool useStickyLocks;
+
+  /** The default setting of using MVCC tranaction mode for newly opened databases. The acutal MVCC mode is stored in the Database instance itself 
+   *  and can be overwritten any time (Database::SetMVCC()).
+   * 
+   *  Default is false
+   */
+  bool useMVCC;
 
 private:
   // Type is neither movable, nor copyable

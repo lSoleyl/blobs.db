@@ -31,9 +31,11 @@ struct DatabaseOpen : public Message {
     CreateAlways
   };
 
-  // The underlying type of uint8_t doesn't really save any space due to padding, but
-  // now we have space for 3 additional bytes in case we want to transmit some info in the future.
   OpenMode openMode;
+
+  // This flag is needed when opening a database during a transaction, because the transaction mode for a database
+  // is usually transmitted in the TransactionBegin message.
+  bool mvcc;
 
   // Maybe we will add some additional data here like open flags and other things... 
   // Everything following these flags will simply be the database name. We don't have to encode its length
@@ -42,11 +44,11 @@ struct DatabaseOpen : public Message {
 
   /** Encode the DatabaseOpen message and return a pointer to the message's memory
    */
-  static MessagePointer Create(std::string_view databaseName, OpenMode openMode);
+  static MessagePointer Create(std::string_view databaseName, OpenMode openMode, bool mvcc);
 
   static constexpr Type type = Type::DatabaseOpen;
 private:
-  DatabaseOpen(message_size messageSize, std::string_view databaseName, OpenMode openMode); // Do not use the constructor -> use Create()
+  DatabaseOpen(message_size messageSize, std::string_view databaseName, OpenMode openMode, bool mvcc); // Do not use the constructor -> use Create()
 };
 
 std::ostream& operator<<(std::ostream& out, const DatabaseOpen& message);

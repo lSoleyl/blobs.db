@@ -12,7 +12,7 @@ namespace server {
 
 std::vector<std::unique_ptr<Database>> Database::databases;
 
-Database::Database(std::string name) : name(std::move(name)), useCount(0), stickyLockHandler(*this) {
+Database::Database(std::string name) : name(std::move(name)), useCount(0), mvccUseCount(0), stickyLockHandler(*this) {
   // In-Memory databases start with "mem:" prefix and are always loaded
   fileDatabase = !this->name._Starts_with("mem:");
 }
@@ -116,6 +116,22 @@ void Database::Release() {
   }
 }
 
+void Database::BeginMVCC() {
+  if (mvccUseCount++ == 0) {
+    // The first client to use MVCC for this database at the moment
+    // Simply copy the current database snapshot as the active mvcc snapshot
+    mvccSnapshot = snapshot;
+  }
+}
+
+void Database::EndMVCC() {
+  if (--mvccUseCount == 0) {
+    // The last MVCC client for this database ended its transaction
+    // Release the current snapshot so the next client will get an updated snapshot.
+    mvccSnapshot.reset();
+  }
+}
+
 
 
 void Database::Close() {
@@ -130,7 +146,7 @@ void Database::Close() {
 
 Database::OpenResult Database::InitializeInMemory() {
   // Create the snapshot with segment cluster and blob
-  auto snapshot = std::make_unique<Snapshot>();
+  auto snapshot = std::make_shared<Snapshot>();
   auto segment = snapshot->UpdateSegment(0, nullptr);
   snapshot->SetNextFreeSegmentId(1);
 
@@ -295,7 +311,7 @@ void Database::ReadInitialFileDatabaseData() {
   }
   
 
-  auto snapshot = std::make_unique<Snapshot>(fileSnapshot->commitId);
+  auto snapshot = std::make_shared<Snapshot>(fileSnapshot->commitId);
   snapshot->fileLocation = root.snapshot;
   snapshot->SetNextFreeSegmentId(fileSnapshot->nextFreeSegmentId);
 
@@ -471,7 +487,7 @@ void Database::AbortClientTransaction(client_id client, const std::vector<BlobLo
 }
 
 
-Database::CommitResult::CommitResult(Database& database, std::unique_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta, Deleted&& deleted)
+Database::CommitResult::CommitResult(Database& database, std::shared_ptr<Snapshot> snapshot, std::unique_ptr<FreeList> freeList, std::unique_ptr<MemoryBlockDelta> delta, Deleted&& deleted)
   : database(database), snapshot(std::move(snapshot)), freeList(std::move(freeList)), delta(std::move(delta)), deleted(std::move(deleted))
 {}
 
@@ -522,7 +538,7 @@ commit_id Database::CommitResult::ApplyToDatabase() {
 
 Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitPos, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd) {
   // Create the new snapshot implicitly also setting the new commit id
-  auto newSnapshot = std::make_unique<Snapshot>(*snapshot);
+  auto newSnapshot = std::make_shared<Snapshot>(*snapshot);
   auto newFreeList = freeList ? std::make_unique<FreeList>(*freeList) : nullptr;
   auto delta = freeList ? std::make_unique<MemoryBlockDelta>() : nullptr;
   Deleted deleted;
