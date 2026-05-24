@@ -347,17 +347,32 @@ void Database::ReadInitialFileDatabaseData() {
 }
 
 
-Blob* Database::GetLoadedBlob(const BlobLocation& location) {
-  return snapshot->GetLoadedBlob(location, file);
+Blob* Database::GetLoadedBlob(const BlobLocation& location, bool mvcc) {
+  if (!mvcc) {
+    return snapshot->GetLoadedBlob(location, file);
+  } else {
+    assert(mvccSnapshot);
+    return mvccSnapshot->GetLoadedBlob(location, file);
+  }
 }
 
-Cluster* Database::GetLoadedCluster(segment_id segment, cluster_id cluster) {
-  return snapshot->GetLoadedCluster(segment, cluster, file);
+Cluster* Database::GetLoadedCluster(segment_id segment, cluster_id cluster, bool mvcc) {
+  if (!mvcc) {
+    return snapshot->GetLoadedCluster(segment, cluster, file);
+  } else {
+    assert(mvccSnapshot);
+    return mvccSnapshot->GetLoadedCluster(segment, cluster, file);
+  }
 }
 
 
-Segment* Database::GetLoadedSegment(segment_id segment) {
-  return snapshot->GetLoadedSegment(segment, file);
+Segment* Database::GetLoadedSegment(segment_id segment, bool mvcc) {
+  if (!mvcc) {
+    return snapshot->GetLoadedSegment(segment, file);
+  } else {
+    assert(mvccSnapshot);
+    return mvccSnapshot->GetLoadedSegment(segment, file);
+  }
 }
 
 segment_id Database::GetNextFreeSegmentId() const {
@@ -368,12 +383,22 @@ commit_id Database::GetCommitId() const {
   return snapshot->commitId;
 }
 
-Database::iterator Database::begin() {
-  return snapshot->begin();
+Database::iterator Database::begin(bool mvcc) {
+  if (!mvcc) {
+    return snapshot->begin();
+  } else {
+    assert(mvccSnapshot);
+    return mvccSnapshot->begin();
+  }
 }
 
-Database::iterator Database::end() {
-  return snapshot->end();
+Database::iterator Database::end(bool mvcc) {
+  if (!mvcc) {
+    return snapshot->end();
+  } else {
+    assert(mvccSnapshot);
+    return mvccSnapshot->end();
+  }
 }
 
 

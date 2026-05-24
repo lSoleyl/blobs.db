@@ -105,6 +105,10 @@ public:
    */
   void SetDatabaseMVCCMode(database_id database, bool useMVCC);
 
+  /** Returns the current MVCC mode for the specified database
+   */
+  bool IsDatabaseMVCC(database_id database) const;
+
   /** Releases all still held locks in the specified database (only used when client requests a transaction begin without keeping sticky locks or in mvcc mode)
    */
   void ReleaseAllLocksForDatabase(database_id database);

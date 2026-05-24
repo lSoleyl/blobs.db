@@ -28,7 +28,8 @@ const BlobsRead::BlobAddress* BlobsRead::end() const {
 
 
 bool BlobsRead::NeedsWriteLock() const {
-  return lockMode != LockMode::Read;
+  // None and Read do NOT need a write lock
+  return lockMode == LockMode::Write || lockMode == LockMode::Delete;
 }
 
 bool BlobsRead::IsDirtyRead() const {

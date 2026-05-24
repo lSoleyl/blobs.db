@@ -19,6 +19,7 @@ struct BlobsReadResponse : public Message {
     SEGMENT_DOES_NOT_EXIST,     // only returned when attempting to delete a segment through SegmentDeleteId and that segment does not exist
     DATBASE_NOT_OPENED,         // passed a database id, which the server doesn't recognize for this client
     NO_TRANSACTION_IN_PROGRESS, // trying to read blobs before explicitly starting a transaction
+    CANNOT_WRITE_LOCK_IN_MVCC,  // client attempts to set a write lock on a database running an MVCC transaction, this is not allowed
     LOCK_TIMEOUT,
     DEADLOCK                    // deadlocked with another client. The error message is allocated as string following this message.
   };

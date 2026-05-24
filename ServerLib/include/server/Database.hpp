@@ -71,18 +71,24 @@ public:
 
   /** Returns a blob from this database (if it exists)
    *  And loads it from disk if it hasn't yet been loaded
+   * 
+   * @param location the blob location to return
+   * @param mvcc if true then the blob is read from the MVCC snapshot
    */
-  Blob* GetLoadedBlob(const BlobLocation& location);
+  Blob* GetLoadedBlob(const BlobLocation& location, bool mvcc = false);
 
   /** Return the specified cluster from this database (if it exists) 
    *  and loads it from disk if not yet done.
    */
-  Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster);
+  Cluster* GetLoadedCluster(segment_id segment, cluster_id cluster, bool mvcc = false);
 
   /** Returns a segment from this databse (if it exists)
    *  and loads it from disk if not yet done.
+   * 
+   * @param segment the segment to load
+   * @param mvcc if true then the segment is read from the MVCC snapshot
    */
-  Segment* GetLoadedSegment(segment_id segment);
+  Segment* GetLoadedSegment(segment_id segment, bool mvcc = false);
 
   /** Returns the next free segment id, which can also be retrieved form the blob (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`)
    */
@@ -92,10 +98,10 @@ public:
    */
   commit_id GetCommitId() const;
 
-  // Iteration over all segment objects of the current snapshot.
+  // Iteration over all segment objects of the current snapshot/mvcc snapshot.
   using iterator = typename sorted_flat_map<segment_id, std::shared_ptr<Segment>>::iterator;
-  iterator begin();
-  iterator end();
+  iterator begin(bool mvcc);
+  iterator end(bool mvcc);
 
   /** Acquires the locks specified in the blobs read message and returns true if successful, false if not
    *  IMPORTANT: This only sets the locks in the database... For proper bookkeeping the client also needs to know, which locks it holds

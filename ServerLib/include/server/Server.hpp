@@ -114,28 +114,40 @@ private:
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the blob id list
    *  This method will ensure that the referenced cluster exists and that the client acquires the necessary lock
+   * 
+   * @param client the client requesting the blob id list
+   * @param message the BlobsRead message of the request
+   * @param isMVCC is true if the message's database is opened in MVCC and the message specifies a valid MVCC read request
    *
    * @return true if the request has been handled and a response sent to the client (including an error)
    *         false if the reuqest cannot be handled due to conflicting locks
    */
-  bool TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message);
+  bool TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the cluster id list
    *  This method will ensure that the referenced segment exists and that the client acquires the necessary lock
+   * 
+   * @param client the client requesting the cluster id list
+   * @param message the BlobsRead message of the request
+   * @param isMVCC is true if the message's database is opened in MVCC and the message specifies a valid MVCC read request
    *
    * @return true if the request has been handled and a response sent to the client (including an error)
    *         false if the reuqest cannot be handled due to conflicting locks
    */
-  bool TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message);
+  bool TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
 
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the segment id list
    *  This method will ensure that the client acquires the necessary lock
    * 
+   * @param client the client requesting the segment id list
+   * @param message the BlobsRead message of the request
+   * @param isMVCC is true if the message's database is opened in MVCC and the message specifies a valid MVCC read request
+   * 
    * @return true if the request has been handled and a response sent to the client
    *         false if the reuqest cannot be handled due to conflicting locks
    */
-  bool TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message);
+  bool TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
 
 
   /** Primitive logging of incoming messages.

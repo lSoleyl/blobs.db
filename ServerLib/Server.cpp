@@ -397,6 +397,8 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
   }
 
 
+  FIXME("Reject any commit data for MVCC databases");
+
   auto messagesPos = client.commitMessages.begin();
   auto messagesEnd = client.commitMessages.end();
 
@@ -648,6 +650,18 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     return true;
   }
 
+  // We treat dirty reads inside an MVCC transaction not as MVCC reads, because they will not be read from the MVCC snapshot.
+  // To perform a regular MVCC read the LockMode must be set to Read. This is semantically sound because we only allow Read locks to 
+  // be set in an MVCC transaction. And if all clients only ever set read locks then this is technically equivalent to not setting any locks
+  // while working on an immutable snapshot. So not setting locks in MVCC is just a technical implementation detail, the semantics are AS IF
+  // read locks would be set on each read.
+  bool isMVCC = !message.IsDirtyRead() && client.IsDatabaseMVCC(message.databaseId);
+  if (isMVCC && message.NeedsWriteLock()) {
+    // In MVCC we can only perform read operations, so any request to set a write lock is invalid.
+    SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::CANNOT_WRITE_LOCK_IN_MVCC));
+    return true;
+  }
+
   if (message.nBlobsRequested == 1) {
     // Fast path: at most 1 blob needs to be sent to the client
     auto& requestedBlob = *message.begin();
@@ -668,21 +682,21 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     if (requestedBlob.blob == constants::BlobListId) {
       if (requestedBlob.cluster == constants::ClusterListId) {
         if (requestedBlob.segment == constants::SegmentListId) {
-          return TryHandleSegmentListId(client, message);
+          return TryHandleSegmentListId(client, message, isMVCC);
         }
-        return TryHandleClusterListId(client, message);
+        return TryHandleClusterListId(client, message, isMVCC);
       }
-      return TryHandleBlobListId(client, message);
+      return TryHandleBlobListId(client, message, isMVCC);
     }
 
-    auto blob = database->GetLoadedBlob(requestedBlob);
+    auto blob = database->GetLoadedBlob(requestedBlob, isMVCC);
     if (!blob) {
       SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
       return true;
     }
 
-    // The client does not need to acquire any locks if the client requested a dirty read
-    if (message.IsDirtyRead() || client.AcquireLocks(message)) {
+    // The client does not need to acquire any locks if the client requested a dirty read or we are inside an MVCC transaction
+    if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
       // Locks successfully acquired (no conflicts) -> send response
       if (requestedBlob.ifCommitIdHigher >= blob->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
         // - The client has the current version of the blob 
@@ -801,7 +815,7 @@ namespace{
 }
 
 
-bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC) {
   FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
   assert(message.nBlobsRequested == 1);
   auto& location = *message.begin();
@@ -809,15 +823,15 @@ bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::m
   auto database = client.GetDatabase(message.databaseId);
   assert(database); // should have been checked by the caller
 
-  auto cluster = database->GetLoadedCluster(location.segment, location.cluster);
+  auto cluster = database->GetLoadedCluster(location.segment, location.cluster, isMVCC);
   if (!cluster) {
     // Segment do not exist
     SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
     return true;
   }
 
-  // Now acquire locks for the cluster id list
-  if (message.IsDirtyRead() || client.AcquireLocks(message)) {
+  // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
+  if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
     if (location.ifCommitIdHigher >= cluster->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list 
       // - Or the client requested the write locks only for synchronization of blob deletion/creation
@@ -838,7 +852,7 @@ bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::m
   return false;
 }
 
-bool Server::TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+bool Server::TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC) {
   FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
   assert(message.nBlobsRequested == 1);
   auto& location = *message.begin();
@@ -846,15 +860,15 @@ bool Server::TryHandleClusterListId(blobs::server::Client& client, const network
   auto database = client.GetDatabase(message.databaseId);
   assert(database); // should have been checked by the caller
 
-  auto segment = database->GetLoadedSegment(location.segment);
+  auto segment = database->GetLoadedSegment(location.segment, isMVCC);
   if (!segment) {
     // Segment do not exist
     SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
     return true;
   }
 
-  // Now acquire locks for the cluster id list
-  if (message.IsDirtyRead() || client.AcquireLocks(message)) {
+  // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
+  if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
     if (location.ifCommitIdHigher >= segment->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list
       // - Or the client requested the write locks only for synchronization of cluster deletion/creation
@@ -875,7 +889,7 @@ bool Server::TryHandleClusterListId(blobs::server::Client& client, const network
   return false;
 }
 
-bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message) {
+bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC) {
   FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
   assert(message.nBlobsRequested == 1);
   auto& location = *message.begin();
@@ -883,8 +897,8 @@ bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network
   auto database = client.GetDatabase(message.databaseId);
   assert(database); // should have been checked by the caller
 
-  // Now acquire locks for the segment id list
-  if (message.IsDirtyRead() || client.AcquireLocks(message)) {
+  // Now acquire locks for the segment id list (unless we perform a dirty read or an MVCC read)
+  if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
     if (location.ifCommitIdHigher >= database->GetCommitId() || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list
       // - Or the client requested the write locks only for synchronization of segment deletion/creation
@@ -893,7 +907,7 @@ bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network
     }
 
     // Now construct the segment ranges and create a blobs response message for it
-    auto ranges = intoIdRanges(database->begin(), database->end());
+    auto ranges = intoIdRanges(database->begin(isMVCC), database->end(isMVCC));
     auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
     
     auto response = network::message::BlobsReadResponse::Create(byteSize);

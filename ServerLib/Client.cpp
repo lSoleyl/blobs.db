@@ -245,6 +245,10 @@ void Client::SetDatabaseMVCCMode(database_id database, bool useMVCC) {
   dbEntry.isMVCC = useMVCC;
 }
 
+bool Client::IsDatabaseMVCC(database_id database) const {
+  assert(database < openDatabases.size() && openDatabases[database].database); // Should be a valid database id
+  return openDatabases[database].isMVCC;
+}
 
 
 void Client::ReleaseAllLocksForDatabase(database_id database) {
