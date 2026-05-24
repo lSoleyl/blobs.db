@@ -299,8 +299,13 @@ private:
      * @param delta the data structure used to keep track of allocated/released blocks during copy-on-write commits
      *              This may be nullptr for pure in memory databases
      * @param deleted this data structure is used to track all deleted blobs, clusters and segments in this database
+     * @param file the database's file backend. It is only used when deleting blobs,cluster,segments while having an active mvcc snapshot
+     *             to load them from file into memory before deleting them in case they will be referenced inside the snapshot.   
+     * @param hasMVCCSnapshot true if this snapshot's database has an active MVCC database and we must fully load all blobs,clusters,segments that we want to delete.
+     *                        This has been defined as template parameter to avoid checking it for each updated blob of the commit.
      */
-    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta, Deleted& deleted);
+    template<bool hasMVCCSnapshot>
+    void ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta, Deleted& deleted, FileBackend& file);
 
     /** Returns the next free segment id for this database
      *  This is the value, which can be read from the (`NextFreeSegmentId`, `NextFreeClusterId`, `NextFreeBlobId`) blob

@@ -576,7 +576,11 @@ Database::CommitResult Database::CalculateCommitResult(network::MessagePointer_T
 
   // Now apply the commit messages one by one to the snapshot modifying it in the process
   for (auto pos = commitPos, end = commitEnd; pos != end; ++pos) {
-    newSnapshot->ApplyCommitMessage(**pos, delta.get(), deleted);
+    if (mvccSnapshot) {
+      newSnapshot->ApplyCommitMessage<true>(**pos, delta.get(), deleted, file);
+    } else {
+      newSnapshot->ApplyCommitMessage<false>(**pos, delta.get(), deleted, file);
+    }
   }
 
   if (newFreeList) {
@@ -792,13 +796,8 @@ void Database::Snapshot::DeleteSegment(segment_id segment, MemoryBlockDelta* del
   }
 }
 
-
-void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta, Deleted& deleted) {
-  TODO("Maybe we should use if(constexpr) for the db-less path");
-
-
-  TODO("When deleting a blob,cluster,segment we must load them full from file IFF there exists an active MVCC snapshot of this database");
-
+template<bool hasMVCCSnapshot>
+void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit& commitMessage, MemoryBlockDelta* delta, Deleted& deleted, FileBackend& file) {
   // Apply each modification in sequence
   for (auto pos = commitMessage.begin(), end = commitMessage.end(); pos != end; ++pos) {
     auto& update = *pos;
@@ -813,6 +812,12 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
     } else if (update.cluster == constants::SegmentDeleteId) {
       // A segment is being deleted by writing to the SegmentDeleteId cluster
       assert(update.blob == constants::ClusterDeleteId);
+      if constexpr (hasMVCCSnapshot) {
+        // We want to delete the segment, but we have an active MVCC snapshot, so we must first load that segment full from the database
+        auto segment = GetLoadedSegment(update.segment, file);
+        segment->LoadAllBlobs(file);
+      }
+      
       DeleteSegment(update.segment, delta);
       deleted.segments.push_back(update.segment);
     } else {
@@ -825,6 +830,12 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
         segment->SetNextFreeClusterId(pos.ReadId<cluster_id>());
       } else if (update.blob == constants::ClusterDeleteId) {
         // A cluster is being deleted by writing to ClusterDeleteId blob
+        if constexpr (hasMVCCSnapshot) {
+          // We want to delete the cluster, but we have an active MVCC snapshot, so we must first load that cluster full from the database
+          auto cluster = segment->GetLoadedCluster(update.cluster, file);
+          cluster->LoadAllBlobs(file);
+        }
+
         segment->DeleteCluster(update.cluster, delta);
         deleted.clusters.push_back({ update.segment, update.cluster });
 
@@ -837,10 +848,22 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
           cluster->SetNextFreeBlobId(pos.ReadId<blob_id>());
         } else if (update.blobSize == constants::DeleteBlobSize) {
           // The specified blob is being deleted
+          if constexpr (hasMVCCSnapshot) {
+            // But we have an active MVCC snapshot, so load the blob fully into memory BEFORE deleting it.
+            cluster->GetLoadedBlob(update.blob, file);
+          }
+
           cluster->DeleteBlob(update.blob, delta);
           deleted.blobs.push_back(update);
         } else {
           // Regular blob content update
+          if constexpr (hasMVCCSnapshot) {
+            // But we are in MVCC mode, so ensure the blob is full loaded before we overwrite the old one.
+            // Currently UpdateBlob will not load a not loaded Blob from a previous transaction, so we must
+            // load it here explicitly to be able to still read the overwritten data in the MVCC snapshot.
+            cluster->GetLoadedBlob(update.blob, file);
+          }
+          
           cluster->UpdateBlob(update.blob, delta)->SetContent(pos.ReadData());
         }
       }
