@@ -73,20 +73,6 @@ public:
   static bool UseStickyLocks(bool use) { return UseStickyLocks(Session::GetGlobalSession(), use); }
 
 
-  /** Configures the default transaction mode for newly opened databases.
-   * 
-   * @param session the session configure the MVCC default for
-   * @param use if true then newly opened databases will be open their transactions in MVCC mode (default = false)
-   * 
-   * @return the previous setting for the mvcc mode
-   */
-  BLOBS_EXPORT static bool UseMVCC(const Session::Handle& session, bool use);
-
-  /** Enables/disables default MVCC open mode fo rthe global session
-   */
-  static bool UseMVCC(bool use) { return UseMVCC(Session::GetGlobalSession(), use); }
-
-
   /** This method is called if a transaction is aborted by the server because of a deadlock.
    *  The client will obviously not inform the server about that. But if the client has connections to 
    *  other servers, they will be informed about the transaction abort.

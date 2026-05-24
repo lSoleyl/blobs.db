@@ -144,7 +144,7 @@ Database::~Database() {
 }
 
 
-Database* Database::Open(const Session::Handle& session, const char* connectionStringBegin, size_t connectionStringLen, OpenMode openMode) {
+Database* Database::Open(const Session::Handle& session, const char* connectionStringBegin, size_t connectionStringLen, OpenMode openMode, bool mvcc) {
   std::string_view connectionString(connectionStringBegin, connectionStringLen);
 
   auto slashPos = connectionString.find('/');
@@ -169,18 +169,18 @@ Database* Database::Open(const Session::Handle& session, const char* connectionS
     }
   }
 
-  return Open(session, hostName, databaseName, openMode, port);
+  return Open(session, hostName, databaseName, openMode, port, mvcc);
 }
 
 
-Database* Database::Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen, OpenMode openMode) {
+Database* Database::Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen, OpenMode openMode, bool mvcc) {
   // Simply encode into UTF-8 and then call the regular version
   std::string u8ConnectionString = encoding::ToUTF8(std::wstring_view(connectionString, connectionStringLen));
-  return Open(session, u8ConnectionString.data(), u8ConnectionString.length(), openMode);
+  return Open(session, u8ConnectionString.data(), u8ConnectionString.length(), openMode, mvcc);
 }
 
 
-Database* Database::Open(const Session::Handle& session, const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, OpenMode openMode, int port) {
+Database* Database::Open(const Session::Handle& session, const char* hostNameData, size_t hostNameLen, const char* databaseNameData, size_t databaseNameLen, OpenMode openMode, int port, bool mvcc) {
   // Ensure direct conversion is possible
   static_assert(static_cast<int>(OpenMode::CreateIfNotExist) == static_cast<int>(network::message::DatabaseOpen::OpenMode::CreateIfNotExist));
   static_assert(static_cast<int>(OpenMode::OpenFailIfNotExist) == static_cast<int>(network::message::DatabaseOpen::OpenMode::OpenFailIfNotExist));
@@ -199,13 +199,13 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
 
   auto& client = network.Get(connectionId);
   TODO("Instead of always using the session default, we could provide an overload to Open, which can explicitly specify to open a new database in MVCC mode.")
-  client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName, static_cast<network::message::DatabaseOpen::OpenMode>(openMode), session->Transactions().useMVCC));
+  client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName, static_cast<network::message::DatabaseOpen::OpenMode>(openMode), mvcc));
 
   // Await the DatabaseOpenResponse
   auto message = network.ExpectMessage<network::message::DatabaseOpenResponse>(client);
   
   if (message->result == network::message::DatabaseOpenResponse::Result::SUCCESS) {
-    return new Database(session, std::string(databaseName), message->databaseId, connectionId, session->Transactions().useMVCC);
+    return new Database(session, std::string(databaseName), message->databaseId, connectionId, mvcc);
   }
   
   // Opening the database failed for some reason -> release the network connection to not leak it since
@@ -241,10 +241,10 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
   return nullptr;
 }
 
-Database* Database::Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, OpenMode openMode, int port) {
+Database* Database::Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, OpenMode openMode, int port, bool mvcc) {
   // Simply convert the UTF-16 database name into UTF-8 and call the regular Open() function
   auto u8DatabaseName = encoding::ToUTF8(std::wstring_view(databaseName, databaseNameLen));
-  return Database::Open(session, hostName, hostNameLen, u8DatabaseName.data(), u8DatabaseName.length(), openMode, port);
+  return Database::Open(session, hostName, hostNameLen, u8DatabaseName.data(), u8DatabaseName.length(), openMode, port, mvcc);
 }
 
 

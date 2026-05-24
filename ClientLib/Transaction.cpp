@@ -504,13 +504,6 @@ bool Transaction::UseStickyLocks(const Session::Handle& session, bool use) {
 }
 
 
-bool Transaction::UseMVCC(const Session::Handle& session, bool use) {
-  auto sessionLock = session->Lock();
-  auto& transactions = session->Transactions();
-  return std::exchange(transactions.useMVCC, use);
-}
-
-
 void Transaction::AbortDeadlock() {
   assert(session->OwnsLock()); // should only be called from inside AwaitMessage(), for which we already need to have a session lock
 

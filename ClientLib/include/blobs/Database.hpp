@@ -75,32 +75,32 @@ public:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be encoded in ASCII, the database name supports UTF-8 encoded file paths.
    */
-  static Database* Open(std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
-    return Open(Session::GetGlobalSession(), connectionString.data(), connectionString.size(), openMode);
+  static Database* Open(std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist, bool mvcc = false) {
+    return Open(Session::GetGlobalSession(), connectionString.data(), connectionString.size(), openMode, mvcc);
   }
 
   /** Opens a new database in the specified session via the given connection string of the following form:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be encoded in ASCII, the database name supports UTF-8 encoded file paths.
    */
-  static Database* Open(const Session::Handle& session, std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
-    return Open(session, connectionString.data(), connectionString.size(), openMode);
+  static Database* Open(const Session::Handle& session, std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist, bool mvcc = false) {
+    return Open(session, connectionString.data(), connectionString.size(), openMode, mvcc);
   }
 
   /** Opens a new database in the global session via the given unicode encoded connection string of the following form:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be made up of only ASCII characters while the database name supports any unicode character.
    */
-  static Database* Open(std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
-    return Open(Session::GetGlobalSession(), u16ConnectionString.data(), u16ConnectionString.size(), openMode);
+  static Database* Open(std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist, bool mvcc = false) {
+    return Open(Session::GetGlobalSession(), u16ConnectionString.data(), u16ConnectionString.size(), openMode, mvcc);
   }
 
   /** Opens a new database in the specified session via the given unicode encoded connection string of the following form:
    *  <host>[:<port>]/<dbName>
    *  Host and port must be made up of only ASCII characters while the database name supports any unicode character.
    */
-  static Database* Open(const Session::Handle& session, std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
-    return Open(session, u16ConnectionString.data(), u16ConnectionString.size(), openMode);
+  static Database* Open(const Session::Handle& session, std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist, bool mvcc = false) {
+    return Open(session, u16ConnectionString.data(), u16ConnectionString.size(), openMode, mvcc);
   }
 
   /** Opens a new database in the global session at the specified hostName with the given database name and optional port to use.
@@ -109,9 +109,11 @@ public:
    * @param databaseName path/filename of the database to open (UTF-8 encoded)
    * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
+   * @param mvcc if true then the database is set into MVCC transaction mode from be creation. This is for most part equivalent to calling
+   *             Database::SetMVCC(true), except for database opened inside a transaction. Here SetMVCC() would only apply to the next transaction, not the current one.
    */
-  static Database* Open(std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
-    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port);
+  static Database* Open(std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108, bool mvcc = false) {
+    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port, mvcc);
   }
 
   /** Opens a new database in the sepcified session at the specified hostName with the given database name and optional port to use.
@@ -121,9 +123,11 @@ public:
    * @param databaseName path/filename of the database to open (UTF-8 encoded)
    * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
+   * @param mvcc if true then the database is set into MVCC transaction mode from be creation. This is for most part equivalent to calling
+   *             Database::SetMVCC(true), except for database opened inside a transaction. Here SetMVCC() would only apply to the next transaction, not the current one.
    */
-  static Database* Open(const Session::Handle& session, std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
-    return Open(session, hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port);
+  static Database* Open(const Session::Handle& session, std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108, bool mvcc = false) {
+    return Open(session, hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port, mvcc);
   }
 
   /** Opens a new database in the global session at the specified hostName with the given database name and optional port to use.
@@ -132,9 +136,11 @@ public:
    * @param databaseName path/filename of the database to open (UTF-16 encoded)
    * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
+   * @param mvcc if true then the database is set into MVCC transaction mode from be creation. This is for most part equivalent to calling
+   *             Database::SetMVCC(true), except for database opened inside a transaction. Here SetMVCC() would only apply to the next transaction, not the current one.
    */
-  static Database* Open(std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
-    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port);
+  static Database* Open(std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108, bool mvcc = false) {
+    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port, mvcc);
   }
 
   /** Opens a new database in the specified session at the specified hostName with the given database name and optional port to use.
@@ -144,10 +150,95 @@ public:
    * @param databaseName path/filename of the database to open (UTF-16 encoded)
    * @param openMode how to open/create the database
    * @param port the port on which to connect to the database server
+   * @param mvcc if true then the database is set into MVCC transaction mode from be creation. This is for most part equivalent to calling
+   *             Database::SetMVCC(true), except for database opened inside a transaction. Here SetMVCC() would only apply to the next transaction, not the current one.
    */
-  static Database* Open(const Session::Handle& session, std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
-    return Open(session, hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port);
+  static Database* Open(const Session::Handle& session, std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108, bool mvcc = false) {
+    return Open(session, hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port, mvcc);
   }
+
+
+
+  /** Opens a new database in the global session in MVCC mode via the given connection string of the following form:
+   *  <host>[:<port>]/<dbName>
+   *  Host and port must be encoded in ASCII, the database name supports UTF-8 encoded file paths.
+   */
+  static Database* OpenMVCC(std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(Session::GetGlobalSession(), connectionString.data(), connectionString.size(), openMode, true);
+  }
+
+  /** Opens a new database in the specified session in MVCC mode via the given connection string of the following form:
+   *  <host>[:<port>]/<dbName>
+   *  Host and port must be encoded in ASCII, the database name supports UTF-8 encoded file paths.
+   */
+  static Database* OpenMVCC(const Session::Handle& session, std::string_view connectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(session, connectionString.data(), connectionString.size(), openMode, true);
+  }
+
+  /** Opens a new database in the global session in MVCC mode via the given unicode encoded connection string of the following form:
+   *  <host>[:<port>]/<dbName>
+   *  Host and port must be made up of only ASCII characters while the database name supports any unicode character.
+   */
+  static Database* OpenMVCC(std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(Session::GetGlobalSession(), u16ConnectionString.data(), u16ConnectionString.size(), openMode, true);
+  }
+
+  /** Opens a new database in the specified session in MVCC mode via the given unicode encoded connection string of the following form:
+   *  <host>[:<port>]/<dbName>
+   *  Host and port must be made up of only ASCII characters while the database name supports any unicode character.
+   */
+  static Database* OpenMVCC(const Session::Handle& session, std::wstring_view u16ConnectionString, OpenMode openMode = OpenMode::CreateIfNotExist) {
+    return Open(session, u16ConnectionString.data(), u16ConnectionString.size(), openMode, true);
+  }
+
+  /** Opens a new database in the global session in MVCC mode at the specified hostName with the given database name and optional port to use.
+   *
+   * @param database hostname/ip address to connect to (ASCII encoded)
+   * @param databaseName path/filename of the database to open (UTF-8 encoded)
+   * @param openMode how to open/create the database
+   * @param port the port on which to connect to the database server
+   */
+  static Database* OpenMVCC(std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port, true);
+  }
+
+  /** Opens a new database in the sepcified session in MVCC mode at the specified hostName with the given database name and optional port to use.
+   *
+   * @param session the session to open the database in
+   * @param database hostname/ip address to connect to (ASCII encoded)
+   * @param databaseName path/filename of the database to open (UTF-8 encoded)
+   * @param openMode how to open/create the database
+   * @param port the port on which to connect to the database server
+   */
+  static Database* OpenMVCC(const Session::Handle& session, std::string_view hostName, std::string_view databaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(session, hostName.data(), hostName.size(), databaseName.data(), databaseName.size(), openMode, port, true);
+  }
+
+  /** Opens a new database in the global session in MVCC mode at the specified hostName with the given database name and optional port to use.
+   *
+   * @param database hostname/ip address to connect to (ASCII encoded)
+   * @param databaseName path/filename of the database to open (UTF-16 encoded)
+   * @param openMode how to open/create the database
+   * @param port the port on which to connect to the database server
+   */
+  static Database* OpenMVCC(std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(Session::GetGlobalSession(), hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port, true);
+  }
+
+  /** Opens a new database in the specified session in MVCC mode at the specified hostName with the given database name and optional port to use.
+   *
+   * @param session the session to open the database in
+   * @param database hostname/ip address to connect to (ASCII encoded)
+   * @param databaseName path/filename of the database to open (UTF-16 encoded)
+   * @param openMode how to open/create the database
+   * @param port the port on which to connect to the database server
+   */
+  static Database* OpenMVCC(const Session::Handle& session, std::string_view hostName, std::wstring_view u16DatabaseName, OpenMode openMode = OpenMode::CreateIfNotExist, int port = 8108) {
+    return Open(session, hostName.data(), hostName.size(), u16DatabaseName.data(), u16DatabaseName.size(), openMode, port, true);
+  }
+
+
+
 
 
   /** Controls whether the NEXT transaction started for this database will be started as MVCC (Multi Version Concurrency Control) transaction.
@@ -424,25 +515,24 @@ private:
    */
   void WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
 
-
   /** Private overload exported by the DLL and used by the std::string_view overload.
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* connectionString, size_t connectionStringLen, OpenMode openMode);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* connectionString, size_t connectionStringLen, OpenMode openMode, bool mvcc);
 
   /** Private overload exported by the DLL to support UTF-16 encoded connection strings
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen, OpenMode openMode);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const wchar_t* connectionString, size_t connectionStringLen, OpenMode openMode, bool mvcc);
 
 
   /** Private overload exported by the DLL and used by the std::string_view overload. 
    *  We don't export string_view through the interface to avoid the risk of ABI incompatibilities
    *  for classes like std::string and std::string_view
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const char* databaseName, size_t databaseNameLen, OpenMode openMode, int port = 8108);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const char* databaseName, size_t databaseNameLen, OpenMode openMode, int port, bool mvcc);
   
   /** Another private overload but for UTF16 encoded database paths
    */
-  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, OpenMode openMode, int port = 8108);
+  BLOBS_EXPORT static Database* Open(const Session::Handle& session, const char* hostName, size_t hostNameLen, const wchar_t* databaseName, size_t databaseNameLen, OpenMode openMode, int port, bool mvcc);
 
   /** Sets the active mvcc mode to what was configured for this database (used when starting a new transaction) 
    *  and returns the mvcc mode for this database.
