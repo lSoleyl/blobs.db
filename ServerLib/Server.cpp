@@ -397,8 +397,6 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
   }
 
 
-  FIXME("Reject any commit data for MVCC databases");
-
   auto messagesPos = client.commitMessages.begin();
   auto messagesEnd = client.commitMessages.end();
 
@@ -407,6 +405,12 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
     if (!database) {
       return Result::DATABASE_NOT_OPENED;
     }
+
+    if (client.IsDatabaseMVCC(databaseId)) {
+      // A correctly implemented client should never attempt this
+      return Result::CANNOT_COMMIT_MVCC_DATABASE;
+    }
+
 
     // In case the client created some blobs, this vector will be filled with ranges of created blobs
     // This range of created blobs is tracked per database

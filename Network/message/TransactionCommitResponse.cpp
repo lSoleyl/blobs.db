@@ -76,6 +76,9 @@ std::ostream& operator<<(std::ostream& out, TransactionCommitResponse::Result re
     case Result::ILLEGAL_NEXT_FREE_SEGMENT_ID:
       return out << "ILLEGAL_NEXT_FREE_SEGMENT_ID";
 
+    case Result::CANNOT_COMMIT_MVCC_DATABASE:
+      return out << "CANNOT_COMMIT_MVCC_DATABASE";
+
     default:
       assert(!"Missing serialization for TransactionCommitResponse::Result");
       return out;

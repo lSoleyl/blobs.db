@@ -26,6 +26,7 @@ struct TransactionCommitResponse : public Message {
     ILLEGAL_NEXT_FREE_BLOB_ID,    // An illegal value has been written into a nextFreeBlobId blob
     ILLEGAL_NEXT_FREE_CLUSTER_ID, // An illegal value has been written into a nextFreeClusterId blob
     ILLEGAL_NEXT_FREE_SEGMENT_ID, // An illegal value has been written into a nextFreeSegmentId blob
+    CANNOT_COMMIT_MVCC_DATABASE,  // An attempt to commit data for a database opened in MVCC
   };
 
   Result result;
