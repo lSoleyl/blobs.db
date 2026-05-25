@@ -87,4 +87,7 @@ TransactionAlreadyOpen::TransactionAlreadyOpen() : Exception("Cannot start a new
 InternalCommitError::InternalCommitError(std::string_view reason) : Exception(reason, ExceptionCode::InternalCommitError) {}
 
 
+CannotWriteLockInMVCC::CannotWriteLockInMVCC() : Exception("Cannot set a write lock with databse opened in MVCC mode", ExceptionCode::CannotWriteLockInMVCC) {}
+
+
 }}

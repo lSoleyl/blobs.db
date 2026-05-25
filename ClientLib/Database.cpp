@@ -301,7 +301,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   static_assert(static_cast<int>(Lock::Write) == static_cast<int>(Transaction::LockMode::Write));
 
   if (lock == Lock::None) {
-    // Dirty reads are much more simplfied - no running transaction needed, no cache to update
+    // Dirty reads are much more simplfied - no running transaction needed, no cache to update (and they are allowed during MVCC)
     return DirtyReadBlobInternal(segment, cluster, blob);
   }
 
@@ -310,6 +310,12 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   auto& transaction = GetTransaction();
 
   BlobLocation location(segment, cluster, blob);
+
+  if (lock == Lock::Write && IsMVCC()) {
+    // Cannot set write locks in MVCC - we can catch this logic error in the client to avoid the 
+    // bothering the server with this faulty request.
+    throw exception::CannotWriteLockInMVCC();
+  }
 
   // First check whether we have already written this blob in the current transaction and return the written data if so
   // This will also ensure that we don't read an already deleted blob and throw an exception if so
@@ -972,10 +978,17 @@ void Database::CreateBlobInternalAt(segment_id segment, cluster_id cluster, blob
 
 
 void Database::WriteLockNoContent(const BlobLocation& location) {
-  auto& network = session->Network();
+  auto& transaction = GetTransaction();
+
+  if (IsMVCC()) {
+    // All attempts to set a write lock on a database opened in MVCC mode will fail on the server.
+    // We can avoid the unnecessary round trip, by catching this attempt already on the client.
+    throw exception::CannotWriteLockInMVCC();
+  }
+
 
   // Create the request for this blob
-  auto& transaction = GetTransaction();
+  auto& network = session->Network();
   auto& client = network.Get(connectionId);
   auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
   auto& address = *request->begin();

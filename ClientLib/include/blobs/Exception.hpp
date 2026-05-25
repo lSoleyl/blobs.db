@@ -31,7 +31,8 @@ enum class ExceptionCode {
   ClusterLimitReached,    // Cannot create more clusters in the segment
   SegmentLimitReached,    // Cannot create more segments in the database
   TransactionAlreadyOpen, // Attempted to start a new transaction with a transaction already in progress
-  InternalCommitError     // An error during server commit - this should never happen and indicates a bug in the library
+  InternalCommitError,    // An error during server commit - this should never happen and indicates a bug in the library
+  CannotWriteLockInMVCC,  // Attempted to set a write lock or perform a write/delete operation one database that is opened in MVCC mode
 };
 
 
@@ -187,6 +188,13 @@ public:
   InternalCommitError(std::string_view reason);
 };
 
+
+
+class CannotWriteLockInMVCC : public Exception {
+public: 
+  TODO("Add blob location and database as parameter");
+  CannotWriteLockInMVCC();
+};
 
 }
 
