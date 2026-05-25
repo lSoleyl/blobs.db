@@ -4,14 +4,6 @@
 using namespace blobs;
 
 
-namespace {
-  template<typename T>
-  std::vector<T> intoVector(blobs::Range<T>&& range) {
-    return std::vector<T>(range.begin(), range.end());
-  }
-}
-
-
 TEST_CASE("Dirty read blobs during write lock") {
   auto dbName = "mem:testSimpleDirtyRead";
   database_ptr db(Database::Open("localhost", dbName));

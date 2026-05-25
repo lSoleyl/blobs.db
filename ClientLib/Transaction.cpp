@@ -6,6 +6,7 @@
 #include <internal/Network.hpp>
 #include <internal/HeldLocks.hpp>
 #include <internal/TransactionsState.hpp>
+#include <internal/DatabasesState.hpp>
 #include <network/message/All.hpp>
 #include <network/ClientInterface.hpp>
 
@@ -305,7 +306,7 @@ struct Transaction::State {
 
   /** Constructs the commit messages for all databases in this transaction state.
    */
-  std::vector<network::MessagePointer_T<network::message::TransactionCommit>> ConstructCommitMessages() const {
+  std::vector<network::MessagePointer_T<network::message::TransactionCommit>> ConstructCommitMessages(blobs::internal::DatabasesState& databases) const {
     std::vector<network::MessagePointer_T<network::message::TransactionCommit>> commitMessages;
 
     for (auto& [dbId, state] : forDatabase) {
@@ -321,13 +322,18 @@ struct Transaction::State {
     } else {
       // No writes to any database on this server connection.
       // We must still send at least one empty commit message to the server. 
-      // Otherwise the server and client's transaction state will get out of sync leading to follup errors.
-      for (auto& [dbId, state] : forDatabase) {
-        // Simply generate an empty commit message for the first database we know
-        // The database used is not really relevant, but it should be a valid database as the server checks this
-        commitMessages.push_back(network::message::TransactionCommit::Create(dbId, 0, 0));
-        break;
-      } 
+      // Otherwise the server and client's transaction state will get out of sync leading to followup errors.
+      // For that we will use the first best database on the client.
+
+      // This cannot happen as it would mean that we started a transaction on a connection with no databases
+      // Transactions are always started implicitly when accessing databases
+      assert(!databases.openedDatabases.empty()); 
+
+      // Simply generate an empty commit message for the first database we know.
+      // The database used is not really relevant, but it should be a valid database as the server checks this.
+      // We do not use the forDatabase structure as it may be empty if the transaction has been opened implicitly by a BlobsRead
+      // but that operation failed before creating any database state.
+      commitMessages.push_back(network::message::TransactionCommit::Create(databases.openedDatabases.begin()->first, 0, 0));
     }
 
     return commitMessages;
@@ -400,7 +406,7 @@ bool Transaction::Commit(const Session::Handle& session) {
   auto& network = session->Network();
   // Construct the commit messages for each server connection
   for (auto& [connectionId, transaction] : transactions.active) {
-    auto commitMessages = transaction.state->ConstructCommitMessages();
+    auto commitMessages = transaction.state->ConstructCommitMessages(session->Databases(connectionId));
 
     assert(!commitMessages.empty()); // We must send at least an empty commit message to each server otherwise the states will be out of sync
 
@@ -425,19 +431,23 @@ bool Transaction::Commit(const Session::Handle& session) {
       if (commitResponse->result == network::message::TransactionCommitResponse::Result::SUCCESS) {
         // Update the cached versions of all written blobs for all databases involved in the commit
         for (auto& commitEntry : *commitResponse) {
-          auto dbState = transaction->state->GetDatabaseState(commitEntry.dbId);
-          assert(dbState != nullptr); // Something is seriously wrong if we just committed data from a database state, which is now gone (or server messed up)
-          auto database = dbState->database;
+          // Update the database cache from the written blobs.
+          // We don't necessarily need to have a database transaction state in case we performed an empty commit
+          // and just sent an empty TransactionCommit message for the first opened database (otherwise we would have no message to send).
+          FIXME("If we send a TransactionAbort instead of empty commits then we could perform more strict checking here and could maybe catch more logic errors");
+          if (auto dbState = transaction->state->GetDatabaseState(commitEntry.dbId)) {
+            auto database = dbState->database;
 
-          // Update each written blob's data in the database cache now
-          // Since writtenBlobs does NOT contain the special deletion blobs, we don't have to perform any filtering for these ids
-          for (auto& [location, data] : dbState->writtenBlobs) {
-            // Since we don't need the data in the writtenBlobs anymore, we can safely just move it into the cache to 
-            // save some reallocations
-            database->UpdateCacheForCommittedBlob(location, std::move(data), commitEntry.commitId, transaction->id);
+            // Update each written blob's data in the database cache now
+            // Since writtenBlobs does NOT contain the special deletion blobs, we don't have to perform any filtering for these ids
+            for (auto& [location, data] : dbState->writtenBlobs) {
+              // Since we don't need the data in the writtenBlobs anymore, we can safely just move it into the cache to 
+              // save some reallocations
+              database->UpdateCacheForCommittedBlob(location, std::move(data), commitEntry.commitId, transaction->id);
+            }
+
+            TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
           }
-
-          TODO("We should probably also clear some old unused cache entries here, but how old is too old?");
         }
       } else {
         std::ostringstream error;

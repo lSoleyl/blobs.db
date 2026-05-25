@@ -169,6 +169,7 @@
     <ClCompile Include="testHugeCommit.cpp" />
     <ClCompile Include="testKeepStickyLocks.cpp" />
     <ClCompile Include="testMultipleThreadsSingleSession.cpp" />
+    <ClCompile Include="testMVCC.cpp" />
     <ClCompile Include="testOpenDatabase.cpp" />
     <ClCompile Include="testParallelWrite.cpp" />
     <ClCompile Include="testSimpleWriteConflict.cpp" />

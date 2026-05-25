@@ -22,6 +22,15 @@ struct CloseUponDelete {
 using database_ptr = std::unique_ptr<blobs::Database, CloseUponDelete>;
 
 
+/** A helper function converting blobs::Range<T> into a std::vector<T> as is used in some tests
+ */
+template<typename T>
+inline std::vector<T> intoVector(blobs::Range<T>&& range) {
+  return std::vector<T>(range.begin(), range.end());
+}
+
+
+
 namespace std {
 /** Generic vector serializer for display of expected values
  *  We must define it in std namespace for ADL to find the function

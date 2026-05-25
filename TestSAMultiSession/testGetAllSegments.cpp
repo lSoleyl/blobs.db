@@ -3,13 +3,6 @@
 
 using namespace blobs;
 
-namespace {
-template<typename T>
-std::vector<T> intoVector(blobs::Range<T>&& range) {
-  return std::vector<T>(range.begin(), range.end());
-}
-}
-
 // This test will ensure that the list can be correctly queried and is correctly adjusted to the modifications
 // performed during a transaction and that it is correctly read across transaction.
 TEST_CASE("GetAllSegments tests with default segment") {

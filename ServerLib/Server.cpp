@@ -406,11 +406,7 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
       return Result::DATABASE_NOT_OPENED;
     }
 
-    if (client.IsDatabaseMVCC(databaseId)) {
-      // A correctly implemented client should never attempt this
-      return Result::CANNOT_COMMIT_MVCC_DATABASE;
-    }
-
+    bool isDatabaseMVCC = client.IsDatabaseMVCC(databaseId);
 
     // In case the client created some blobs, this vector will be filled with ranges of created blobs
     // This range of created blobs is tracked per database
@@ -424,6 +420,13 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
     for (;  messagesPos != messagesEnd && (*messagesPos)->databaseId == databaseId; ++messagesPos) {
       auto& message = **messagesPos;
 
+      if (isDatabaseMVCC && message.begin() != message.end()) {
+        // A correctly implemented client should never attempt this
+        // We CAN send a TransactionCommit message for an MVCC database, but it must contain no blobs.
+        // Such an "empty" commit message is required when the client has only MVCC databases opened and wants to commit its transaction
+        // In that case the client could also just abort the transaction...
+        return Result::CANNOT_COMMIT_MVCC_DATABASE;
+      }
 
       // Process all touched blobs for this message
       for (auto pos = message.begin(), end = message.end(); pos != end; ++pos) {
