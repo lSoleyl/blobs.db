@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 
 // Define all predefined type choices made to be able to easily recompile with other sizes if necessary
 namespace blobs {
@@ -87,6 +88,16 @@ namespace blobs {
      */
     constexpr segment_id SegmentListId = MaxSegmentId + 2;
   }
+
+  // Type santity checks
+  static_assert(sizeof(blob_id) > 1 && std::is_unsigned_v<blob_id>, "Unsupported blob_id type specified");
+  static_assert(sizeof(cluster_id) > 1 && std::is_unsigned_v<cluster_id>, "Unsupported cluster_id type specified");
+  static_assert(sizeof(segment_id) > 1 && std::is_unsigned_v<segment_id>, "Unsupported segment_id type specified");
+  static_assert(sizeof(message_size) > 1 && std::is_unsigned_v<message_size>, "Unsupported message_size type specifided");
+  static_assert(std::is_unsigned_v<client_id>, "Unsupported client_id type specified");
+  static_assert(std::is_unsigned_v<blob_size>, "Unsupported blob_size type specified");
+  static_assert(std::is_unsigned_v<commit_id>, "Unsupported commit_id type specified");
+  static_assert(std::is_unsigned_v<connection_id>, "Unsupported connection_id type specified");
 }
 
 #define _STR(x) #x
