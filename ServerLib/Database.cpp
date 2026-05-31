@@ -7,6 +7,8 @@
 #include <common/Paths.hpp>
 #include <common/Encoding.hpp>
 
+#include <sstream>
+
 namespace blobs {
 namespace server {
 
@@ -406,13 +408,13 @@ bool Database::AcquireLocks(const network::message::BlobsRead& message) {
   auto client = message.clientId;
   bool write = message.NeedsWriteLock();
 
-  
+
   if (!AllLocksInMessage(*this, message, [=](const BlobLocation& location) { return CanClientAcquireLock(client, location, write); })) {
     // At least one lock cannot be acquired
     return false;
   }
-  
-  
+
+
   // Acquire all the locks at once
   ForEachLockInMessage(*this, message, [=](const BlobLocation& location) { AcquireClientLock(client, location, write); });
   return true;
@@ -457,7 +459,30 @@ void Database::AcquireClientLock(client_id client, const BlobLocation& location,
 
 
 
-std::optional<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message) {
+std::string Database::DeadlockInfo::ToString() const {
+  std::ostringstream details;
+
+  transaction_priority prio[2] = {
+    Client::Get(requests[0].client).GetTransactionPriority(),
+    Client::Get(requests[1].client).GetTransactionPriority()
+  };
+
+  TODO("Support a client display name, which should be used here instead of just the client id");
+  TODO("Fetch the hostname of the client and add it to the error description");
+  
+  details << "Deadlock detected!\n"
+    << "Client " << requests[0].client << "(prio=" << prio[0] << ") attempts to " << (requests[0].writeLock ? "write" : "read") << " lock " << requests[0].location
+    << " - conflicting lock held by Client " << requests[1].client << "(prio=" << prio[1] << ")\n"
+    << "Client " << requests[1].client << "(prio=" << prio[1] << ") attempts to " << (requests[1].writeLock ? "write" : "read") << " lock " << requests[1].location
+    << " - conflicting lock held by Client " << requests[0].client << "(prio=" << prio[0] << ")\n"
+  ;
+
+  return details.str();
+}
+
+
+
+std::vector<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message) {
   // Collect all clients, whose locks conflict with this read message
   auto conflicts = CollectLockConflicts(*message);
   assert(!conflicts.empty()); // Why would we queue a read if there are no conflicts!?
@@ -466,18 +491,26 @@ std::optional<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::
   auto client = message->clientId;
   bool writeLock = message->NeedsWriteLock();
 
+
+
+  std::vector<DeadlockInfo> deadlocks;
+
   TODO("We should acutally collect ALL clients, which deadlock with the newly entered message, because the deadlock may involve more than 1 client.");
 
   for (auto& queuedMessage : queuedReads) {
+    // Generate at most one deadlock entry per client, so ignore all messages for which we already have an entry
+    if (std::any_of(deadlocks.begin(), deadlocks.end(), [&](const DeadlockInfo& deadlock) { return deadlock.requests[1].client == queuedMessage->clientId; })) {
+      continue;
+    }
+
+
     // Only check the messages of clients, which are preventing the current message's lock acquisition
     auto lockConflict = std::find_if(conflicts.begin(), conflicts.end(), [&](const LockConflict& conflict) { return conflict.blockedBy == queuedMessage->clientId; });
     if (lockConflict != conflicts.end()) {
       if (auto conflictLocation = FindLockConflictWith(*queuedMessage, client)) {
-        // We have a bidirectional locking conflict (i.e. a deadlock!)        
-        // We still push the read into the read queue to have the flexibility of not always aborting the transaction of the client sending the last message.
-        queuedReads.push_back(std::move(message));
+        // We have a bidirectional locking conflict (i.e. a deadlock!)
         
-        // Now return an object containing the main deadlock information
+        // Construct the deadlock entry and continue checking the remaining clients
         TODO("Currently DeadlockInfo does not hold the information what kind of lock the conflicting client holds, this could be useful for error reporting/troubleshooting");
         DeadlockInfo deadlock;
         deadlock.requests[0].location = lockConflict->location;
@@ -487,14 +520,14 @@ std::optional<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::
         deadlock.requests[1].location = *conflictLocation;
         deadlock.requests[1].client = queuedMessage->clientId;
         deadlock.requests[1].writeLock = queuedMessage->NeedsWriteLock();
-        return deadlock;
+        deadlocks.push_back(deadlock);;
       }
     }
   }
   
-  // No deadlocks, simply queue the message and return an empty optional to indicate no deadlock
+  // Finally queue the message (even if we had a deadlock, because we might want to abort the other clients) and return the collected deadlock info
   queuedReads.push_back(std::move(message));
-  return std::nullopt;
+  return deadlocks;
 }
   
 

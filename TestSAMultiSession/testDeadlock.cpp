@@ -168,6 +168,140 @@ TEST_CASE("Test simple transaction priority") {
 }
 
 
+// When more then 2 clients are involved in a deadlock and all have the same transaction priority then
+// the client causing the deadlock request will be the one that is aborted
+TEST_CASE("Deadlock with 3 clients default txn priority") {
+  auto connStr = "localhost/mem:testDeadlock3ClientsDefaultPrio";
+  // Prepare database
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, connStr));
+  db->WriteString(0, 0, 0, "000");
+  db->CreateString(0, 0, "001");
+  Transaction::Commit(session);
+
+  parallel::sync_point firstRead(3);
 
 
-TODO("Write deadlock scenario where more than 2 clients are involved")
+  parallel::run({
+    // The first client will read lock blob 0, then blob 1
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      CHECK(db->ReadString(0, 0, 0) == "000");
+      firstRead.wait();
+      CHECK_NOTHROW_MESSAGE(db->ReadString(0, 0, 1), "The first client should not get the deadlock exception");
+    },
+
+    // The second client will read lock blob 0, then blob 1
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      CHECK(db->ReadString(0, 0, 0) == "000");
+      firstRead.wait();
+      CHECK_NOTHROW_MESSAGE(db->ReadString(0, 0, 1), "The second client should also not get the deadlock exception");
+    },
+
+    // The third client will write lock blob 1, then blob 0
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      CHECK(db->ReadString(0, 0, 1, Lock::Write) == "001");
+      firstRead.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // sleep a bit to ensure this request reaches the server last
+      CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 0, Lock::Write), exception::Deadlock, "The third client should receive the deadlock exception");
+    }
+  });
+}
+
+
+// Test case to test the priority matching. Here only one of the two first clients will
+// have an equal priority while the other one has a lower priority. Still only the third client's transaction should be aborted.
+TEST_CASE("Deadlock with 3 clients one same txn priority") {
+  auto connStr = "localhost/mem:testDeadlock3Clients1SamePrio";
+  // Prepare database
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, connStr));
+  db->WriteString(0, 0, 0, "000");
+  db->CreateString(0, 0, "001");
+  Transaction::Commit(session);
+
+  parallel::sync_point firstRead(3);
+
+
+  parallel::run({
+    // The first client will read lock blob 0, then blob 1 (with lower than default priority)
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      Transaction::SetPriority(session, -1);
+      CHECK(db->ReadString(0, 0, 0) == "000");
+      firstRead.wait();
+      CHECK_NOTHROW_MESSAGE(db->ReadString(0, 0, 1), "The first client should not get the deadlock exception");
+    },
+
+    // The second client will read lock blob 0, then blob 1
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      CHECK(db->ReadString(0, 0, 0) == "000");
+      firstRead.wait();
+      CHECK_NOTHROW_MESSAGE(db->ReadString(0, 0, 1), "The second client should also not get the deadlock exception");
+    },
+
+    // The third client will write lock blob 1, then blob 0
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      CHECK(db->ReadString(0, 0, 1, Lock::Write) == "001");
+      firstRead.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // sleep a bit to ensure this request reaches the server last
+      CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 0, Lock::Write), exception::Deadlock, "The third client should receive the deadlock exception");
+    }
+  });
+}
+
+// Test case to test the priority matching. Here the third client will have a higher priority than
+// the first two thus we expect BOTH transactions of the first two clients to be aborted.
+TEST_CASE("Deadlock with 3 clients none same/higher txn priority") {
+  auto connStr = "localhost/mem:testDeadlock3ClientsBothLowerPrio";
+  // Prepare database
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, connStr));
+  db->WriteString(0, 0, 0, "000");
+  db->CreateString(0, 0, "001");
+  Transaction::Commit(session);
+
+  parallel::sync_point firstRead(3);
+
+
+  parallel::run({
+    // The first client will read lock blob 0, then blob 1
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      CHECK(db->ReadString(0, 0, 0) == "000");
+      firstRead.wait();
+      CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 1), exception::Deadlock, "The first client should get a deadlock exception");
+    },
+
+    // The second client will read lock blob 0, then blob 1
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      CHECK(db->ReadString(0, 0, 0) == "000");
+      firstRead.wait();
+      CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 1), exception::Deadlock, "The second client should get a deadlock exception");
+    },
+
+    // The third client will write lock blob 1, then blob 0 (with higher than default prio)
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      Transaction::SetPriority(session, 1);
+      CHECK(db->ReadString(0, 0, 1, Lock::Write) == "001");
+      firstRead.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // sleep a bit to ensure this request reaches the server last
+      CHECK_NOTHROW_MESSAGE(db->ReadString(0, 0, 0, Lock::Write), "The third client should not receive the deadlock exception");
+    }
+  });
+}

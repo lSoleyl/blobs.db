@@ -134,13 +134,19 @@ public:
     };
 
     Request requests[2];
+
+    std::string ToString() const;
   };
 
   /** Queues a read operation for this database to be completed as soon as the conflicting locks are released.
-   *  This method will also check whether this read would cause a deadlock with any already held locks and queued reads
-   *  and not queue the message and return false in that case so the server can notify the client about the deadlock.
+   *  This method will also check whether this read would cause a deadlock with any already held locks and queued reads.
+   *  The result will be a list of all clients with a detected deadlock.
+   * 
+   * @param message the BlobsRead message to check for deadlocks and queue into the queued read operations
+   * 
+   * @return a vector of deadlocks triggered by queueing this message. The returned vector is empty in case there are no conflicts.
    */
-  std::optional<DeadlockInfo> QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message);
+  std::vector<DeadlockInfo> QueueReadCheckDeadlock(network::MessagePointer_T<network::message::BlobsRead>&& message);
 
 
   /** This method will release the specified client locks and then remove all queued up read requests for this client from the queued reads

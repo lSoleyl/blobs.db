@@ -213,35 +213,37 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
     auto database = client.GetDatabase(message->databaseId);
     assert(database); // <- TryHandleBlobsRead() would have returned true otherwise
 
-    // Queue this message to the database to be processed as soon as the conflicting locks are released
-    if (auto deadlock = database->QueueReadCheckDeadlock(std::move(message))) {
-      auto victim = &client;
-      auto survivor = &Client::Get(deadlock->requests[1].client);
+    // Queue this message to the database to be processed as soon as the conflicts are resolved.
+    // Before queueing the message, we must actually check for deadlocks, otherwise the lock conflicts will
+    // never be resolved by themselves.
+    auto deadlocks = database->QueueReadCheckDeadlock(std::move(message));
+    if (!deadlocks.empty()) {
+      // We have a deadlock, so we must determine, which clients to abort the transaction for based on the transaction priority
+      // We can either abort this client's transaction, or ALL other clients having a deadlock with this client.
+      // This will be determined based on the transaction priority.
+      auto thisPriority = client.GetTransactionPriority();
+      
+      // We check for >= thisPriority, because we still prefer to abort the client that queued the deadlocking request instead of the
+      // other clients (as we would potentially have to abort more transactions in that case).
+      auto higherPrio = std::find_if(deadlocks.begin(), deadlocks.end(), [=](const Database::DeadlockInfo& deadlock) { return Client::Get(deadlock.requests[1].client).GetTransactionPriority() >= thisPriority; });
 
-      // The victim will be the one with the lower transaction priority
-      if (victim->GetTransactionPriority() > survivor->GetTransactionPriority()) {
-        std::swap(victim, survivor);
-      }
+      if (higherPrio != deadlocks.end()) {
+        // We found a client with a higher or equal transaction priority, so we will abort this client's transaction to resolve the deadlock
+        SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK, higherPrio->ToString()));
+        // Abort the client's current transaction (this client is the deadlock victim) - This will also remove any queued reads of that client from the queue
+        // Aborting the transaction will also trigger processing of any outstanding reads, which may now be possible to complete
+        AbortTransaction(client, false);
+      } else {
+        // This client has a higher transaction id than all other deadlock participants -> abort the transactions of all other deadlock participants
+        for (auto& deadlock : deadlocks) {
+          auto& victim = Client::Get(deadlock.requests[1].client);
 
-
-      FIXME("The current deadlock resolution may result in a stuck server in case more than 2 clients were involved in the deadlock as just terminating one client may not be enough");
-      FIXME("Also log the transaction priority for each client.")
-
-      TODO("Support a client display name, which should be used here instead of just the client id");
-      TODO("Fetch the hostname of the client and add it to the error description");
-
-      std::ostringstream details;
-      details << "Deadlock detected!\n"
-        << "Client " << deadlock->requests[0].client << " attempts to " << (deadlock->requests[0].writeLock ? "write" : "read") << " lock " << deadlock->requests[0].location
-        << " - conflicting lock held by Client " << deadlock->requests[1].client << "\n"
-        << "Client " << deadlock->requests[1].client << " attempts to " << (deadlock->requests[1].writeLock ? "write" : "read") << " lock " << deadlock->requests[1].location
-        << " - conflicting lock held by Client " << deadlock->requests[0].client << "\n"
-      ;
-
-      SendMessageToClient(victim->id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK, details.str()));
-      // Abort the client's current transaction (this client is the deadlock victim) - This will also remove any queued reads of that client from the queue
-      // Aborting the transaction will also trigger processing of any outstanding reads, which may now be possible to complete
-      AbortTransaction(*victim, false);
+          SendMessageToClient(victim.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::DEADLOCK, deadlock.ToString()));
+          // Abort the victim's current transaction - This will also remove any queued reads of that client from the queue
+          // Aborting the transaction will also trigger processing of any outstanding reads, which may now be possible to complete
+          AbortTransaction(victim, false);
+        }
+      }      
     }
   }
 }
