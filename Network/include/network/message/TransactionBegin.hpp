@@ -11,6 +11,7 @@ namespace blobs::network::message {
  *  TransactionBeginResult, which will specify, which locks the client may keep, or has to release.
  */
 struct TransactionBegin : public Message {
+  transaction_priority transactionPriority;
 
   /** How to begin the transaction for the specified database
    */
@@ -33,7 +34,7 @@ struct TransactionBegin : public Message {
 
   /** Constructs a new TransactionBegin message for the specified number of opened client databases
    */
-  static MessagePointer_T<TransactionBegin> Create(int nDatabases);
+  static MessagePointer_T<TransactionBegin> Create(transaction_priority transactionPriority, int nDatabases);
 
 
   using iterator = DatabaseTxnMode*;
@@ -52,7 +53,7 @@ struct TransactionBegin : public Message {
 
   static constexpr Type type = Type::TransactionBegin;
 private:
-  TransactionBegin(message_size mesageSize);
+  TransactionBegin(message_size mesageSize, transaction_priority transactionPriority);
 };
 
 std::ostream& operator<<(std::ostream& out, const TransactionBegin& message);

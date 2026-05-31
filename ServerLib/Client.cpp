@@ -19,7 +19,7 @@ namespace blobs::server {
 
 std::unordered_map<client_id, Client> Client::clients;
 
-Client::Client(client_id id) : id(id), hasTransaction(false) {}
+Client::Client(client_id id) : id(id), transactionPriority(0), hasTransaction(false) {}
 
 
 void Client::ClientConnected(client_id id) {
@@ -138,8 +138,9 @@ database_id Client::GetMaxDatabaseId() const {
   return openDatabases.empty() ? 0 : static_cast<database_id>(openDatabases.size() - 1);
 }
 
-void Client::BeginTransaction() {
+void Client::BeginTransaction(transaction_priority txnPriority) {
   hasTransaction = true;
+  transactionPriority = txnPriority;
 
   for (auto& dbEntry : openDatabases) {
     if (dbEntry.database && dbEntry.isMVCC) {
@@ -147,6 +148,10 @@ void Client::BeginTransaction() {
       dbEntry.database->BeginMVCC();
     }
   }
+}
+
+transaction_priority Client::GetTransactionPriority() const {
+  return transactionPriority;
 }
 
 bool Client::AbortTransaction(bool relaseAllLocks) {

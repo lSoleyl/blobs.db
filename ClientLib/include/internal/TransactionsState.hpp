@@ -22,6 +22,10 @@ public:
   std::map<connection_id, Transaction> active; // the currently active transactions (up to one per server connection)
   uint64_t nextId; // The next used transaction id in this session
 
+  /** The transaction priority of this client (ses Transaction::SetPriority())
+   */
+  transaction_priority priority;
+
   /** The default setting of using sticky locks for newly opened databases. The actual setting is stored in the Database instance itself
    *  and can be overwritten any time (Database::UseStickyLocks()).
    * 

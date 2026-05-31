@@ -466,13 +466,14 @@ std::optional<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::
   auto client = message->clientId;
   bool writeLock = message->NeedsWriteLock();
 
+  TODO("We should acutally collect ALL clients, which deadlock with the newly entered message, because the deadlock may involve more than 1 client.");
+
   for (auto& queuedMessage : queuedReads) {
     // Only check the messages of clients, which are preventing the current message's lock acquisition
     auto lockConflict = std::find_if(conflicts.begin(), conflicts.end(), [&](const LockConflict& conflict) { return conflict.blockedBy == queuedMessage->clientId; });
     if (lockConflict != conflicts.end()) {
       if (auto conflictLocation = FindLockConflictWith(*queuedMessage, client)) {
-        // We have a bidirectional locking conflict (i.e. a deadlock!)
-        
+        // We have a bidirectional locking conflict (i.e. a deadlock!)        
         // We still push the read into the read queue to have the flexibility of not always aborting the transaction of the client sending the last message.
         queuedReads.push_back(std::move(message));
         

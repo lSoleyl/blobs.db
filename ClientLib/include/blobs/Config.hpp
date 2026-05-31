@@ -22,6 +22,7 @@ namespace blobs {
   using commit_id = uint64_t;   // limits the number of commits in the databse before the server needs to reboot to reorganize all commit ids
 
   using connection_id = uint16_t; // limits the number distinct server connections a single client can establish
+  using transaction_priority = int16_t; // limits the distinct transaction priority values that can be assigned to each client
 
   // Global constants derived from the above type definitions
   namespace constants {
@@ -98,6 +99,7 @@ namespace blobs {
   static_assert(std::is_unsigned_v<blob_size>, "Unsupported blob_size type specified");
   static_assert(std::is_unsigned_v<commit_id>, "Unsupported commit_id type specified");
   static_assert(std::is_unsigned_v<connection_id>, "Unsupported connection_id type specified");
+  static_assert(std::is_signed_v<transaction_priority>, "Unsupported transaction_priority specified");
 }
 
 #define _STR(x) #x

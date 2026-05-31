@@ -95,3 +95,79 @@ TEST_CASE("Write-Write deadlock scenario") {
   REQUIRE_MESSAGE(mainDb->ReadString(0, 0, blobs[0]) == std::to_string(successfulThread), "First blob should hold the success thread id");
   REQUIRE_MESSAGE(mainDb->ReadString(0, 0, blobs[1]) == std::to_string(successfulThread), "Second blob should hold the success thread id");
 }
+
+
+// A simple test case for transaction priority
+TEST_CASE("Test simple transaction priority") {
+  auto connStr = "localhost/mem:testSimpleTxnPrio";
+  // Prepare database
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, connStr));
+  db->WriteString(0, 0, 0, "000");
+  db->CreateString(0, 0, "001");
+  Transaction::Commit(session);
+
+  {
+    parallel::sync_point firstRead(2);
+
+    parallel::run({
+      // The first client will run with default priority and not be the one that triggers the deadlock
+      [&]() {
+        auto session = Session::Create();
+        database_ptr db(Database::Open(session, connStr));
+        CHECK(db->ReadString(0, 0, 0, Lock::Write) == "000");
+        firstRead.wait();
+        CHECK_NOTHROW_MESSAGE(db->ReadString(0, 0, 1, Lock::Write), "The client with higher priority should not get the deadlock exception");
+      },
+
+      // The second client will set a lower than default transaction priority and trigger the deadlock
+      [&]() {
+        auto session = Session::Create();
+        database_ptr db(Database::Open(session, connStr));
+        Transaction::SetPriority(session, -1);
+
+        CHECK(db->ReadString(0, 0, 1, Lock::Write) == "001");
+        firstRead.wait();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // wait for 50ms to ensure that this client will send the conflicting read last
+        // Now this will trigger the deadlock and should abort this client's transaction
+        CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 0, Lock::Write), exception::Deadlock, "Expected client with lower priority to encounter the deadlock");
+      }
+    });
+  }
+
+
+  // Now run the same test, but with reversed transaction priorities
+  {
+    parallel::sync_point firstRead(2);
+
+    parallel::run({
+      // The first client will run with default priority and not be the one that triggers the deadlock
+      [&]() {
+        auto session = Session::Create();
+        database_ptr db(Database::Open(session, connStr));
+        CHECK(db->ReadString(0, 0, 0, Lock::Write) == "000");
+        firstRead.wait();
+        CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 1, Lock::Write), exception::Deadlock, "Expected client with lower priority to encounter the deadlock");
+      },
+
+      // The second client will set a higher than default transaction priority and trigger the deadlock
+      [&]() {
+        auto session = Session::Create();
+        database_ptr db(Database::Open(session, connStr));
+        Transaction::SetPriority(session, 1);
+
+        CHECK(db->ReadString(0, 0, 1, Lock::Write) == "001");
+        firstRead.wait();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // wait for 50ms to ensure that this client will send the conflicting read last
+        // Now this will trigger the deadlock, but the other client with the lower priority should get the deadlock exception
+        CHECK_NOTHROW_MESSAGE(db->ReadString(0, 0, 0, Lock::Write), "The client with higher priority should not get the deadlock exception");
+      }
+    });
+  }
+
+}
+
+
+
+
+TODO("Write deadlock scenario where more than 2 clients are involved")

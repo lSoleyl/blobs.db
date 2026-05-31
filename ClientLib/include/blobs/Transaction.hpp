@@ -73,6 +73,24 @@ public:
   static bool UseStickyLocks(bool use) { return UseStickyLocks(Session::GetGlobalSession(), use); }
 
 
+  /** Configures this client's transaction priority for all transactions started AFTER this call.
+   *  In case of a deadlock the server will abort the transaction of the client with the smaller transaction priority.
+   *  If both clients have the same transaction priority, the deadlock victim is chosen at random.
+   *  The transaction priority has no meaning outside of deadlock resolution.
+   *  The default transaction priority is 0.
+   * 
+   * @param session the session to configure the transaction priority for
+   * @param transactionPriority the transaction priority to configure
+   * 
+   * @return the previously configured transaction priority
+   */
+  BLOBS_EXPORT static transaction_priority SetPriority(const Session::Handle& session, transaction_priority transactionPriority);
+
+  /** Sets the tranaction priority for the global session
+   */
+  static transaction_priority SetPriority(transaction_priority transactionPriority) { return SetPriority(Session::GetGlobalSession(), transactionPriority); }
+
+
   /** This method is called if a transaction is aborted by the server because of a deadlock.
    *  The client will obviously not inform the server about that. But if the client has connections to 
    *  other servers, they will be informed about the transaction abort.

@@ -66,8 +66,15 @@ public:
 
   /** Marks the client as being inside a transaction
    *  This will also set the MVCC snapshot for all databases marked for MVCC mode
+   * 
+   * @param txnPriority the transaction priority to assign to this client on transaction start
    */
-  void BeginTransaction();
+  void BeginTransaction(transaction_priority txnPriority);
+
+  /** Returns the currently set transaction priority for this client. 
+   *  This is used during deadlock resolution to determine whose transaction will be aborted.
+   */ 
+  transaction_priority GetTransactionPriority() const;
 
   /** Aborts the client's current transaction and releases all held locks
    *  
@@ -157,6 +164,10 @@ private:
    *  closed databases will be replaced with nullptr and their ids can later be reused.
    */ 
   std::vector<DatabaseLocks> openDatabases;
+
+  /** The client's current transaction priority (set during BeginTransaction())
+   */
+  transaction_priority transactionPriority;
 
   /** True if this client started a transaction, false otherwise
    */

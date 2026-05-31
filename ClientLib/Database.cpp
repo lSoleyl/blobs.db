@@ -1078,7 +1078,7 @@ Transaction& Database::GetTransaction() {
 
   // Create TransactionBegin message. For each opened database we must tell the server in which txn mode to open it
   auto& databases = session->Databases(connectionId).openedDatabases;
-  auto transactionBeginMessage = network::message::TransactionBegin::Create(databases.size());
+  auto transactionBeginMessage = network::message::TransactionBegin::Create(session->Transactions().priority, databases.size());
   auto writePos = transactionBeginMessage->begin();
   for (auto [dbId, db] : databases) {
     auto& entry = (*writePos++);
