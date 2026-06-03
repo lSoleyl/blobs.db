@@ -24,6 +24,8 @@ int wmain(int argc, wchar_t** argv) {
     return 1; // illegal arguments passed
   }
 
+  std::cout << "blobs.db server v" << version::major << '.' << version::minor << '.' << version::patch << '\n';
+
   if (args.help) {
     // Print help and exit
     args.PrintHelp();

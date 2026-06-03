@@ -77,7 +77,7 @@ Args Args::Parse(int argc, const wchar_t* const* argv) {
 
 void Args::PrintHelp() const {
   std::cout
-    << "Usage: server.exe [arguments]\n"
+    << "Usage: blobsdb_server.exe [arguments]\n"
     << " Arguments:\n"
     << "  --test                     Run small server internal unittests. Combine with --help to see options\n"
     << "  --help,-h                  Displays this help message\n"

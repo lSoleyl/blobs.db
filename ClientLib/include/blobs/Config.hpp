@@ -8,9 +8,17 @@
 #include <limits>
 #include <type_traits>
 
-// Define all predefined type choices made to be able to easily recompile with other sizes if necessary
-namespace blobs {
 
+namespace blobs {
+  // Current version of blobs.db (will be displayed when starting the server)
+  namespace version {
+    constexpr int major = 0;
+    constexpr int minor = 8;
+    constexpr int patch = 0;
+  }
+
+
+  // Define all predefined type choices here to be able to easily recompile with other sizes if necessary
   using message_size = uint32_t; // limits the maximum size of a single network::Message (and indirectly the maximum size of a single blob)
 
   using client_id = uint16_t;   // limits the number of concurrent server connections
