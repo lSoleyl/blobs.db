@@ -46,10 +46,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)Out\$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)Int\$(Platform)-$(Configuration)\$(ProjectName)\</IntDir>
+    <TargetName>blobsdb_server</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)Out\$(Platform)-$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)Int\$(Platform)-$(Configuration)\$(ProjectName)\</IntDir>
+    <TargetName>blobsdb_server</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
