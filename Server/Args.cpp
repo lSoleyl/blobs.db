@@ -61,6 +61,14 @@ Args Args::Parse(int argc, const wchar_t* const* argv) {
       // No database root, all files on the filesystem should be accessible
       args.dbRoot.reset();
 
+    } else if (argName == L"--port" || argName == L"-p") {
+      // Specify the port to listen on 
+      args.port = _wtoi(*argPos++);
+      if (args.port < 0 || args.port > std::numeric_limits<uint16_t>::max()) {
+        std::wcerr << "Invalid port number specified\n";
+        return args;
+      }
+
     } else if (argName == L"--help" || argName == L"-h") {
       // --help specified
       args.help = true;
@@ -88,7 +96,9 @@ void Args::PrintHelp() const {
     << "                             Default: .\\databases\n"
     << "  --nodbroot,-ndr            Disables the database root and allows opening a database file in any directory.\n"
     << "                             When passing relative database paths, they will be resolved relative to the\n"
-    << "                             server's working directory."
+    << "                             server's working directory.\n"
+    << "  --port,-p <port>           Sets the port to listen on.\n"
+    << "                             Default: 8108"
   ;
 }
 

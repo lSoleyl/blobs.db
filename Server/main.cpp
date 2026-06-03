@@ -57,7 +57,7 @@ int wmain(int argc, wchar_t** argv) {
   // Use the regular network socket factory for the server.
   network::SocketFactory::Use();
 
-  server::Server server;
+  server::Server server(args.port);
   BLOBS_LOG_INFO("Server ready");
 
   server.ServerMain(std::optional<std::wstring_view>(args.dbRoot));

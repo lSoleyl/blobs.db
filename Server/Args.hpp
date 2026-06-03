@@ -41,6 +41,10 @@ public:
    */
   std::optional<std::wstring> dbRoot = L".\\databases";
 
+  /** The port the server should listen on (default: 8108)
+   */
+  int port = 8108;
+
 private:
   bool valid = false;
   Args();
