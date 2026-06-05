@@ -43,7 +43,7 @@ public:
 
 private:
   void ServerThreadMain() {
-    SetThreadDescription(GetCurrentThread(), L"Standalone server thread");
+    SetThreadDescription(GetCurrentThread(), L"blobs.db standalone server thread");
     serverInstance.ServerMain(dbRootDir);
     TODO("What about error handling?");
   }

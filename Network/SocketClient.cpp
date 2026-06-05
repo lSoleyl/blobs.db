@@ -81,7 +81,7 @@ network::Resource<SOCKET> network::SocketClient::ConnectToServer() const {
 }
 
 void network::SocketClient::NetworkThreadMain() {
-  SetThreadDescription(GetCurrentThread(), L"Client Network thread");
+  SetThreadDescription(GetCurrentThread(), L"blobs.db client network thread");
 
   try {
     InitializeMessageSocket(ConnectToServer(), ioCompletionPort);
