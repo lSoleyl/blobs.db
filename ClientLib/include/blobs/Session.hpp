@@ -38,13 +38,19 @@ public:
     BLOBS_EXPORT Handle(Handle&& other) noexcept;
     BLOBS_EXPORT ~Handle();
 
+    /** Warning: This assignment operator is not thread safe and must not be called from multiple threads on the same handle simultaneously
+     */
     BLOBS_EXPORT Handle& operator=(const Handle& other);
+
+    /** Warning: This assignment operator is not thread safe and must not be called from multiple threads on the same handle simultaneously
+     */
     BLOBS_EXPORT Handle& operator=(Handle&& other);
     
     explicit operator bool() const { return session != nullptr; }
     Session* operator->() const { return session; }
 
-    /** Resets the handle to an empty handle releasing the session pointer
+    /** Resets the handle to an empty handle releasing the session pointer.
+     *  Warning: This method is not thread safe and must not be called from multiple threads on the same handle simultaneously
      * 
      * @return true if this was the last handle to the session and the session has been deleted, false otherwise
      */
