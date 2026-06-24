@@ -145,13 +145,18 @@ void Session::EraseDatabase(connection_id connectionId, database_id databaseId) 
 }
 
 Session::Handle Session::GetGlobalSession() {
+  if (!globalSession) {
+    // Perform this check on each access to the global session as forgetting blobs::Initialize() would otherwise
+    // cause a nullptr exception deeper down.
+    throw Exception("blobs::Initialize() not called before attempt to access global session!");
+  }
   return globalSession;
 }
 
 
 void Session::Initialize() {
   if (globalSession) {
-    throw Exception("Session::Initialize() called twice!");
+    throw Exception("blobs::Initialize() called twice!");
   }
 
   globalSession = Create();
