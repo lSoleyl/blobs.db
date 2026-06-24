@@ -370,6 +370,9 @@ public:
   /** Creates a new blob in the specified cluster and writes the passed data into it and then returns the id of the newly created blob.
    *  Only the first call to CreateBlob() for a given cluster inside a transaction will require server communication. All further 
    *  calls will be processed on the client only.
+   *  
+   *  Creating a blob requires a write lock on the cluster's blob id list (see GetAllBlobs()) and its next free cluster id.
+   *  Upon creation the client implicitly acquires a write lock on the created blob.
    * 
    * @throws exception::BlobLimitReached if no more blobs can be created in the specified cluster
    */
@@ -401,6 +404,10 @@ public:
 
   /** Creates a new blob at the specified blob id and writes the passed data into it. This method may also be used to re-create previously deleted blobs.
    *  This will influence the cluster's next free blob id and affect the id returned by CreateBlob().
+   *  When creating a blob a an id higher than the cluster's current next free blob id, the next free blob id is updated, otherwise it stays unchanged.
+   * 
+   *  Creating a blob requires a write lock on the cluster's blob id list (see GetAllBlobs()) and its next free cluster id.
+   *  Upon creation the client implicitly acquires a write lock on the created blob.
    * 
    * @throws exception::BlobAlreadyExists when calling this on an already existing blob
    */
@@ -408,23 +415,37 @@ public:
 
 
   /** Creates a new cluster in the specified segment. The cluster will be initialized with an empty blob 0, which can be written to afterwards.
+   * 
+   *  Creating a cluster requires write locks on the segment's next free cluster id and the segment's cluster id list.
+   *  Upon creating the cluster the client implicitly acquires write locks for the created cluster's next free blob id and blob id list
+   *  as well as for implicitly created blob 0.
    */
   BLOBS_EXPORT cluster_id CreateCluster(segment_id segment);
 
   /** Creates a new segment in this database. The segment will be initialized with an empty cluster 0 containing an empty blob 0, which can be written to afterwards.
+   * 
+   *  Creating a segment requires write locks on the database's next free segment id and the database's segment id list.
+   *  Upon creating the segment, the client implicitly acquires write locks for the created segment's next free cluster id and cluster id list
+   *  as well as for the implicitly created cluster 0 the next free blob id and blob id list
+   *  as well as for the implicitly created blob 0.
    */
   BLOBS_EXPORT segment_id CreateSegment();
 
   /** This method deletes a blob from the database, which is not the same as overwriting it with an empty blob.
-   *  After a blob has been deleted, it can never be read/written again. Deleting a blob requires a write lock for that blob.
+   *  After a blob has been deleted, it can never be read/written again. 
+   *  Deleting a blob requires a write lock for that blob and the cluster's blob id list (see GetAllBlobs())
    */
   BLOBS_EXPORT void DeleteBlob(segment_id segment, cluster_id cluster, blob_id blob);
 
   /** Acquires the lock needed to delete the cluster and deletes it, which will delete all its blobs with it.
+   * 
+   *  Deleting a cluster requires a write lock for the segment's cluster id list (see GetAllClusters()) as well as every blob in that cluster.
    */
   BLOBS_EXPORT void DeleteCluster(segment_id segment, cluster_id cluster);
 
   /** Acquires the lock needed to delete the segment and deletes it, which will delete all its clusters and blobs with it.
+   * 
+   *  Deleting a segment requires a write lock on the database's segment id list (see GetAllSegments()) as well as every cluster in that segment
    */
   BLOBS_EXPORT void DeleteSegment(segment_id segment);
 
