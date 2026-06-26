@@ -98,3 +98,34 @@ TEST_CASE("Test OpenMode::CreateAlways") {
 
   REQUIRE_MESSAGE(dbA->ReadString(0, 0, 0) == "", "After re-opening the database with CreateAlways the database should be empty again");
 }
+
+
+/** Test to ensure that opening more than one database per session behaves as expected
+ */
+TEST_CASE("Test open 2 databases in single session") {
+  auto session = Session::Create();
+
+  // Here open both databses before starting the transaction
+  database_ptr dbA(Database::Open(session, "localhost/mem:testOpenMultipleA"));
+  database_ptr dbB(Database::Open(session, "localhost/mem:testOpenMultipleB"));
+
+  REQUIRE(dbA->ReadString(0, 0, 0) == "");
+  REQUIRE(dbB->ReadString(0, 0, 0) == "");
+
+  dbA->WriteString(0, 0, 0, "a");
+  dbB->WriteString(0, 0, 0, "b");
+
+  Transaction::Commit(session);
+
+  {
+    // Now check in a second session that the data has actually been written 
+    auto session = Session::Create();
+
+    database_ptr dbA(Database::Open(session, "localhost/mem:testOpenMultipleA"));
+    REQUIRE(dbA->ReadString(0, 0, 0) == "a");
+
+    // Here open the second db after starting the transaction
+    database_ptr dbB(Database::Open(session, "localhost/mem:testOpenMultipleB"));
+    REQUIRE(dbB->ReadString(0, 0, 0) == "b");
+  }
+}

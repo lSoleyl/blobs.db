@@ -376,3 +376,63 @@ TEST_CASE("Loading Blobs,Clusters,Segments from file before deletion when MVCC i
     }
   });
 }
+
+
+/** This test case will validate that OpenDB -> SetMVCC will not work while already inside a transaction, but OpenMVCC will work correctly
+ */
+TEST_CASE("Test OpenMVCC while in txn") {
+  auto connStrA = "localhost/mem:testOpenMVCCInTxnA";
+  auto connStrB = "localhost/mem:testOpenMVCCInTxnB";
+
+  std::atomic<std::chrono::high_resolution_clock::time_point> client1Done, client2Done, client3Done;
+  parallel::sync_point syncPoint(3);
+
+  parallel::run({
+    // The first client will use OpenMVCC, read blob 0 and finish first
+    [&]() {
+      auto session = Session::Create();
+      database_ptr dbA(Database::Open(session, connStrA));
+      CHECK(dbA->ReadString(0, 0, 0) == ""); // Just to start a transaction
+
+      // Open second database in MVCC mode directly
+      database_ptr dbB(Database::OpenMVCC(session, connStrB));
+      syncPoint.wait();
+
+      // Now reading should return immediately since we can read lock free from the MVCC snapshot taken when the database was opened.
+      CHECK_MESSAGE(dbB->ReadString(0, 0, 0) == "", "Client 1 should not see the data committed by Client 2 yet");
+      client1Done = std::chrono::high_resolution_clock::now();
+    },
+
+    // The second client will open only the second database normally and write lock blob 0
+    [&]() {
+      auto session = Session::Create();
+      database_ptr dbB(Database::Open(session, connStrB));
+      dbB->WriteString(0, 0, 0, "client2");
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to measure the lock
+      client2Done = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
+
+    // The third client will open the database and try to SetMVCC and then read blob 0, which will be blocked
+    [&]() {
+      auto session = Session::Create();
+      database_ptr dbA(Database::Open(session, connStrA));
+      CHECK(dbA->ReadString(0, 0, 0) == ""); // Just to start a transaction
+
+      // Now open the second database and directly set it to MVCC (will not actually be applied to this txn)
+      database_ptr dbB(Database::Open(session, connStrB));
+      dbB->SetMVCC(true);
+      syncPoint.wait();
+      CHECK_MESSAGE(dbB->ReadString(0, 0, 0) == "client2", "Client 3 should actually see the committed data from Client 2");
+      client3Done = std::chrono::high_resolution_clock::now();
+    }
+  });
+
+
+  REQUIRE_MESSAGE(client1Done.load() < client2Done.load(), "The OpenMVCC client should finish before the regular update client");
+  REQUIRE_MESSAGE(client2Done.load() < client3Done.load(), "The Open+SetMVCC client shoudl finish after the regular update client");
+}
+
+
+

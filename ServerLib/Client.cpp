@@ -330,23 +330,24 @@ network::MessagePointer_T<network::message::TransactionBeginResponse> Client::Co
   for (auto& dbEntry : openDatabases) {
     if (auto db = dbEntry.database) {
       auto& entry = *writePos;
-      ++writePos;
-
       entry.databaseId = dbId;
 
       // Remove all locks, which are marked for revoke from the list of locks
       dbEntry.ApplyRevokedLocks();
-      
 
       // Now enter the smaller number of locks into the message
       entry.keep = dbEntry.locks.size() <= dbEntry.revokedLocks.size();
       auto& locks = entry.keep ? dbEntry.locks : dbEntry.revokedLocks;
       entry.nLocks = static_cast<uint16_t>(locks.size());
-      
-      auto writePos = entry.begin();
+
+      // We can only increment writePos AFTER nLocks has been set as the iterator uses nLocks to determine
+      // where the next entry is
+      ++writePos;
+
+      auto writeLockPos = entry.begin();
       for (auto& lock : locks) {
-        *writePos = lock;
-        ++writePos;
+        *writeLockPos = lock;
+        ++writeLockPos;
       }
 
 
