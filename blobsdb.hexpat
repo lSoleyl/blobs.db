@@ -1,4 +1,8 @@
 // blobs.db pattern file
+
+// Only apply to valid blobs.db databases
+#pragma magic [ 62 6C 6F 62 73 2E 64 62 ] @ 0x00
+
 using commit_id = u64;
 using segment_id = u32;
 using cluster_id = u32;
@@ -144,7 +148,11 @@ namespace Database {
     }
     
     struct Header {
-        char typeId[8];
+        char typeId[8] [[comment("always \"blobs.db\"")]];
+        if (typeId != "blobs.db") {
+          // pragma magic doesn't reliably prevent pattern application to invalid files or it doesn't work for old versions
+          return;
+        }
         Database::Header::Sizes sizes;
     };
     
