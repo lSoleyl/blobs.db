@@ -217,7 +217,7 @@ Database::OpenResult Database::LoadFromFile(OpenMode openMode) {
 
 
 void Database::InitializeDatabaseFile() {
-  const uint64_t INITIAL_SIZE = 1024; // The database structures ~216 Bytes, allocate the remaining space as free memory
+  const uint64_t INITIAL_SIZE = 1024; // The database structures take up 240 Bytes, allocate the remaining space as free memory
   // Construct all the datastructures in a memory buffer to write it to file in just one write operation
   std::vector<char> fileBuffer(INITIAL_SIZE, 0); 
 

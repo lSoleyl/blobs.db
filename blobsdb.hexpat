@@ -161,13 +161,11 @@ namespace Database {
     struct Root {
       SnapshotReference snapshot;        // File offset and size to the current databse snapshot block
       FreeListReference freeList;        // File offset and size to the free list block
-      DummyReference transactionLog;     // File offset and size to the transaction log block
     };
     
     struct DummyRoot {
       DummyReference snapshot;
       DummyReference freeList;
-      DummyReference transactionLog;
     };
 }
 

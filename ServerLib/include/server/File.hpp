@@ -124,7 +124,6 @@ struct Database {
   struct Root {
     BlockReference snapshot;        // File offset and size to the current databse snapshot block
     BlockReference freeList;        // File offset and size to the free list block
-    BlockReference transactionLog;  // File offset and size to the transaction log block
   };
 
   Header header;
@@ -232,15 +231,6 @@ struct Blob : public MemoryBlock {
   /** Returns the start position of the blob's data for writing
    */
   char* DataBegin();
-};
-
-
-
-
-
-TODO("Implement transaction log later")
-struct TransactionLog : public MemoryBlock {
-  TODO("Define structure for transaction log entries");
 };
 
 
