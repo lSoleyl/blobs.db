@@ -434,5 +434,55 @@ TEST_CASE("Test OpenMVCC while in txn") {
   REQUIRE_MESSAGE(client2Done.load() < client3Done.load(), "The Open+SetMVCC client shoudl finish after the regular update client");
 }
 
+/** This case will test a special edge case of MVCC with a long running snapshot and a client
+ *  that knows a blob at a newer version (in its cache) than the MVCC snapshot and then switches to MVCC to read the blob.
+ *  The client must then not read the blob from cache, but actually the old version from the MVCC snapshot. Otherwise MVCC 
+ *  snapshot would appear inconsistent to the client.
+ */
+TEST_CASE("Test MVCC cache consistency") {
+  // Prepare the database
+  auto connStr = "localhost/mem:testMVCCCacheConsistency";
+  auto session = Session::Create();
+  database_ptr db(Database::Open(session, connStr));
+  // The following two blobs will follow the invariant of (0,0,1) always being the double of (0,0,0)
+  db->WriteString(0, 0, 0, "12");
+  db->CreateString(0, 0, "1212");
+  Transaction::Commit(session);
+  
+  // Start the MVCC transaction and keep it open for the duration of the test
+  db->SetMVCC(true);
+  db->ReadString(0, 0, 0);
 
+
+  // Now a second client will update both strings while maintaining the invariant
+  {
+    auto session = Session::Create();
+    database_ptr db(Database::Open(session, connStr));
+    REQUIRE(db->ReadString(0, 0, 0) == "12");
+    REQUIRE(db->ReadString(0, 0, 1) == "1212");
+
+    db->WriteString(0, 0, 0, "123");
+    db->WriteString(0, 0, 1, "123123");
+    Transaction::Commit(session);
+  }
+
+  // Now the third client will read one of the two blobs in a regular update transaction thus 
+  // placing it into its database cache. The client will then switch to an MVCC transaction and
+  // read both blobs. If everything works correctly the client should see the invariant being upheld
+  // by seeing the initial values or by getting an updated MVCC snapshot
+
+  {
+    auto session = Session::Create();
+    database_ptr db(Database::Open(session, connStr));
+    REQUIRE(db->ReadString(0, 0, 0) == "123");
+    Transaction::Commit(session);
+    db->SetMVCC(true);
+
+    // We don't care which value we see (old/new) the only thing we care about is that the invariant
+    // is upheld i.e. we get a consistent database view.
+    auto firstString = db->ReadString(0, 0, 0);
+    auto secondString = db->ReadString(0, 0, 1);
+    REQUIRE_MESSAGE(firstString + firstString == secondString, "MVCC violated databse invariant");
+  }
+}
 

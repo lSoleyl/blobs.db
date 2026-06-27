@@ -344,7 +344,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   auto request = network::message::BlobsRead::Create(id, 1, static_cast<network::message::BlobsRead::LockMode>(lock));
   auto& address = *request->begin();
   address = location;
-  address.ifCommitIdHigher = cachedBlob ? cachedBlob->lastUpdated : 0;
+  address.cacheCommitId = cachedBlob ? cachedBlob->lastUpdated : 0;
   client.SendMessageToServer(std::move(request));
   
   // Wait for the response and handle it
@@ -385,7 +385,7 @@ std::pair<const void*, blob_size> Database::DirtyReadBlobInternal(segment_id seg
   address.segment = segment;
   address.cluster = cluster;
   address.blob = blob;
-  address.ifCommitIdHigher = 0;
+  address.cacheCommitId = 0;
   
   client.SendMessageToServer(std::move(request));
 
@@ -993,7 +993,7 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
   auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
   auto& address = *request->begin();
   address = location;
-  address.ifCommitIdHigher = 0;
+  address.cacheCommitId = 0;
 
   // Send it and await the server's response
   client.SendMessageToServer(std::move(request));

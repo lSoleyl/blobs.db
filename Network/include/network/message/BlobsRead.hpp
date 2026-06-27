@@ -30,7 +30,17 @@ struct BlobsRead : public Message {
   // The requested blobs should already be sorted in ascending order to reduce the risk of deadlocks
   struct BlobAddress : public BlobLocation {
     using BlobLocation::operator=; // allow assignment from BlobLocation
-    commit_id ifCommitIdHigher; // Only return the blob contents if the commit id is higher than specified here
+
+    /** Only return the blob contents if the commit id of the requested blob does not match the commit id specified here.
+     *  This represents the commit id of the blob that is stored in the client's cache.
+     *  A database is initialized with a commit id of 1, so set 0 here to indicate that the blob is not yet in the client's cache
+     *  as 0 will always be lower than even the commit id of the initial blobs of a freshly initialized database.
+     *  
+     *  IMPORTANT: We must also return the blob if the client cache holds a blob with a higher commit id than the database.
+     *  This scenario can only happen when a client switches to an old MVCC snapshot after already reading blobs of a newer version.
+     *  In that case the client MUST see the old version of the blobs to not see an inconsistent MVCC snapshot.
+     */
+    commit_id cacheCommitId;
   };
 
   /** STL like iteration over each single blob request

@@ -62,7 +62,7 @@ std::ostream& operator<<(std::ostream& out, const BlobsRead& message) {
 
   if (message.lockMode != BlobsRead::LockMode::Delete) {
     // Delete messages don't initialize this field as they aren't interested in the content of the blob anyway
-    out << '@' << message.begin()->ifCommitIdHigher;
+    out << '@' << message.begin()->cacheCommitId;
   }
   
   return out << ", access=" << message.lockMode << ')';

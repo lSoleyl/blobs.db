@@ -716,7 +716,7 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     // The client does not need to acquire any locks if the client requested a dirty read or we are inside an MVCC transaction
     if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
       // Locks successfully acquired (no conflicts) -> send response
-      if (requestedBlob.ifCommitIdHigher >= blob->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      if (requestedBlob.cacheCommitId == blob->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
         // - The client has the current version of the blob 
         // - Or the client requested the write locks only for deletion of the blobs
         // --> In both cases we can simply send an empty response
@@ -850,7 +850,7 @@ bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::m
 
   // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
   if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
-    if (location.ifCommitIdHigher >= cluster->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+    if (location.cacheCommitId == cluster->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list 
       // - Or the client requested the write locks only for synchronization of blob deletion/creation
       SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
@@ -887,7 +887,7 @@ bool Server::TryHandleClusterListId(blobs::server::Client& client, const network
 
   // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
   if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
-    if (location.ifCommitIdHigher >= segment->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+    if (location.cacheCommitId == segment->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list
       // - Or the client requested the write locks only for synchronization of cluster deletion/creation
       SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
@@ -917,7 +917,7 @@ bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network
 
   // Now acquire locks for the segment id list (unless we perform a dirty read or an MVCC read)
   if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
-    if (location.ifCommitIdHigher >= database->GetCommitId() || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+    if (location.cacheCommitId == database->GetCommitId() || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
       // - The client has the current version of the list
       // - Or the client requested the write locks only for synchronization of segment deletion/creation
       SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
