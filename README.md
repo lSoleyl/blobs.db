@@ -85,6 +85,7 @@ blobs.db is still in a very early stage of development and before considering to
 
  * Only available for x64
  * Not available on Linux systems
+ * No graceful recovery on connection errors
  * No authentication of client/server
  * No transport encryption between client and server
  * Blobs are limited to ~4GB in size (see `blobs/Config.hpp`)
