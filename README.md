@@ -4,7 +4,7 @@ A low overhead ACID database for storing blobs, which supports file databases an
 
 
 ## Quick start
-Prerequisites: Visual Studio > 2019 with v143 Toolset version installed.
+Prerequisites: Visual Studio with v143 (VS 2022) Toolset version installed.
 
 1. Download the latest release from the releases page
 2. Add the `include` directory to your C++ include directories.
