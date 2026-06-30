@@ -1,7 +1,7 @@
 #include "pch.hpp"
-#include "include/server/Segment.hpp"
-#include "include/server/MemoryBlockDelta.hpp"
-#include "include/server/FileBackend.hpp"
+#include <server/Segment.hpp>
+#include <server/MemoryBlockDelta.hpp>
+#include <server/FileBackend.hpp>
 
 
 namespace blobs {

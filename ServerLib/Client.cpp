@@ -1,6 +1,6 @@
 #include "pch.hpp"
-#include "include/server/Client.hpp"
-#include "include/server/LockUtil.hpp"
+#include <server/Client.hpp>
+#include <server/LockUtil.hpp>
 
 
 namespace cpp20 {

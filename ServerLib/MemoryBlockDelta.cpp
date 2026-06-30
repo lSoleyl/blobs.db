@@ -1,5 +1,5 @@
 #include "pch.hpp"
-#include "include/server/MemoryBlockDelta.hpp"
+#include <server/MemoryBlockDelta.hpp>
 
 
 namespace blobs::server {

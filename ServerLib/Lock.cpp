@@ -1,5 +1,5 @@
 #include "pch.hpp"
-#include "include/server/Lock.hpp"
+#include <server/Lock.hpp>
 
 namespace blobs {
 namespace server {

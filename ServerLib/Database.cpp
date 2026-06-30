@@ -1,9 +1,9 @@
 #include "pch.hpp"
-#include "include/server/Database.hpp"
-#include "include/server/Server.hpp"
-#include "include/server/File.hpp"
-#include "include/server/Client.hpp"
-#include "include/server/LockUtil.hpp"
+#include <server/Database.hpp>
+#include <server/Server.hpp>
+#include <server/File.hpp>
+#include <server/Client.hpp>
+#include <server/LockUtil.hpp>
 #include <common/Paths.hpp>
 #include <common/Encoding.hpp>
 

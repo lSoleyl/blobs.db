@@ -1,5 +1,5 @@
 #include "pch.hpp"
-#include "include/server/Logging.hpp"
+#include <server/Logging.hpp>
 
 #include <Windows.h>
 

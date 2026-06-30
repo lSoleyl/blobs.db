@@ -1,8 +1,8 @@
 #include "pch.hpp"
-#include "include/server/Server.hpp"
-#include "include/server/Client.hpp"
-#include "include/server/Logging.hpp"
-#include "include/server/LockUtil.hpp"
+#include <server/Server.hpp>
+#include <server/Client.hpp>
+#include <server/Logging.hpp>
+#include <server/LockUtil.hpp>
 
 #include <network/Factory.hpp>
 #include <common/Encoding.hpp>

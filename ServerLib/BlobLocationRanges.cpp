@@ -1,5 +1,5 @@
 #include "pch.hpp"
-#include "include/server/BlobLocationRanges.hpp"
+#include <server/BlobLocationRanges.hpp>
 
 namespace blobs::server {
 
