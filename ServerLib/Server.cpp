@@ -3,6 +3,7 @@
 #include <server/Client.hpp>
 #include <server/Logging.hpp>
 #include <server/LockUtil.hpp>
+#include <server/Scheduler.hpp>
 
 #include <network/Factory.hpp>
 #include <common/Encoding.hpp>
@@ -32,7 +33,6 @@ void Server::ServerMain(std::optional<std::wstring_view> dbRootDir) {
   BLOBS_LOG_DEBUG("Staring Server::ServerMain()");
   BLOBS_LOG_DEBUG("Current directory: " << encoding::ToUTF8(Paths::GetWorkingDirectory()));
 
-  TODO("Write automated tests ensuring that the db root works correctly (case-insensitivity / path restriction)");
   if (dbRootDir) {
     this->dbRootDir = Paths::ResolvePath(*dbRootDir);
     BLOBS_LOG_DEBUG("Database root dir: " << encoding::ToUTF8(*this->dbRootDir));
@@ -42,12 +42,17 @@ void Server::ServerMain(std::optional<std::wstring_view> dbRootDir) {
     BLOBS_LOG_DEBUG("Database root dir: [disabled]");
   }
 
+  // Start the scheduler thread
+  scheduler = std::make_unique<Scheduler>(ioCompletionPort);
+
   try {
     while (true) {
       ioCompletionPort.ProcessIOCompletionPacket();
     }
   } catch (network::IOCompletionPort::Stopped&) {
-    BLOBS_LOG_DEBUG("Shutdown signal received, exiting Server::ServerMain()");
+    BLOBS_LOG_DEBUG("Shutdown signal received, stopping scheduler...");
+    scheduler.reset();
+    BLOBS_LOG_DEBUG("Exiting Server::ServerMain()");
     return;
   }
 }

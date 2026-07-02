@@ -9,11 +9,11 @@
 #include <network/IOCompletionPort.hpp>
 #include <network/IOCPReceiveMessageQueue.hpp>
 
-namespace blobs {
-namespace server {
+namespace blobs::server {
 
 class Database;
 class Client;
+class Scheduler;
 
 class Server {
 public:
@@ -200,6 +200,11 @@ private:
    *  default: ".\databases"
    */
   std::optional<std::wstring> dbRootDir;
+
+  /** The scheduler is created inside the ServerMain() method and is used to schedule delayed invocations
+   *  of certain tasks for time based events.
+   */
+  std::unique_ptr<Scheduler> scheduler;
 };
 
-}}
+}
