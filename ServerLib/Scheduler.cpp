@@ -5,7 +5,7 @@
 namespace blobs::server {
 
 Scheduler::Scheduler(network::IOCompletionPort& ioCompletionPort) : ioCompletionPort(ioCompletionPort), stopped(false) {
-  schedulerThread = std::thread([=]() { SchedulerThread(); });
+  schedulerThread = std::thread([=]() { SchedulerThreadMain(); });
 }
 
 Scheduler::~Scheduler() {
@@ -69,7 +69,7 @@ void Scheduler::RunIn(std::chrono::milliseconds ms, std::unique_ptr<Task> task) 
 }
 
 
-void Scheduler::SchedulerThread() {
+void Scheduler::SchedulerThreadMain() {
   SetThreadDescription(GetCurrentThread(), L"blobs.db server task scheduler thread");
 
   std::unique_lock lock(schedulerMutex);
