@@ -69,7 +69,7 @@ public:
           FnCancel cancelFn;
         };
 
-        return std::unique_ptr<Task>(new RegularTask(std::forward<FnRun>(runFn), std::forward<FnCancel>(cancelFn));
+        return std::unique_ptr<Task>(new RegularTask(std::forward<FnRun>(runFn), std::forward<FnCancel>(cancelFn)));
       }
   };
 
@@ -85,7 +85,7 @@ public:
    */
   template<typename Rep, typename Period>
   void RunIn(std::chrono::duration<Rep, Period> duration, std::unique_ptr<Task> task) {
-    RunAt(std::chrono::high_resolution_clock::now() + duration, std::move(task)));
+    RunAt(std::chrono::high_resolution_clock::now() + duration, std::move(task));
   }
 
 private:
