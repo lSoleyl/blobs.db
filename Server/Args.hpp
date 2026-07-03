@@ -2,7 +2,7 @@
 
 #include <optional>
 
-#include <server/Logging.hpp>
+#include "../ClientLib/include/blobs/Initialization.hpp"
 
 /** Command line argument parser
  */
@@ -31,19 +31,10 @@ public:
    */
   explicit operator bool() const { return valid; }
 
-  blobs::server::logging::Level logLevel = blobs::server::logging::Level::INFO_LEVEL; // --loglevel passed
-  std::optional<std::wstring> logFile;                                                // --logfile passed
 
-  /**
-   * default: ".\databases"
-   * can be overwritten by passing --dbroot <path>
-   * can be disabled to be able to open any database on the filesystem using --nodbroot
+  /** The configuration object to parse the server options into
    */
-  std::optional<std::wstring> dbRoot = L".\\databases";
-
-  /** The port the server should listen on (default: 8108)
-   */
-  int port = 8108;
+  blobs::Configuration& config;
 
 private:
   bool valid = false;

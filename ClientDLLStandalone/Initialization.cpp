@@ -5,6 +5,7 @@
 #include <network/StandaloneFactory.hpp>
 #include <server/Server.hpp>
 #include <server/Logging.hpp>
+#include <server/Configuration.hpp>
 #include <common/Encoding.hpp>
 
 #include <thread>
@@ -22,6 +23,9 @@
 
 class StandaloneServer {
 public:
+  StandaloneServer(const blobs::Configuration& config) : serverInstance(config) {}
+
+
   void Start() {
     serverThread = std::thread([this]() { ServerThreadMain(); });
   }
@@ -39,12 +43,11 @@ public:
 
 
   static std::unique_ptr<StandaloneServer> instance;
-  static std::optional<std::wstring> dbRootDir;
 
 private:
   void ServerThreadMain() {
     SetThreadDescription(GetCurrentThread(), L"blobs.db standalone server thread");
-    serverInstance.ServerMain(dbRootDir);
+    serverInstance.ServerMain();
     TODO("What about error handling?");
   }
 
@@ -53,34 +56,25 @@ private:
 };
 
 std::unique_ptr<StandaloneServer> StandaloneServer::instance;
-std::optional<std::wstring> StandaloneServer::dbRootDir = L".\\databases";
 
 
 void blobs::Initialize() {
+  Initialize(Configuration());
+}
+
+
+void blobs::Initialize(const Configuration& config) {
+  server::logging::Initialize(config);
+  
   // Activate the network socket factory
   network::StandaloneFactory::Use();
 
   // Initialize and start the local server instance
-  StandaloneServer::instance = std::make_unique<StandaloneServer>();
+  StandaloneServer::instance = std::make_unique<StandaloneServer>(config);
   StandaloneServer::instance->Start();
 
   // Initialize the global session
   Session::Initialize();
-}
-
-
-void blobs::Initialize(const char* dbRootDir) {
-  StandaloneServer::dbRootDir = dbRootDir ? std::optional<std::wstring>(encoding::ToUTF16(dbRootDir)) : std::nullopt;
-  blobs::Initialize();
-}
-
-
-void blobs::InitializeServerLogging(LogLevel level, const wchar_t* filePath) {
-  if (filePath) {
-    server::logging::Initialize(static_cast<server::logging::Level>(level), filePath);
-  } else {
-    server::logging::Initialize(static_cast<server::logging::Level>(level));
-  }
 }
 
 

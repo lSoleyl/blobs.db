@@ -3,9 +3,13 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <iostream>
 
 
-Args::Args() {}
+Args::Args() : config(blobs::Configuration::Get()) {
+  // The server always starts with INFO as default log level
+  config.LogLevel(blobs::LogLevel::INFO_LEVEL);
+}
 
 Args Args::Parse(int argc, const wchar_t* const* argv) {
   Args args;
@@ -32,15 +36,15 @@ Args Args::Parse(int argc, const wchar_t* const* argv) {
       // Set log level
       std::wstring_view argValue(*argPos++);
       if (argValue == L"OFF") {
-        args.logLevel = blobs::server::logging::Level::OFF_LEVEL;
+        args.config.LogLevel(blobs::LogLevel::OFF_LEVEL);
       } else if (argValue == L"DEBUG") {
-        args.logLevel = blobs::server::logging::Level::DEBUG_LEVEL;
+        args.config.LogLevel(blobs::LogLevel::DEBUG_LEVEL);
       } else if (argValue == L"INFO") {
-        args.logLevel = blobs::server::logging::Level::INFO_LEVEL;
+        args.config.LogLevel(blobs::LogLevel::INFO_LEVEL);
       } else if (argValue == L"WARN") {
-        args.logLevel = blobs::server::logging::Level::WARN_LEVEL;
+        args.config.LogLevel(blobs::LogLevel::WARN_LEVEL);
       } else if (argValue == L"ERROR") {
-        args.logLevel = blobs::server::logging::Level::ERROR_LEVEL;
+        args.config.LogLevel(blobs::LogLevel::ERROR_LEVEL);
       } else {
         std::wcerr << L"Unsupported log level passed: " << argValue << "\n";
         return args; // invalid args
@@ -52,22 +56,23 @@ Args Args::Parse(int argc, const wchar_t* const* argv) {
       }
 
       // Set log file
-      args.logFile = *argPos++;
+      args.config.LogFile(*argPos++);
     } else if (argName == L"--dbroot" || argName == L"-dr") {
       // Database root directory specified
-      args.dbRoot = *argPos++;
+      args.config.DbRootDir(*argPos++);
 
     } else if (argName == L"--nodbroot" || argName == L"-ndr") {
       // No database root, all files on the filesystem should be accessible
-      args.dbRoot.reset();
+      args.config.NoDbRootDir();
 
     } else if (argName == L"--port" || argName == L"-p") {
       // Specify the port to listen on 
-      args.port = _wtoi(*argPos++);
-      if (args.port < 0 || args.port > std::numeric_limits<uint16_t>::max()) {
+      auto port = _wtoi(*argPos++);
+      if (port < 0 || port > std::numeric_limits<uint16_t>::max()) {
         std::wcerr << "Invalid port number specified\n";
         return args;
       }
+      args.config.Port(port);
 
     } else if (argName == L"--help" || argName == L"-h") {
       // --help specified

@@ -89,5 +89,8 @@
     <ClInclude Include="include\blobs\Range.hpp">
       <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
+    <ClInclude Include="include\blobs\LogLevel.hpp">
+      <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

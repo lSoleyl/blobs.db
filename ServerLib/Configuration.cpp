@@ -1,34 +1,13 @@
-#define BLOBS_EXPORT __declspec(dllexport)
+#include "pch.hpp"
 
-#include <blobs/Initialization.hpp>
-#include <blobs/Session.hpp>
-#include <blobs/Exception.hpp>
-#include <network/SocketFactory.hpp>
+#include <server/Configuration.hpp>
+#include <common/Encoding.hpp>
+
+#include "../ClientLib/include/blobs/Initialization.hpp"
 
 namespace blobs {
 
-void Initialize() {
-  // Activate the network socket factory
-  network::SocketFactory::Use();
 
-  // Initialize the global session
-  Session::Initialize();
-}
-
-void Initialize(const blobs::Configuration&) {
-  // Client-only version performs regular initialization here
-  Initialize();
-}
-
-void Shutdown() {
-  TODO("Should we kill all clients here?");
-
-  // Shutdown the global session
-  Session::Shutdown();
-}
-
-
-// Now the dummy Configuration implementation to avoid linker errors when using Config in regular client dll
 Configuration& Configuration::Get() {
   static Configuration configInstance;
   return configInstance;
@@ -36,35 +15,44 @@ Configuration& Configuration::Get() {
 
 /** Implementation of the exported blobs::Configuration class (not blobs::server::Configuration!)
  */
-Configuration::Configuration() {}
-Configuration::~Configuration() {}
+Configuration::Configuration() : server(new server::Configuration) {}
+Configuration::~Configuration() { delete server; }
 
 
 Configuration& Configuration::LogLevel(blobs::LogLevel logLevel) {
+  server->logLevel = logLevel;
   return *this;
 }
 
 Configuration& Configuration::LogFile(const char* u8LogFilePath) {
+  server->logFile = encoding::ToUTF16(u8LogFilePath);
   return *this;
 }
 
 Configuration& Configuration::LogFile(const wchar_t* u16LogFilePath) {
+  server->logFile = u16LogFilePath;
   return *this;
 }
 
+
+
 Configuration& Configuration::DbRootDir(const char* u8RootDir) {
+  server->dbRootDir = encoding::ToUTF16(u8RootDir);
   return *this;
 }
 
 Configuration& Configuration::DbRootDir(const wchar_t* u16RootDir) {
+  server->dbRootDir = u16RootDir;
   return *this;
 }
 
 Configuration& Configuration::NoDbRootDir() {
+  server->dbRootDir.reset();
   return *this;
 }
 
 Configuration& Configuration::Port(int portNo) {
+  server->port = portNo;
   return *this;
 }
 

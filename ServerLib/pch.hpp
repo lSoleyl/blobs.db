@@ -1,5 +1,6 @@
 #pragma once
 
+#define BLOBS_EXPORT __declspec(dllexport)
 
 #include <cassert>
 #include <cstdint>

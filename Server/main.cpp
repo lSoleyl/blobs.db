@@ -45,22 +45,18 @@ int wmain(int argc, wchar_t** argv) {
   }
 #endif
 
-  if (args.logFile) {
-    server::logging::Initialize(args.logLevel, args.logFile->c_str());
-  } else {
-    server::logging::Initialize(args.logLevel);
-  }
 
+  server::logging::Initialize(args.config);
   BLOBS_LOG_INFO("Server initializing");
 
   
   // Use the regular network socket factory for the server.
   network::SocketFactory::Use();
 
-  server::Server server(args.port);
+  server::Server server(args.config);
   BLOBS_LOG_INFO("Server ready");
 
-  server.ServerMain(std::optional<std::wstring_view>(args.dbRoot));
+  server.ServerMain();
 
   BLOBS_LOG_INFO("Server exiting");
   server::logging::Shutdown();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include "../ClientLib/include/blobs/Initialization.hpp"
 
 // Generic logging macro, which will log into the currently configured log stream if the log level is satisfied.
 // The log is wrapped inside a do {} while(false) to enforce the semicolon after the log macro.
@@ -13,25 +14,23 @@
 
 
 namespace blobs::server::logging {
+  using Level = blobs::LogLevel;
 
-  // All log levels have the _LEVEL suffix to avoid name collisions with macros like ERROR (defined in windows.h)
-  enum class Level : int {
-    OFF_LEVEL,
-    ERROR_LEVEL,
-    WARN_LEVEL,
-    INFO_LEVEL,
-    DEBUG_LEVEL
-  };
-
-  /** Initializes logging system to use console output for logging. This will
-   *  Enable UTF-8 console output and enable buffering for std::cout for faster console output.
+  /** Initializes the logging system with the default configuration (which leaves logging disabled)
    */
-  void Initialize(Level level);
+  void Initialize();
 
-  /** Initializes the logging system to use the given log file for logging. 
-   *  Throws a runtime_error if file cannot be created/opened.
+  /** Initializes the logging system with the given configuration.
+   *  If console logging is enabled (no log file specified) then the console will be set to UTF-8 output mode and
+   *  will enable buffering for std::cout for faster console output.
+   * 
+   *  If a log file has been specified as log output then the file is created/truncated.
+   * 
+   * @throw std::runtime_error if the a specified log file cannot be opened
    */
-  void Initialize(Level level, const wchar_t* filePath);
+  void Initialize(const blobs::Configuration& config);
+
+
 
   /** Returns the currently configured log level (default = OFF)
    */

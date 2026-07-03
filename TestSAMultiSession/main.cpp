@@ -14,8 +14,12 @@ int main(int argc, char** argv) {
   // Delete the test_db directory to start with an empty directory for each run
   std::filesystem::remove_all(L".\\test_dbs");
 
-  blobs::InitializeServerLogging(blobs::LogLevel::DEBUG_LEVEL);
-  blobs::Initialize(".\\test_dbs");
+  auto& config = blobs::Configuration::Get()
+    .LogLevel(blobs::LogLevel::DEBUG_LEVEL)
+    .DbRootDir(".\\test_dbs")
+  ;
+
+  blobs::Initialize(config);
 
   // Run unittests
   doctest::Context context;

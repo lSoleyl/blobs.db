@@ -1,5 +1,6 @@
 #include "pch.hpp"
 #include <server/Logging.hpp>
+#include <server/Configuration.hpp>
 
 #include <Windows.h>
 
@@ -15,25 +16,34 @@ static Level logLevel = Level::OFF_LEVEL;
 static std::ofstream logFile;
 static std::ostream* logStream = nullptr;
 
-void Initialize(Level level) {
-  // Enable unicode console output
-  SetConsoleOutputCP(CP_UTF8);
 
-  // Enable buffering on stdio for faster writes... It also results in us having to flush the output using std::endl
-  setvbuf(stdout, nullptr, _IOFBF, 1000);
-
-  logLevel = level;
-  logStream = &std::cout;
+void Initialize() {
+  blobs::server::logging::Initialize(blobs::Configuration());
 }
 
-void Initialize(Level level, const wchar_t* filePath) {
-  logFile.open(filePath);
-  if (!logFile) {
-    throw std::runtime_error("failed to open log file during initialization of logging system");
-  }
+void Initialize(const blobs::Configuration& config) {
+  if (config.server->logLevel != Level::OFF_LEVEL) {
+    // Logging enabled
+    if (config.server->logFile) {
+      // Logging to file specified
+      logFile.open(*config.server->logFile);
+      if (!logFile) {
+        throw std::runtime_error("failed to open log file during initialization of logging system");
+      }
+      logStream = &logFile;
+    } else {
+      // Logging to console
+      // Enable unicode console output
+      SetConsoleOutputCP(CP_UTF8);
 
-  logLevel = level;
-  logStream = &logFile;
+      // Enable buffering on stdio for faster writes... It also results in us having to flush the output using std::endl
+      setvbuf(stdout, nullptr, _IOFBF, 1000);
+
+      logStream = &std::cout;
+    }
+
+    logLevel = config.server->logLevel;
+  }
 }
 
 Level GetLevel() {
@@ -42,14 +52,6 @@ Level GetLevel() {
 
 std::ostream& GetStream() {
   return *logStream;
-}
-
-void SetLogFile(const wchar_t* filePath) {
-  logFile.open(filePath);
-  if (logFile) {
-    // Set logging output stream to the file
-    logStream = &logFile;
-  }
 }
 
 void Shutdown() {

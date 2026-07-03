@@ -91,6 +91,7 @@
     <ClInclude Include="include\server\BlobLocationRanges.hpp" />
     <ClInclude Include="include\server\Client.hpp" />
     <ClInclude Include="include\server\Cluster.hpp" />
+    <ClInclude Include="include\server\Configuration.hpp" />
     <ClInclude Include="include\server\Database.hpp" />
     <ClInclude Include="include\server\Deleted.hpp" />
     <ClInclude Include="include\server\File.hpp" />
@@ -111,6 +112,7 @@
     <ClCompile Include="BlobLocationRanges.cpp" />
     <ClCompile Include="Client.cpp" />
     <ClCompile Include="Cluster.cpp" />
+    <ClCompile Include="Configuration.cpp" />
     <ClCompile Include="Database.cpp" />
     <ClCompile Include="Deleted.cpp" />
     <ClCompile Include="File.cpp" />

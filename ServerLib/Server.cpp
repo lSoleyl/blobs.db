@@ -4,6 +4,7 @@
 #include <server/Logging.hpp>
 #include <server/LockUtil.hpp>
 #include <server/Scheduler.hpp>
+#include <server/Configuration.hpp>
 
 #include <network/Factory.hpp>
 #include <common/Encoding.hpp>
@@ -17,27 +18,33 @@ namespace server {
 
 Server* Server::instance = nullptr;
 
-Server::Server(int port) : messageReceived(*this), receiveQueue(ioCompletionPort, messageReceived) {
+Server::Server() : Server(blobs::Configuration()) {}
+
+
+Server::Server(const blobs::Configuration& config) : messageReceived(*this), receiveQueue(ioCompletionPort, messageReceived) {
   assert(!instance); // Only one server instance is allowed to run at a time
   instance = this;
 
   ioCompletionPort.Create();
-  server = network::Factory::Instance().CreateServer(receiveQueue, port);
+  server = network::Factory::Instance().CreateServer(receiveQueue, config.server->port);
+
+  if (config.server->dbRootDir) {
+    dbRootDir = Paths::ResolvePath(*config.server->dbRootDir);
+  }
 }
 
 Server::~Server() {
   instance = nullptr;
 }
 
-void Server::ServerMain(std::optional<std::wstring_view> dbRootDir) {
+void Server::ServerMain() {
   BLOBS_LOG_DEBUG("Staring Server::ServerMain()");
   BLOBS_LOG_DEBUG("Current directory: " << encoding::ToUTF8(Paths::GetWorkingDirectory()));
 
   if (dbRootDir) {
-    this->dbRootDir = Paths::ResolvePath(*dbRootDir);
-    BLOBS_LOG_DEBUG("Database root dir: " << encoding::ToUTF8(*this->dbRootDir));
+    BLOBS_LOG_DEBUG("Database root dir: " << encoding::ToUTF8(*dbRootDir));
     // Create the root directory in case it doesn't exist yet
-    Paths::MakeDirs(*this->dbRootDir);
+    Paths::MakeDirs(*dbRootDir);
   } else {
     BLOBS_LOG_DEBUG("Database root dir: [disabled]");
   }

@@ -9,7 +9,9 @@
 #include <network/IOCompletionPort.hpp>
 #include <network/IOCPReceiveMessageQueue.hpp>
 
-namespace blobs::server {
+namespace blobs {
+class Configuration;
+namespace server {
 
 class Database;
 class Client;
@@ -17,17 +19,14 @@ class Scheduler;
 
 class Server {
 public:
-  Server(int port = 8108);
+  Server();
+  Server(const blobs::Configuration& config);
   ~Server();
 
   /** Main server network message processing loop.
    *  This method should only ever be called once.
-   *  
-   * @param dbRootDir the database root directory to use. Relative paths are resolved relative to the
-   *                  server process' working directory. Passing an empty optional will result in the database root
-   *                  feature being disabled and all files on the filesystem will be accessible.
    */
-  void ServerMain(std::optional<std::wstring_view> dbRootDir = L".\\databases");
+  void ServerMain();
 
   /** This method will trigger the shutdown of the server, which will lead to the server exiting the ServerMain() loop
    *  This method does not wait for the ServerMain() to be exited.
@@ -207,4 +206,5 @@ private:
   std::unique_ptr<Scheduler> scheduler;
 };
 
+}
 }
