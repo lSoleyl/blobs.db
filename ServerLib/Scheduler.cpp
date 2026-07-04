@@ -38,14 +38,14 @@ class Scheduler::ScheduledTask : public network::IOCompletionHandler {
       delete this;
     }
 
-    const std::chrono::high_resolution_clock::time_point timePoint; // the point in time when this task is scheduled to run
+    const std::chrono::steady_clock::time_point timePoint; // the point in time when this task is scheduled to run
   private:
     std::unique_ptr<Task> task;
 };
 
 
 
-void Scheduler::RunAt(std::chrono::high_resolution_clock::time_point timePoint, std::unique_ptr<Task> task) {
+void Scheduler::RunAt(std::chrono::steady_clock::time_point timePoint, std::unique_ptr<Task> task) {
   // We only need to notify the scheduler thread about the change if the new task is the next one to be run, so keep track of this.
   bool wasInsertedAtFirstPos;
   
@@ -65,7 +65,7 @@ void Scheduler::RunAt(std::chrono::high_resolution_clock::time_point timePoint, 
 
 
 void Scheduler::RunIn(std::chrono::milliseconds ms, std::unique_ptr<Task> task) {
-  RunAt(std::chrono::high_resolution_clock::now() + ms, std::move(task));
+  RunAt(std::chrono::steady_clock::now() + ms, std::move(task));
 }
 
 
@@ -104,7 +104,7 @@ std::optional<std::chrono::milliseconds> Scheduler::NextTaskDeadline() const {
   if (scheduledTasks.empty()) {
     return std::nullopt;
   } else {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(scheduledTasks.front()->timePoint - std::chrono::high_resolution_clock::now());
+    return std::chrono::duration_cast<std::chrono::milliseconds>(scheduledTasks.front()->timePoint - std::chrono::steady_clock::now());
   }
 }
 

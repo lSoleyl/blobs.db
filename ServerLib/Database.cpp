@@ -119,7 +119,7 @@ void Database::Release() {
     if (closeDelay.count() > 0) {
       // Remember the planned close time point to be able to detect whether the database has been opened and closed in the time between
       // scheduling and running the close task
-      auto closeTimePoint = std::chrono::high_resolution_clock::now() + closeDelay;
+      auto closeTimePoint = std::chrono::steady_clock::now() + closeDelay;
       delayedCloseAt = closeTimePoint;
 
       // Schedule the close task to run at the calculated close time

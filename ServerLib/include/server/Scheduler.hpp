@@ -76,7 +76,7 @@ public:
 
   /** Runs the given task at the specified time point
    */
-  void RunAt(std::chrono::high_resolution_clock::time_point timePoint, std::unique_ptr<Task> task);
+  void RunAt(std::chrono::steady_clock::time_point timePoint, std::unique_ptr<Task> task);
 
   /** Runs the given task after the specified number of milliseconds
    */
@@ -86,7 +86,7 @@ public:
    */
   template<typename Rep, typename Period>
   void RunIn(std::chrono::duration<Rep, Period> duration, std::unique_ptr<Task> task) {
-    RunAt(std::chrono::high_resolution_clock::now() + duration, std::move(task));
+    RunAt(std::chrono::steady_clock::now() + duration, std::move(task));
   }
 
 private:
