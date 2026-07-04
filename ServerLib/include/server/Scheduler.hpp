@@ -44,6 +44,7 @@ public:
         public:
           SimpleTask(Fn&& runFn) : runFn(std::forward<Fn>(runFn)) {}
           virtual void Run() override { runFn(); }
+          virtual void Cancelled() override {}
         private:
           Fn runFn;
         };
