@@ -1,7 +1,8 @@
 #pragma once
 
 #include "Config.hpp"
-#include "LogLevel.hpp"
+
+#include <chrono>
 
 namespace blobs {
 
@@ -15,6 +16,19 @@ BLOBS_EXPORT void Initialize();
  *  configure the logging and database root for standalone client applications.
  */
 BLOBS_EXPORT void Initialize(const Configuration& config);
+
+
+
+/** Log level constants.
+ *  All log levels have the _LEVEL suffix to avoid name collisions with macros like ERROR(defined in windows.h)
+ */
+enum class LogLevel : int {
+  OFF_LEVEL,
+  ERROR_LEVEL,
+  WARN_LEVEL,
+  INFO_LEVEL,
+  DEBUG_LEVEL
+};
 
 
 namespace server { class Configuration; }
@@ -110,6 +124,20 @@ public:
    * @default 8081
    */
   BLOBS_EXPORT Configuration& Port(int portNo);
+
+
+  /** Specifies the database close delay for the server. Once the last client using a database closes it, the actual database file will be closed
+   *  only if the database is not reopened within the specified close delay. This will also avoid deleting the associated data structures (and cache)
+   *  for this database on the server. It may also be used to avoid deleting transient in memory databases the moment it is not being used and keep
+   *  them alive for longer.
+   * 
+   *  This setting a too high value may lead to the server holding on to too much unneeded data and filling up the memory.
+   * 
+   * @param closeDelayMs the duration to wait before actually closing the database and releasing associated data structures. 0 = no delay.
+   * 
+   * @default 0 = no delay
+   */
+  BLOBS_EXPORT Configuration& DatabaseCloseDelay(std::chrono::milliseconds closeDelayMs);
   //@}
 
   Configuration();

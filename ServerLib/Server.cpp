@@ -21,7 +21,7 @@ Server* Server::instance = nullptr;
 Server::Server() : Server(blobs::Configuration()) {}
 
 
-Server::Server(const blobs::Configuration& config) : messageReceived(*this), receiveQueue(ioCompletionPort, messageReceived) {
+Server::Server(const blobs::Configuration& config) : messageReceived(*this), receiveQueue(ioCompletionPort, messageReceived), databaseCloseDelay(config.server->databaseCloseDelay) {
   assert(!instance); // Only one server instance is allowed to run at a time
   instance = this;
 
@@ -76,6 +76,14 @@ Server& Server::Instance() {
 
 network::IOCompletionPort& Server::GetCompletionPort() {
   return ioCompletionPort;
+}
+
+Scheduler& Server::GetScheduler() {
+  return *scheduler;
+}
+
+std::chrono::milliseconds Server::GetDatabaseCloseDelay() const {
+  return databaseCloseDelay;
 }
 
 void Server::ProcessReceivedMessages() {

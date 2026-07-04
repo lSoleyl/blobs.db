@@ -13,6 +13,7 @@
 #include "FileBackend.hpp"
 #include "Deleted.hpp"
 
+#include <chrono>
 
 namespace blobs::server {
 
@@ -515,6 +516,11 @@ private:
   int mvccUseCount;  // How many clients are currently using this databse in MVCC (ie. how many need the current mvcc snapshot). The snapshot is discarded once the count reaches 0.
 
   StickyLockHandler stickyLockHandler;
+
+  /** A marker when performing delayed database close to recognize whether the database has been opened and closed in between
+   *  scheduling the close task.
+   */
+  std::chrono::high_resolution_clock::time_point delayedCloseAt;
 
   static std::vector<std::unique_ptr<Database>> databases;
 

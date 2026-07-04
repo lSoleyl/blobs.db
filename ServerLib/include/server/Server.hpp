@@ -41,6 +41,14 @@ public:
    */
   network::IOCompletionPort& GetCompletionPort();
 
+  /** Access to the server's task scheduler
+   */
+  Scheduler& GetScheduler();
+
+  /** Returns the configured database close delay for this server.
+   */
+  std::chrono::milliseconds GetDatabaseCloseDelay() const;
+
   /** Resolves the passed database name into an absolute path base don the configured dbRootDir.
    *  Returns an empty optional if databaseName refers to a path located outside of dbRootDir.
    */
@@ -199,6 +207,14 @@ private:
    *  default: ".\databases"
    */
   std::optional<std::wstring> dbRootDir;
+
+  /** Optional close delay for databases. This may help avoid performance issues when frequently reopening a database (for whatever reason) by keeping
+   *  it alive in the server's memory for a while longer. This may also be useful to avoid data loss between clients for in-memory databases (because
+   *  an in-memory database is deleted once it is closed). Though a too high value may lead to keeping more data in server memory than necessary.
+   * 
+   * default: 0 = no delay
+   */
+  const std::chrono::milliseconds databaseCloseDelay;
 
   /** The scheduler is created inside the ServerMain() method and is used to schedule delayed invocations
    *  of certain tasks for time based events.

@@ -4,6 +4,8 @@
 #include <server/File.hpp>
 #include <server/Client.hpp>
 #include <server/LockUtil.hpp>
+#include <server/Scheduler.hpp>
+#include <server/Logging.hpp>
 #include <common/Paths.hpp>
 #include <common/Encoding.hpp>
 
@@ -112,9 +114,27 @@ Database::OpenResultStruct Database::Open(std::string_view databaseName, OpenMod
 
 void Database::Release() {
   if (--useCount == 0) {
-    TODO("Maybe add some delay in case the database is reopened soon");
-    // Last client called release -> close the database file and delete this object
-    Close();
+    // This was the last reference to this database. If there is no close delay configured in the server -> close it immediately
+    auto closeDelay = Server::Instance().GetDatabaseCloseDelay();
+    if (closeDelay.count() > 0) {
+      // Remember the planned close time point to be able to detect whether the database has been opened and closed in the time between
+      // scheduling and running the close task
+      auto closeTimePoint = std::chrono::high_resolution_clock::now() + closeDelay;
+      delayedCloseAt = closeTimePoint;
+
+      // Schedule the close task to run at the calculated close time
+      Server::Instance().GetScheduler().RunAt(closeTimePoint, Scheduler::Task::Create([=]() {
+        if (useCount == 0 && delayedCloseAt == closeTimePoint) {
+          // Database is still not in use and wasn't in use between running the task and now
+          BLOBS_LOG_DEBUG("Closing database " << name << " after " << closeDelay.count() << "ms delay");
+          Close();
+        }
+      }));
+      
+    } else {
+      // No delay -> immediately close the database file and delete this object
+      Close();
+    }
   }
 }
 

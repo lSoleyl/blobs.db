@@ -3,8 +3,6 @@
 #include <server/Configuration.hpp>
 #include <common/Encoding.hpp>
 
-#include "../ClientLib/include/blobs/Initialization.hpp"
-
 namespace blobs {
 
 
@@ -53,6 +51,11 @@ Configuration& Configuration::NoDbRootDir() {
 
 Configuration& Configuration::Port(int portNo) {
   server->port = portNo;
+  return *this;
+}
+
+Configuration& Configuration::DatabaseCloseDelay(std::chrono::milliseconds closeDelayMs) {
+  server->databaseCloseDelay = closeDelayMs;
   return *this;
 }
 

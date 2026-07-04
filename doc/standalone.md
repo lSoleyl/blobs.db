@@ -43,6 +43,7 @@ int main(int argc, char** argv) {
         .LogFile(".\\client.log")     // <- log into file instead of std::cout
         .DbRootDir("C:\\databases")   // <- change database root directory
         //.NoDbRootDir()              // <- to disable database root directory entirely
+        //.DatabaseCloseDelay(3s)     // <- optionally delay closing databases by 3 seconds
     ;
 
 // Initialize blobs.db (client&server) with the specified configuration

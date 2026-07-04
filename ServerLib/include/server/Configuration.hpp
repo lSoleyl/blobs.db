@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../ClientLib/include/blobs/LogLevel.hpp"
+#include "../ClientLib/include/blobs/Initialization.hpp"
 
 namespace blobs::server {
 
@@ -27,6 +27,11 @@ public:
    *  logging will be performed to std::cout
    */
   std::optional<std::wstring> logFile;
+
+  /** Optional duration to delay acutally closing a database by.
+   *  default 0 = no delay
+   */
+  std::chrono::milliseconds databaseCloseDelay;
 };
 
 }

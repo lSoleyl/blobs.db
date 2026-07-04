@@ -68,4 +68,8 @@ Configuration& Configuration::Port(int portNo) {
   return *this;
 }
 
+Configuration& Configuration::DatabaseCloseDelay(std::chrono::milliseconds closeDelayMs) {
+  return *this;
+}
+
 }

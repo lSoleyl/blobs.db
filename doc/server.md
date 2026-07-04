@@ -26,3 +26,8 @@ The server process by default logs in `INFO` level to stdout.\
 The loglevel can be changed to any of `OFF`, `DEBUG`, `INFO`, `WARN`, `ERROR` using the `--loglevel` parameter.\
 Logging can be written into a file by specifying the `--logfile` parameter.
 
+
+## Database close delay (`--closedelay` option)
+Usually the server closes a [database](databases.md) immediately once the last client (or more precisely [session](sessions.md)) stops using that database. This results in the file being closed and any associated data and cahched information being deleted immediately. This also means that an in-memory database is deleted at this point in time.
+
+The `--closedelay` option can be used to specify a delay (in milliseconds) to wait before actually closing the database and deleting all the associated data in case clients often close and open databses with short delays in between to avoid the overhead of reopening a database file or avoid losing the data in an in-memory database.

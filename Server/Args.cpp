@@ -4,7 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <iostream>
-
+#include <chrono>
 
 Args::Args() : config(blobs::Configuration::Get()) {
   // The server always starts with INFO as default log level
@@ -65,6 +65,11 @@ Args Args::Parse(int argc, const wchar_t* const* argv) {
       // No database root, all files on the filesystem should be accessible
       args.config.NoDbRootDir();
 
+    } else if (argName == L"--closedelay" || argName == L"-cd") {
+      // We don't check for negative delays here, because the server handles it gracefully
+      auto delayMs = _wtoi(*argPos++);
+      args.config.DatabaseCloseDelay(std::chrono::milliseconds(delayMs));
+
     } else if (argName == L"--port" || argName == L"-p") {
       // Specify the port to listen on 
       auto port = _wtoi(*argPos++);
@@ -102,6 +107,8 @@ void Args::PrintHelp() const {
     << "  --nodbroot,-ndr            Disables the database root and allows opening a database file in any directory.\n"
     << "                             When passing relative database paths, they will be resolved relative to the\n"
     << "                             server's working directory.\n"
+    << "  --closedelay,-cd <delay>   Sets the delay (in ms) to close unused databases after and release used memory.\n"
+    << "                             Default: 0 = no delay\n"
     << "  --port,-p <port>           Sets the port to listen on.\n"
     << "                             Default: 8108"
   ;
