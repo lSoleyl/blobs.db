@@ -16,6 +16,17 @@ As stated this mechanism is very useful in single client applications but has th
 Sticky locks can be enabled/disabled on a per database level (see `Database::UseStickyLocks()`). This option takes effect at the start of the next transaction.
 The default setting for newly opened databases (for the current [session](sessions.md)) can be configered via `Transaction::UseStickyLocks()`.
 
+
+## Lock timeout
+Through `Database::SetLockTimeout()` each database can be assigned a timeout in milliseconds after which an attempt at acquiring a read/write lock will fail with an `exception::LockTimeout` in the client. This will cancel the timed out read/write action, but will NOT abort the client's [transaction](transaction.md).
+
+The default value for newly opened databases is configured per session via `Transaction::SetLockTimeout()`.
+
+The default lock timeout value is initially `-1`, which is interpreted as an infninte timeout.
+
+Another special value is `0`, which results in an immediate timeout if acquring a lock would block the client. This lock timeout value will also not trigger a deadlock (even if the locking operation usually would). This value can be used to quickly probe whether a lock can be acquired and if not, perform other actions while waiting for the lock to become available.
+
+
 ## Deadlocks
 A deadlock occurs in a situation in which two (or more) transactions have to be simultaneously ordered before and after one another according to locking semantics. It is mostly caused by two transactions performing writes to the same blobs in a different order (by the time they attempt to write the same blob, both transactions have already started writing data) or by two transactions trying to upgrade a read lock on the same blob.
 

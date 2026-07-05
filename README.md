@@ -92,7 +92,6 @@ blobs.db is still in a very early stage of development and before considering to
  * Server logic is single threaded and blocks on database file IO
  * Server cache and client cache are only cleared when closing a database. No LRU mechanism to evict rarely used blobs from memory is implemented.
  * No support for reading multiple blobs in a single request
- * No support for lock timeouts
 
 ## Planned features
   * Client-Cache memory management (remove rarely accessed blobs)
@@ -103,7 +102,6 @@ blobs.db is still in a very early stage of development and before considering to
   * Add cmake support
   * Support linux
   * Add API for clients to specify a client identifier (to make server logs/errors more understandable)
-  * Add support for lock timeouts
   * Transport encryption (TLS)
   
 ## Open ideas
