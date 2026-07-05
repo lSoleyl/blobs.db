@@ -233,6 +233,13 @@ void Server::HandleBlobsRead(network::MessagePointer_T<network::message::BlobsRe
     auto database = client.GetDatabase(message->databaseId);
     assert(database); // <- TryHandleBlobsRead() would have returned true otherwise
 
+
+    if (message->lockTimeoutMs == 0) {
+      // Lock timeout has been set to immediate -> immediately reply with a lock timeout error response and DO NOT queue the message
+      ReadTimedOut(*message);
+      return;
+    }
+
     // Queue this message to the database to be processed as soon as the conflicts are resolved.
     // Before queueing the message, we must actually check for deadlocks, otherwise the lock conflicts will
     // never be resolved by themselves.
@@ -672,6 +679,12 @@ void Server::AbortTransactionCommit(blobs::server::Client& client) {
 
 
 
+
+void Server::ReadTimedOut(const network::message::BlobsRead& message) {
+  SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::LOCK_TIMEOUT));
+}
+
+
 bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   auto& client = server::Client::Get(message.clientId);
   auto database = client.GetDatabase(message.databaseId);
@@ -979,7 +992,7 @@ void Server::AbortTransaction(blobs::server::Client& client, bool releaseAllLock
 void Server::TryProcessQueuedReads(blobs::server::Database& database) {
   for (auto pos = database.queuedReads.begin(), end = database.queuedReads.end(); pos != end;) {
     auto& readBlobsMessage = *pos;
-    if (TryHandleBlobsRead(*readBlobsMessage)) {
+    if (TryHandleBlobsRead(*readBlobsMessage.message)) {
       // Message processed, we can remove it from the queue
       database.queuedReads.erase(pos++);
     } else {

@@ -14,7 +14,7 @@
 namespace blobs {
 namespace server {
 
-std::vector<std::unique_ptr<Database>> Database::databases;
+std::vector<std::shared_ptr<Database>> Database::databases;
 
 Database::Database(std::string name) : name(std::move(name)), useCount(0), mvccUseCount(0), stickyLockHandler(*this) {
   // In-Memory databases start with "mem:" prefix and are always loaded
@@ -22,7 +22,7 @@ Database::Database(std::string name) : name(std::move(name)), useCount(0), mvccU
 }
 
 Database* Database::Get(std::string_view databaseName) {
-  auto pos = std::find_if(databases.begin(), databases.end(), [=](const std::unique_ptr<Database>& db) { return databaseName == db->name; });
+  auto pos = std::find_if(databases.begin(), databases.end(), [=](const std::shared_ptr<Database>& db) { return databaseName == db->name; });
   return (pos != databases.end()) ? pos->get() : nullptr;
 }
 
@@ -46,7 +46,7 @@ Database::OpenResultStruct Database::Open(std::string_view databaseName, OpenMod
   } else {
     // A file database -> resolve the path relative to the database root dir.
     if (auto resolvedNativePath = Server::Instance().GetResolvedDatabasePath(databaseName)) {
-      auto pos = std::find_if(databases.begin(), databases.end(), [&](const std::unique_ptr<Database>& db) { return Paths::IsSame(*resolvedNativePath, encoding::ToUTF16(db->name)); });
+      auto pos = std::find_if(databases.begin(), databases.end(), [&](const std::shared_ptr<Database>& db) { return Paths::IsSame(*resolvedNativePath, encoding::ToUTF16(db->name)); });
       if (pos != databases.end()) {
         // Same Database file already opened -> return it
         database = pos->get();
@@ -160,7 +160,7 @@ void Database::Close() {
   file.Close();
 
   // Delete this object by removing it from the databases list
-  auto pos = std::find_if(databases.begin(), databases.end(), [=](const std::unique_ptr<Database>& db) { return db.get() == this; });
+  auto pos = std::find_if(databases.begin(), databases.end(), [=](const std::shared_ptr<Database>& db) { return db.get() == this; });
   databases.erase(pos);
 }
 
@@ -514,9 +514,6 @@ std::vector<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::Me
 
 
   std::vector<DeadlockInfo> deadlocks;
-
-  TODO("We should acutally collect ALL clients, which deadlock with the newly entered message, because the deadlock may involve more than 1 client.");
-
   for (auto& queuedMessage : queuedReads) {
     // Generate at most one deadlock entry per client, so ignore all messages for which we already have an entry
     if (std::any_of(deadlocks.begin(), deadlocks.end(), [&](const DeadlockInfo& deadlock) { return deadlock.requests[1].client == queuedMessage->clientId; })) {
@@ -527,7 +524,7 @@ std::vector<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::Me
     // Only check the messages of clients, which are preventing the current message's lock acquisition
     auto lockConflict = std::find_if(conflicts.begin(), conflicts.end(), [&](const LockConflict& conflict) { return conflict.blockedBy == queuedMessage->clientId; });
     if (lockConflict != conflicts.end()) {
-      if (auto conflictLocation = FindLockConflictWith(*queuedMessage, client)) {
+      if (auto conflictLocation = FindLockConflictWith(*queuedMessage.message, client)) {
         // We have a bidirectional locking conflict (i.e. a deadlock!)
         
         // Construct the deadlock entry and continue checking the remaining clients
@@ -546,7 +543,23 @@ std::vector<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::Me
   }
   
   // Finally queue the message (even if we had a deadlock, because we might want to abort the other clients) and return the collected deadlock info
-  queuedReads.push_back(std::move(message));
+  QueuedMessage queuedMessage;
+  queuedMessage.message = std::move(message);
+  
+  assert(queuedMessage->lockTimeoutMs != 0); // <- timeout of 0 (immediate) should be handled by the caller by not attempting to queue the message
+  if (queuedMessage->lockTimeoutMs > 0) {
+    // A lock timeout has been defined for this message note down when the message is due for a timeout and schedule a corresponding task
+    queuedMessage.lockTimeoutTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(queuedMessage->lockTimeoutMs);
+
+    Server::Instance().GetScheduler().RunAt(*queuedMessage.lockTimeoutTime, Scheduler::Task::Create([weakDb = std::weak_ptr(shared_from_this())]() { 
+      // We only access this database through a weak_ptr as it may have been closed in between the Task being scheduled and the Task being run.
+      if (auto db = weakDb.lock()) {
+        db->CheckForLockTimeouts(); 
+      }
+    }));
+  }
+
+  queuedReads.push_back(std::move(queuedMessage));
   return deadlocks;
 }
   
@@ -711,6 +724,32 @@ std::optional<BlobLocation> Database::FindLockConflictWith(const network::messag
 
   // Return the conflict location if any has been found
   return conflictLocation;
+}
+
+
+void Database::CheckForLockTimeouts() {
+  auto now = std::chrono::steady_clock::now();
+
+  // We have to always check the full list, because lock timeouts are configured by each client and
+  // we cannot assume that messages to the front of the queue are more likely to time out
+  for (auto pos = queuedReads.begin(), end = queuedReads.end(); pos != end;) {
+    auto& queuedRead = *pos;
+    if (queuedRead.lockTimeoutTime && *queuedRead.lockTimeoutTime <= now) {
+      // Read timed out
+      // Let server notify the client about it
+      Server::Instance().ReadTimedOut(*queuedRead.message);
+
+      // And remove the message from the queue
+      auto erasePos = pos++;
+      queuedReads.erase(erasePos);
+    } else {
+      // Check next message
+      ++pos;
+    }
+  }
+
+  // There is no point in running ProcessQueuedReads() here even if messages have been deleted, because 
+  // this doesn't change which locks are being held, so won't be able to process more messages now.
 }
 
 

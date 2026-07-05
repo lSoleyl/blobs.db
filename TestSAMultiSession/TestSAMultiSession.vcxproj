@@ -113,6 +113,7 @@
     <ClCompile Include="testGetAllSegments.cpp" />
     <ClCompile Include="testHugeCommit.cpp" />
     <ClCompile Include="testKeepStickyLocks.cpp" />
+    <ClCompile Include="testLockTimeout.cpp" />
     <ClCompile Include="testMultipleThreadsSingleSession.cpp" />
     <ClCompile Include="testMVCC.cpp" />
     <ClCompile Include="testOpenDatabase.cpp" />

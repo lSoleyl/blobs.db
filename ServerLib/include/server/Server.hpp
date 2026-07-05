@@ -54,6 +54,10 @@ public:
    */
   std::optional<std::wstring> GetResolvedDatabasePath(std::string_view databaseName) const;
 
+  /** Called by Database to notify the server that a queued blobs read message has timed out and the client should be informed about that.
+   */
+  void ReadTimedOut(const network::message::BlobsRead& message);
+
 private:
   /** Processes any outstanding not yet processed network messages
    */

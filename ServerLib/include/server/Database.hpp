@@ -17,7 +17,7 @@
 
 namespace blobs::server {
 
-class Database {
+class Database : public std::enable_shared_from_this<Database> {
   class Snapshot;
   class FreeList;
 public:
@@ -178,10 +178,18 @@ public:
    */
   CommitResult CalculateCommitResult(network::MessagePointer_T<network::message::TransactionCommit>* commitBegin, network::MessagePointer_T<network::message::TransactionCommit>* commitEnd);
 
+
+  struct QueuedMessage {
+    network::message::BlobsRead* operator->() const { return message.Get(); }
+
+    network::MessagePointer_T<network::message::BlobsRead> message; // the read request itself
+    std::optional<std::chrono::high_resolution_clock::time_point> lockTimeoutTime; // when should the message be cancelled due to a lock timeout
+  };
+
   /** This list holds the queued reads to this database, which couldn't be immediately fulfilled due to
    *  other clients holding conflicting locks. These messages should be retried as soon as the conflicting locks are released.
    */
-  std::list<network::MessagePointer_T<network::message::BlobsRead>> queuedReads;
+  std::list<QueuedMessage> queuedReads;
 
   /** Releases the specified lock for the given client
    */
@@ -468,6 +476,11 @@ private:
   std::optional<BlobLocation> FindLockConflictWith(const network::message::BlobsRead& message, client_id conflictingClient);
 
 
+  /** Searches all queued reads for reads with a lock timeout value <= steady_clock::now() and cancels these requests with a corresponding error message.
+   */
+  void CheckForLockTimeouts();
+
+
   /** Implements the check of whether certain locks can be revoked (are sticky locks)
    *  and revokation of said locks
    */
@@ -522,7 +535,10 @@ private:
    */
   std::chrono::high_resolution_clock::time_point delayedCloseAt;
 
-  static std::vector<std::unique_ptr<Database>> databases;
+  /** All opened databases on the server. The database is held in a shared_ptr because the lock timout check Task
+   *  may be scheduled to run AFTER the database has already been closed and we need a safe way to check for this.
+   */
+  static std::vector<std::shared_ptr<Database>> databases;
 
 
   friend class DatabaseDocTestAccess;

@@ -127,9 +127,9 @@ private:
 };
 
 
-
-
-Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId, bool useMVCC) : name(std::move(name)), id(id), connectionId(connectionId), cache(new BlobCache), session(session), useStickyLocks(session->Transactions().useStickyLocks) {
+Database::Database(const Session::Handle& session, std::string name, database_id id, connection_id connectionId, bool useMVCC) : name(std::move(name)), id(id), connectionId(connectionId), 
+  cache(new BlobCache), session(session), useStickyLocks(session->Transactions().useStickyLocks), lockTimeoutMs(session->Transactions().lockTimeoutMs) 
+{
   assert(session->OwnsLock());
   session->Databases(connectionId).openedDatabases.emplace(id, this);
   mvcc.setting = useMVCC;
@@ -271,6 +271,10 @@ bool Database::UseStickyLocks(bool use) {
   return std::exchange(useStickyLocks, use);
 }
 
+int32_t Database::SetLockTimeout(int32_t lockTimeoutMs) {
+  return std::exchange(this->lockTimeoutMs, lockTimeoutMs);
+}
+
 std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");
@@ -341,7 +345,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   // Request the blob from the server
   auto& network = session->Network();
   auto& client = network.Get(connectionId);
-  auto request = network::message::BlobsRead::Create(id, 1, static_cast<network::message::BlobsRead::LockMode>(lock));
+  auto request = network::message::BlobsRead::Create(id, 1, static_cast<network::message::BlobsRead::LockMode>(lock), lockTimeoutMs);
   auto& address = *request->begin();
   address = location;
   address.cacheCommitId = cachedBlob ? cachedBlob->lastUpdated : 0;
@@ -990,7 +994,7 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
   // Create the request for this blob
   auto& network = session->Network();
   auto& client = network.Get(connectionId);
-  auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete);
+  auto request = network::message::BlobsRead::Create(id, 1, network::message::BlobsRead::LockMode::Delete, lockTimeoutMs);
   auto& address = *request->begin();
   address = location;
   address.cacheCommitId = 0;

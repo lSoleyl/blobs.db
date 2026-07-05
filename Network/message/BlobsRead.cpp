@@ -8,8 +8,8 @@ namespace network {
 namespace message {
 
 
-BlobsRead::BlobsRead(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode) :
-  Message(sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress), BlobsRead::type), databaseId(databaseId), nBlobsRequested(nBlobsRequested), lockMode(lockMode) {}
+BlobsRead::BlobsRead(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode, int32_t lockTimeoutMs) :
+  Message(sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress), BlobsRead::type), databaseId(databaseId), nBlobsRequested(nBlobsRequested), lockMode(lockMode), lockTimeoutMs(lockTimeoutMs) {}
 
 BlobsRead::BlobAddress* BlobsRead::begin() {
   return reinterpret_cast<BlobAddress*>(reinterpret_cast<uint8_t*>(this) + sizeof(BlobsRead));
@@ -36,9 +36,9 @@ bool BlobsRead::IsDirtyRead() const {
   return lockMode == LockMode::None;
 }
 
-MessagePointer_T<BlobsRead> BlobsRead::Create(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode) {
+MessagePointer_T<BlobsRead> BlobsRead::Create(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode, int32_t lockTimeoutMs) {
   auto messageSize = sizeof(BlobsRead) + nBlobsRequested * sizeof(BlobAddress);
-  return MessagePointer_T<BlobsRead>(new (new char[messageSize]) BlobsRead(databaseId, nBlobsRequested, lockMode));
+  return MessagePointer_T<BlobsRead>(new (new char[messageSize]) BlobsRead(databaseId, nBlobsRequested, lockMode, lockTimeoutMs));
 }
 
 
@@ -65,7 +65,13 @@ std::ostream& operator<<(std::ostream& out, const BlobsRead& message) {
     out << '@' << message.begin()->cacheCommitId;
   }
   
-  return out << ", access=" << message.lockMode << ')';
+  out << ", access=" << message.lockMode;
+  if (message.lockTimeoutMs >= 0) {
+    // Log the timeout property if a timeout is configured
+    out << ", timeout=" << message.lockTimeoutMs << "ms";
+  }
+  
+  return out << ')';
 }
 
 

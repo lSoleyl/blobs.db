@@ -281,6 +281,22 @@ public:
    */
   BLOBS_EXPORT bool UseStickyLocks(bool use);
 
+
+  /** Sets the lock timeout to use for read/write lock requests for this database. If a lock request cannot be satisfied
+   *  within the specified time, an exception::LockTimeout will be thrown by the read/write operation.
+   *  The default lock timeout for newly opened databases is defined by Transaction::SetLockTimeout(), which defaults to -1 (infinite).
+   *  Setting the lock timeout immediately affects the timeout of the next read/write operation.
+   * 
+   * @param lockTimeoutMs the lock timeout to set in milliseconds.
+   *                      0  = immediate timeout (lock acquisition fails immediately if the client would have to wait)
+   *                           Setting an immediate timeout will NOT trigger a deadlock even if attempting to acquire the lock would result in a deadlock situation.
+   *                           To trigger the deadlock you can set a near immediate timeout of 1ms.
+   *                      -1 = infinite timeout
+   * 
+   * @return the previous lock timeout value.
+   */
+  BLOBS_EXPORT int32_t SetLockTimeout(int32_t lockTimeoutMs);
+
   /** A convenience access method to blob data, which returns the blob as std::string (or std::wstring).
    *  The method is implemented in the header and not exported to ensure the client can use any STL implementation he sees fit.
    */
@@ -606,6 +622,11 @@ private:
     bool setting; // Controls whether the next transaction started for this database will be in MVCC mode (see SetMVCC)
   } mvcc;
   bool useStickyLocks; // controls whether this database automatically reacquires locks from the previous transaction
+
+  /** The lock timeout in milliseconds for all read / write operations requiring a lock (0 = immediate timeout, -1 = infinite timeout[default])
+   *  The default value is configured in Transaction::SetLockTimeout()
+   */
+  int32_t lockTimeoutMs; 
 };
 
 

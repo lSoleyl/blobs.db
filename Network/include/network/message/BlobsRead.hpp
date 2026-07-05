@@ -23,6 +23,7 @@ struct BlobsRead : public Message {
   database_id databaseId; // id referencing the previously opened database to read from
   uint8_t nBlobsRequested; // value 0 is not valid here
   LockMode lockMode; // what kind of locks should be acquired for the specified blobs?
+  int32_t lockTimeoutMs; // time to wait for lock in milliseconds (<0 = wait forever, 0 = timeout immediately if there is a conflict)
 
   
 
@@ -65,12 +66,12 @@ struct BlobsRead : public Message {
   /** Create a new OpenDB message with sufficient space to hold nBlobsRequested number of blobs.
    *  The BlobAddresses are at this point not initialized and have to be initialized using the begin()/end() iterators
    */
-  static MessagePointer_T<BlobsRead> Create(database_id databaseId, uint8_t nBlobsRequested = 1, LockMode lockMode = LockMode::Read);
+  static MessagePointer_T<BlobsRead> Create(database_id databaseId, uint8_t nBlobsRequested = 1, LockMode lockMode = LockMode::Read, int32_t lockTimeoutMs = -1);
 
 
   static constexpr Type type = Type::BlobsRead;
 private:
-  BlobsRead(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode); // Do not use the constructor -> use EncodeMessage
+  BlobsRead(database_id databaseId, uint8_t nBlobsRequested, LockMode lockMode, int32_t lockTimeoutMs); // Do not use the constructor -> use EncodeMessage
 };
 
 

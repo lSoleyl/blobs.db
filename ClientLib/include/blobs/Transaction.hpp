@@ -73,6 +73,25 @@ public:
   static bool UseStickyLocks(bool use) { return UseStickyLocks(Session::GetGlobalSession(), use); }
 
 
+  /** Sets the default lock timeout in milliseconds for newly opened databases for the given session.
+   *  This value will be applied to all newly opened databases after setting this value.
+   *  The lock timeout can be modified for each database by calling Databse::SetLockTimeout().
+   * 
+   * @param session the session to set the timeout for
+   * @param lockTimeoutMs the timeout in milliseconds to set 
+   *         0 = immediate timeout
+   *        -1 = infinite timeout (no timeout) [default]
+   * 
+   * @return the previous lock timeout value
+   */
+  BLOBS_EXPORT static int32_t SetLockTimeout(const Session::Handle& session, int32_t lockTimeoutMs);
+
+  /** Sets the default lock timeout in milliseconds for the global session
+   */
+  static int32_t SetLockTimeout(int32_t lockTimeoutMs) { return SetLockTimeout(Session::GetGlobalSession(), lockTimeoutMs); }
+
+
+
   /** Configures this client's transaction priority for all transactions started AFTER this call.
    *  In case of a deadlock the server will abort the transaction of the client with the smaller transaction priority.
    *  If both clients have the same transaction priority, the deadlock victim is chosen at random.

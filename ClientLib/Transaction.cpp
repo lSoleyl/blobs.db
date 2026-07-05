@@ -514,6 +514,13 @@ bool Transaction::UseStickyLocks(const Session::Handle& session, bool use) {
 }
 
 
+int32_t Transaction::SetLockTimeout(const Session::Handle& session, int32_t lockTimeoutMs) {
+  auto sessionLock = session->Lock();
+  auto& transactions = session->Transactions();
+  return std::exchange(transactions.lockTimeoutMs, lockTimeoutMs);
+}
+
+
 transaction_priority Transaction::SetPriority(const Session::Handle& session, transaction_priority transactionPriority) {
   auto sessionLock = session->Lock();
   auto& transactions = session->Transactions();

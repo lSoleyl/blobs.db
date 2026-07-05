@@ -26,6 +26,11 @@ public:
    */
   transaction_priority priority;
 
+  /** The default lock timeout in milliseconds for the session. All newly opened databases will use this lock timeout.
+   *  Default value is -1 = infinite timeout
+   */
+  int32_t lockTimeoutMs;
+
   /** The default setting of using sticky locks for newly opened databases. The actual setting is stored in the Database instance itself
    *  and can be overwritten any time (Database::UseStickyLocks()).
    * 
