@@ -551,7 +551,7 @@ std::vector<Database::DeadlockInfo> Database::QueueReadCheckDeadlock(network::Me
     // A lock timeout has been defined for this message note down when the message is due for a timeout and schedule a corresponding task
     queuedMessage.lockTimeoutTime = std::chrono::steady_clock::now() + std::chrono::milliseconds(queuedMessage->lockTimeoutMs);
 
-    Server::Instance().GetScheduler().RunAt(*queuedMessage.lockTimeoutTime, Scheduler::Task::Create([weakDb = std::weak_ptr(shared_from_this())]() { 
+    Server::Instance().GetScheduler().RunAt(*queuedMessage.lockTimeoutTime, Scheduler::Task::Create([weakDb = weak_from_this()]() {
       // We only access this database through a weak_ptr as it may have been closed in between the Task being scheduled and the Task being run.
       if (auto db = weakDb.lock()) {
         db->CheckForLockTimeouts(); 
