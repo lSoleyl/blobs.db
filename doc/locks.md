@@ -27,6 +27,9 @@ The default lock timeout value is initially `-1`, which is interpreted as an inf
 Another special value is `0`, which results in an immediate timeout if acquring a lock would block the client. This lock timeout value will also not trigger a deadlock (even if the locking operation usually would). This value can be used to quickly probe whether a lock can be acquired and if not, perform other actions while waiting for the lock to become available.
 
 
+The helper method `Database::TryReadBlob()` can be used to conveniently try to acquire a lock for a specific blob returning `false` if a lock cannot be immediately acquired. Internally this method sets the lock timeout to `0` for the read request. When this method returns `true` then the client holds the lock, the blob is already read into the client's cache and the contents can quickly be retrieved by a followup `Database::ReadBlob()`.
+
+
 ## Deadlocks
 A deadlock occurs in a situation in which two (or more) transactions have to be simultaneously ordered before and after one another according to locking semantics. It is mostly caused by two transactions performing writes to the same blobs in a different order (by the time they attempt to write the same blob, both transactions have already started writing data) or by two transactions trying to upgrade a read lock on the same blob.
 

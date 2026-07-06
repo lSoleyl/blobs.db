@@ -171,3 +171,67 @@ TEST_CASE("Test lock timeout keeps transaction open") {
 
   REQUIRE_MESSAGE(c2 < c1, "Client 2 should finish before client 1 because the transaction should continue after the lock timeout");
 }
+
+
+/** A small test case to test correct working of the TryRead utility method
+ */
+TEST_CASE("Test TryReadBlob") {
+  auto connStr = "localhost/mem:testTryReadBlob";
+
+
+  parallel::sync_point blobLocked(2), firstReadCompleted(2), lockReleased(2);
+
+  parallel::run({
+
+    // The first client will simply write lock a blob and release the lock later.
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      db->WriteString(0, 0, 0, "test");
+      blobLocked.wait();
+      firstReadCompleted.wait();
+      // Now we release the lock
+      Transaction::Commit(session);
+      lockReleased.wait();
+    },
+
+    // The second client will attempt to read the locked blob via ReadString() and TryReadBlob() and validate that
+    // the timeouts are correctly handled and that reading succeeds once the blob is unlocked.
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, connStr));
+      db->SetLockTimeout(10); // long enough to measure it
+      blobLocked.wait();
+
+      auto t1 = std::chrono::high_resolution_clock::now();
+      CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 0), exception::LockTimeout, "A regular read should throw a LockTimeout");
+      auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - t1).count();
+      CHECK_MESSAGE(durationMs >= 10, "The first read should have timed out after at least 10ms");
+
+      // Now test with TryReadBlob (the result should be there immediately)
+      t1 = std::chrono::high_resolution_clock::now();
+      CHECK_MESSAGE(db->TryReadBlob(0, 0, 0) == false, "TryReadBlob() should fail while the lock is still held");
+      durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - t1).count();
+      CHECK_MESSAGE(durationMs <= 1, "TryReadBlob() should complete in well under the original 10ms timeout");
+
+      // Test that TryReadBlob resets the timeout correctly
+      t1 = std::chrono::high_resolution_clock::now();
+      CHECK_THROWS_AS_MESSAGE(db->ReadString(0, 0, 0), exception::LockTimeout, "A regular read should still throw a LockTimeout");
+      durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - t1).count();
+      CHECK_MESSAGE(durationMs >= 10, "The second read should still have timed out after at least 10ms");
+      
+      // Wait for the first client to release its lock
+      firstReadCompleted.wait();
+      lockReleased.wait();
+
+      // Now try read should succeed in reading the blob
+      CHECK_MESSAGE(db->TryReadBlob(0, 0, 0) == true, "TryReadBlob() should succeed after the lock is released");
+      CHECK_MESSAGE(db->TryReadBlob(0, 0, 0) == true, "TryReadBlob() should still succeed when called a second time");
+      CHECK_MESSAGE(db->ReadString(0, 0, 0) == "test", "ReadString() should succeed after TryReadBlob()");
+    }
+  });
+
+
+
+}
+

@@ -275,6 +275,31 @@ int32_t Database::SetLockTimeout(int32_t lockTimeoutMs) {
   return std::exchange(this->lockTimeoutMs, lockTimeoutMs);
 }
 
+bool Database::TryReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock) {
+  if (lock == Lock::None) {
+    return false;
+  }
+
+  // Use an RAII struct for setting/resetting the timeout to reliably reset it even in face of unexpected exception
+  struct WithoutLockTimeout {
+    WithoutLockTimeout(int32_t& lockTimeoutMs) : lockTimeoutMs(lockTimeoutMs), savedTimeout(lockTimeoutMs) { lockTimeoutMs = 0; }
+    ~WithoutLockTimeout() { lockTimeoutMs = savedTimeout; }
+
+  private:
+    int32_t& lockTimeoutMs;
+    int32_t savedTimeout;
+  };
+
+
+  try {
+    WithoutLockTimeout resetter(lockTimeoutMs);
+    ReadBlob(segment, cluster, blob, lock);
+    return true;
+  } catch (exception::LockTimeout&) {
+    return false;
+  }
+}
+
 std::pair<const void*, blob_size> Database::ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");

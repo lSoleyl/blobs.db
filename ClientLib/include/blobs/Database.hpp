@@ -325,6 +325,18 @@ public:
   BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock = Lock::Read);
 
 
+  /** A utility method, which performs a ReadBlob operation with a lock timeout of 0 and returns true if the read succeeded and false 
+   *  if the read timed out (instead of throwing exception::LockTimeout). After this method returns true, the client holds the 
+   *  lock and holds the contents of the blob in its cache, so a followup ReadBlob() will immediately return the blob's contents from
+   *  the client's cache.
+   * 
+   *  Calling this method with Lock::None will not perform any request to the server any simply return true, because no lock needs to be acquired.
+   *  
+   *  This method will still throw an exception when attemtpting to read blobs that do not exist.
+   */
+  BLOBS_EXPORT bool TryReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock = Lock::Read);
+
+
   /** Convenience method to store string typed content in a blob
    */
   template<typename CharT = char>
