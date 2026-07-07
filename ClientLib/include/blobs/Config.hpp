@@ -13,7 +13,7 @@ namespace blobs {
   // Current version of blobs.db (will be displayed when starting the server)
   namespace version {
     constexpr int major = 0;
-    constexpr int minor = 8;
+    constexpr int minor = 9;
     constexpr int patch = 0;
   }
 
