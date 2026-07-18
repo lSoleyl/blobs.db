@@ -122,64 +122,71 @@ private:
   bool TryHandleBlobsRead(const network::message::BlobsRead& message);
 
 
-  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a write lock on SegmentDeleteId.
-   *  The caller must ensure that the requested segment exists.
-   *  This method will ensure that the client can acquire write locks on the whole segment.
+  /** This method is called by TryHandleBlobsRead after ensuring that all requested blobs exist and 
+   *  all locks have been acquired to actually construct the blobs read response for the requested blobs
+   *  and send the response(s) to the client.
    * 
-   * @return true if the request has been handled and a response sent to the client (including an error)
-   *         false if the request cannot be handled due to conflicting locks.
-   */
-  bool TryHandleDeleteSegmentId(blobs::server::Client& client, const network::message::BlobsRead& message);
+   * @param database the database from which the blobs are read
+   * @param message the message requesting the blobs
+   * @param isMVCC whether to read from the MVCC snapshot or the active database
+   */ 
+  void BuildAndSendBlobsReadResponse(blobs::server::Database& database, const network::message::BlobsRead& message, bool isMVCC);
 
 
-  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a write lock on ClusterDeleteId.
-   *  The caller must ensure that the reuqested cluster exists.
-   *  This method will ensure that the client can acquire write locks on the whole cluster.
-   * 
-   * @return true if the request has been handled and a response sent to the client (including an error)
-   *         false if the request cannot be handled due to conflicting locks.
-   */
-  bool TryHandleDeleteClusterId(blobs::server::Client& client, const network::message::BlobsRead& message);
+  struct BlobData {
+    std::vector<char> content;
+    blobs::commit_id commitId;
+  };
 
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the blob id list.
-   *  The caller must ensure that the refernced cluster exists.
-   *  This method will ensure that the client acquires the necessary lock.
-   * 
-   * @param client the client requesting the blob id list
-   * @param message the BlobsRead message of the request
-   * @param isMVCC is true if the message's database is opened in MVCC and the message specifies a valid MVCC read request
+   *  The caller must ensure that the referenced cluster exists and client already holds the required locks.
    *
-   * @return true if the request has been handled and a response sent to the client (including an error)
-   *         false if the reuqest cannot be handled due to conflicting locks
+   * @param database the database to read the blob list from
+   * @param segmentId the segment to read the blob list from
+   * @param clusterId the cluster to read the blob list from
+   * @param cacheCommitId the commit id of the client's cached version of the blob list blob (as specified in the request)
+   * @param isMVCC whether the client should read the blob list from the MVCC snapshot or the update snapshot
+   *
+   * @return the content of the cluster list blob or nullopt if the client's version of the blob is already up to date
    */
-  bool TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
+  std::optional<BlobData> HandleBlobListId(blobs::server::Database& database, blobs::segment_id segmentId, blobs::cluster_id clusterId, blobs::commit_id cacheCommitId, bool isMVCC);
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the cluster id list.
-   *  The caller must ensure that the referenced segment exists. 
-   *  This method will ensure that the client acquires the necessary lock.
+   *  The caller must ensure that the referenced segment exists and client already holds the required locks.
    * 
-   * @param client the client requesting the cluster id list
-   * @param message the BlobsRead message of the request
-   * @param isMVCC is true if the message's database is opened in MVCC and the message specifies a valid MVCC read request
+   * @param database the database to read the cluster list from
+   * @param segmentId the segment to read the cluster list from
+   * @param cacheCommitId the commit id of the client's cached version of the cluster list blob (as specified in the request)
+   * @param isMVCC whether the client should read the cluster list from the MVCC snapshot or the update snapshot
    *
-   * @return true if the request has been handled and a response sent to the client (including an error)
-   *         false if the reuqest cannot be handled due to conflicting locks
+   * @return the content of the cluster list blob or nullopt if the client's version of the blob is already up to date
    */
-  bool TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
+  std::optional<BlobData> HandleClusterListId(blobs::server::Database& database, blobs::segment_id segmentId, blobs::commit_id cacheCommitId, bool isMVCC);
 
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the segment id list.
-   *  This method will ensure that the client acquires the necessary lock.
+   *  The caller must ensure that the client already holds the required locks.
    * 
-   * @param client the client requesting the segment id list
-   * @param message the BlobsRead message of the request
-   * @param isMVCC is true if the message's database is opened in MVCC and the message specifies a valid MVCC read request
+   * @param database the database to read the segment list from
+   * @param cacheCommitId the commit id of the client's cached version of the segment list blob (as specified in the request)
+   * @param isMVCC whether the client should read the segment list from the MVCC snapshot or the update snapshot
    * 
-   * @return true if the request has been handled and a response sent to the client
-   *         false if the reuqest cannot be handled due to conflicting locks
+   * @return the content of the segment list blob or nullopt if the client's version of the blob is already up to date
    */
-  bool TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
+  std::optional<BlobData> HandleSegmentListId(blobs::server::Database& database, blobs::commit_id cacheCommitId, bool isMVCC);
+
+
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a regular blob.
+   *  The caller must ensure that the blob exists and the client already holds the required locks
+   * 
+   * @param database the database to read the blob from
+   * @param requestedBlob the blob location and cacheCommitId of the requested blob
+   * @param isMVCC whether the client should read the blob from the MVCC snapshot or the update snapshot
+   * 
+   * @return the content of the blob or nullopt if the client's version of the blob is already up to date
+   */
+  std::optional<BlobData> HandleRegularBlobRead(blobs::server::Database& database, const blobs::network::message::BlobsRead::BlobAddress& requestedBlob, bool isMVCC);
 
 
   /** Primitive logging of incoming messages.

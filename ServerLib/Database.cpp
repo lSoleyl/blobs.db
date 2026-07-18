@@ -401,8 +401,13 @@ segment_id Database::GetNextFreeSegmentId() const {
   return snapshot->GetNextFreeSegmentId();
 }
 
-commit_id Database::GetCommitId() const {
-  return snapshot->commitId;
+commit_id Database::GetCommitId(bool mvcc) const {
+  if (!mvcc) {
+    return snapshot->commitId;
+  } else {
+    assert(mvccSnapshot);
+    return mvccSnapshot->commitId;
+  }
 }
 
 Database::iterator Database::begin(bool mvcc) {

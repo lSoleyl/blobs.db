@@ -61,6 +61,10 @@ BlobsReadResponse::BlobData& BlobsReadResponse::Iterator::operator*() const {
   return *static_cast<BlobData*>(pos);
 }
 
+BlobsReadResponse::BlobData* BlobsReadResponse::Iterator::operator->() const {
+  return static_cast<BlobData*>(pos);
+}
+
 bool BlobsReadResponse::Iterator::operator==(const Iterator& other) const { 
   return pos == other.pos; 
 }

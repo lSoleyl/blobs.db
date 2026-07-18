@@ -373,22 +373,24 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   auto request = network::message::BlobsRead::Create(id, 1, static_cast<network::message::BlobsRead::LockMode>(lock), lockTimeoutMs);
   auto& address = *request->begin();
   address = location;
-  address.cacheCommitId = cachedBlob ? cachedBlob->lastUpdated : 0;
+  auto cacheCommitId = cachedBlob ? cachedBlob->lastUpdated : 0;
+  address.cacheCommitId = cacheCommitId;
   client.SendMessageToServer(std::move(request));
   
   // Wait for the response and handle it
   auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
-    if (cachedBlob && response->nBlobs == 0) {
-      // Our cached blob is up to date, but we still successfully acquired the lock -> notify the transaction of the lock
-      transaction.AcquiredLock(this, location, static_cast<Transaction::LockMode>(lock));
-      return cachedBlob->Data();
-    } else if (response->nBlobs == 1) {
-      // Server has responded with a newer version of the blob, or we don't have it in our cache yet
+    if (response->nBlobs == 1) {
       auto& blobData = *response->begin();
-      auto& cachedBlob = cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction.id);
+      if (blobData.commitId != cacheCommitId) {
+        // Server has responded with a newer version of the blob, or we don't have it in our cache yet
+        cachedBlob = &cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction.id);
+      }
+
+      // In any case we have acquired the requested lock now and we can return the blob contents from the cached blob
       transaction.AcquiredLock(this, location, static_cast<Transaction::LockMode>(lock));
-      return cachedBlob.Data();
+      assert(cachedBlob); // This could only fail if the server responds with commitId 0, which it cannot do as commit ids start at 1
+      return cachedBlob->Data();
     } else {
       assert(false); // server repsonsed with an illegal number of blobs!
     }
@@ -1030,7 +1032,8 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
   
   // Handle response
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
-    assert(response->nBlobs == 0); // The server should never respond with a blob to a Delete request
+    // The server responds with a single, empty blob with the same commit id as the requested commit id.
+    assert(response->nBlobs == 1 && response->begin()->blobSize == 0 && response->begin()->commitId == 0);
     // Nothing to enter into the cache, but update the held lock type in the transaction
     transaction.AcquiredLock(this, location, Transaction::LockMode::Write);
   } else {

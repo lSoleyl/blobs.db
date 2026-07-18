@@ -64,6 +64,7 @@ struct BlobsReadResponse : public Message {
 
     // Read acccess to the blob data header
     BlobData& operator*() const;
+    BlobData* operator->() const;
     bool operator==(const Iterator& other) const;
     bool operator!=(const Iterator& other) const;
   private:

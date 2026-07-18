@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <numeric>
 
 namespace blobs {
 namespace server {
@@ -791,116 +792,72 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   }
 
 
-  if (message.nBlobsRequested == 1) {
-    // Fast path: at most 1 blob needs to be sent to the client
-    auto& requestedBlob = *message.begin();
+  if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
+    // All locks for the message could be acquired (or are not necessary) -> construct the response(s) and send it to the client
+    BuildAndSendBlobsReadResponse(*database, message, isMVCC);
+    return true;
+  }
+
+  // Cannot acquire locks yet, this request must be queued
+  return false;
+}
 
 
-    // Handle delete segment request  (this must always be a delete lock)
-    if (requestedBlob.cluster == constants::SegmentDeleteId && requestedBlob.blob == constants::ClusterDeleteId && message.lockMode == network::message::BlobsRead::LockMode::Delete) {
-      return TryHandleDeleteSegmentId(client, message);
-    }
+void Server::BuildAndSendBlobsReadResponse(blobs::server::Database& database, const network::message::BlobsRead& message, bool isMVCC) {
+  
+  // Each blob is optional. A nullopt will be used as marker that a delete lock has been requested or the
+  // requested blob is up to date
+  std::vector<std::optional<BlobData>> responseData;
+  responseData.reserve(message.nBlobsRequested);
 
-    // Handle delete cluster request (this must always be a delete lock)
-    if (requestedBlob.blob == constants::ClusterDeleteId && message.lockMode == network::message::BlobsRead::LockMode::Delete) {
-      return TryHandleDeleteClusterId(client, message);
-    }
 
-    // Handle requests for querying the list of all blobs, clusters, segments
-    // We cannot use the default implementation because these too are just artificial blobs that don't exist in the database and are calculated on demand.
-    if (requestedBlob.blob == constants::BlobListId) {
+  for (auto& requestedBlob : message) {
+    if (message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      // all delete lock requests are completed with no blob content, only the locks are set
+      responseData.emplace_back(std::nullopt);
+    } else if (requestedBlob.blob == constants::BlobListId) {
       if (requestedBlob.cluster == constants::ClusterListId) {
         if (requestedBlob.segment == constants::SegmentListId) {
-          return TryHandleSegmentListId(client, message, isMVCC);
+          responseData.push_back(HandleSegmentListId(database, requestedBlob.cacheCommitId, isMVCC));
+        } else {
+          responseData.push_back(HandleClusterListId(database, requestedBlob.segment, requestedBlob.cacheCommitId, isMVCC));
         }
-        return TryHandleClusterListId(client, message, isMVCC);
-      }
-      return TryHandleBlobListId(client, message, isMVCC);
-    }
-
-    auto blob = database->GetLoadedBlob(requestedBlob, isMVCC);
-    if (!blob) {
-      SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
-      return true;
-    }
-
-    // The client does not need to acquire any locks if the client requested a dirty read or we are inside an MVCC transaction
-    if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
-      // Locks successfully acquired (no conflicts) -> send response
-      if (requestedBlob.cacheCommitId == blob->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
-        // - The client has the current version of the blob 
-        // - Or the client requested the write locks only for deletion of the blobs
-        // --> In both cases we can simply send an empty response
-        SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
       } else {
-        // Client's blob is not up to date -> send the server's current version
-        auto blobContent = blob->ReadContent();
-        auto response = network::message::BlobsReadResponse::Create(blobContent.size());
-        response->begin().SetBlob(requestedBlob, blob->commitId, blobContent.data(), static_cast<blob_size>(blobContent.size()));
-        SendMessageToClient(message.clientId, std::move(response));
+        responseData.push_back(HandleBlobListId(database, requestedBlob.segment, requestedBlob.cluster, requestedBlob.cacheCommitId, isMVCC));
       }
-      return true; // messages fully processed
     } else {
-      // We have conflicting locks
-      return false;
+      // A regular blob read request
+      responseData.push_back(HandleRegularBlobRead(database, requestedBlob, isMVCC));
     }
-  } else {
-    // For this we would need to first check all resources whether they exist
-    // Then check whether we can acquire all locks
-    // Then acquire all locks
-    // Then build the response from the results
-    TODO("Handle multi blob requests");
-    assert(false);
-    return true;
-  }
-}
-
-
-bool Server::TryHandleDeleteSegmentId(blobs::server::Client& client, const network::message::BlobsRead& message) {
-  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
-  assert(message.nBlobsRequested == 1);
-  auto& location = *message.begin();
-
-
-  auto database = client.GetDatabase(message.databaseId);
-  assert(database); // should have been checked by the caller
-  assert(database->GetLoadedSegment(location.segment)); // Should have been checked by the caller
-    
-
-  // Now acquire locks for all blobs inside the cluster including the artificial ones (NextFreeBlobId and DeleteClusterId)
-  if (client.AcquireLocks(message)) {
-    // Now we can reply with an empty response (delete lock must have been set in the message)
-    assert(message.lockMode == network::message::BlobsRead::LockMode::Delete);
-    SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
-    return true;
   }
 
-  return false;
-}
+  assert(message.nBlobsRequested == responseData.size());
 
+  size_t totalBlobSize = std::accumulate(responseData.begin(), responseData.end(), size_t(0), [](size_t size, const std::optional<BlobData>& blobData) { return size + (blobData ? blobData->content.size() : 0); });
 
-
-bool Server::TryHandleDeleteClusterId(blobs::server::Client& client, const network::message::BlobsRead& message) {
-  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
-  assert(message.nBlobsRequested == 1);
-  auto& location = *message.begin();
+  FIXME("We may need to split the response into multiple if the total data doesn't fit into message size");
+  auto response = network::message::BlobsReadResponse::Create(totalBlobSize, responseData.size());
+  auto writePos = response->begin();
+  auto responsePos = responseData.begin();
   
+  for (auto& requestedLocation : message) {
+    auto& blobData = *responsePos;
+    if (!blobData) {
+      // Empty blob response for delete locks and already up to date blobs.
+      // The client will distinguish this from an actually empty blob by receiving the same commit id as requested
+      writePos.SetBlob(requestedLocation, requestedLocation.cacheCommitId, nullptr, 0);
+    } else {
+      // Blob with actual data
+      writePos.SetBlob(requestedLocation, blobData->commitId, blobData->content.data(), blobData->content.size());
+    }
 
-  auto database = client.GetDatabase(message.databaseId);
-  assert(database); // should have been checked by the caller
-  assert(database->GetLoadedCluster(location.segment, location.cluster)); // should have been checked by the caller
-  
-
-  // Now acquire locks for all blobs inside the cluster including the artificial ones (NextFreeBlobId and DeleteClusterId)
-  if (client.AcquireLocks(message)) {
-    // Now we can reply with an empty response (delete lock must have been set in the message)
-    assert(message.lockMode == network::message::BlobsRead::LockMode::Delete);
-    SendMessageToClient(message.clientId, network::message::BlobsReadResponse::Create(0, 0));
-    return true;
+    ++writePos;
+    ++responsePos;
   }
-  
-  return false;
+
+  SendMessageToClient(message.clientId, std::move(response));
 }
+
 
 
 namespace{
@@ -934,102 +891,83 @@ namespace{
 }
 
 
-bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC) {
-  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
-  assert(message.nBlobsRequested == 1);
-  auto& location = *message.begin();
+std::optional<Server::BlobData> Server::HandleBlobListId(blobs::server::Database& database, blobs::segment_id segmentId, blobs::cluster_id clusterId, blobs::commit_id cacheCommitId, bool isMVCC) {
+  auto cluster = database.GetLoadedCluster(segmentId, clusterId, isMVCC);
+  assert(cluster); // must be checked by the caller
 
-  auto database = client.GetDatabase(message.databaseId);
-  assert(database); // should have been checked by the caller
-
-  auto cluster = database->GetLoadedCluster(location.segment, location.cluster, isMVCC);
-  assert(cluster); // should have been checked by the caller
+  if (cacheCommitId == cluster->commitId) {
+    // The client has the current version of the list
+    return std::nullopt;
+  }
   
 
-  // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
-  if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
-    if (location.cacheCommitId == cluster->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
-      // - The client has the current version of the list 
-      // - Or the client requested the write locks only for synchronization of blob deletion/creation
-      SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
-      return true;
-    }
+  // Now construct the blob ranges and convert it into binary blob format
+  auto ranges = intoIdRanges(cluster->begin(), cluster->end());
+  auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
 
-    // Now construct the cluster ranges and create a blobs response message for it
-    auto ranges = intoIdRanges(cluster->begin(), cluster->end());
-    auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
-
-    auto response = network::message::BlobsReadResponse::Create(byteSize);
-    response->begin().SetBlob(location, database->GetCommitId(), ranges.data(), byteSize);
-    SendMessageToClient(message.clientId, std::move(response));
-    return true;
-  }
-
-  return false;
+  BlobData result;
+  result.content.resize(byteSize);
+  std::memcpy(result.content.data(), ranges.data(), byteSize);
+  result.commitId = cluster->commitId;
+  return result;
 }
 
-bool Server::TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC) {
-  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
-  assert(message.nBlobsRequested == 1);
-  auto& location = *message.begin();
-
-  auto database = client.GetDatabase(message.databaseId);
-  assert(database); // should have been checked by the caller
-
-  auto segment = database->GetLoadedSegment(location.segment, isMVCC);
-  assert(segment); // should have been checked by the caller
+std::optional<Server::BlobData> Server::HandleClusterListId(blobs::server::Database& database, blobs::segment_id segmentId, blobs::commit_id cacheCommitId, bool isMVCC) {
+  auto segment = database.GetLoadedSegment(segmentId, isMVCC);
+  assert(segment); // the caller must ensure the segment exists
   
-
-  // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
-  if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
-    if (location.cacheCommitId == segment->commitId || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
-      // - The client has the current version of the list
-      // - Or the client requested the write locks only for synchronization of cluster deletion/creation
-      SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
-      return true;
-    }
-
-    // Now construct the cluster ranges and create a blobs response message for it
-    auto ranges = intoIdRanges(segment->begin(), segment->end());
-    auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
-
-    auto response = network::message::BlobsReadResponse::Create(byteSize);
-    response->begin().SetBlob(location, database->GetCommitId(), ranges.data(), byteSize);
-    SendMessageToClient(message.clientId, std::move(response));
-    return true;
+  
+  if (cacheCommitId == segment->commitId) {
+    // The client has the current version of the list
+    return std::nullopt;
   }
 
-  return false;
+  
+  // Now construct the cluster ranges and convert it into binary blob format
+  auto ranges = intoIdRanges(segment->begin(), segment->end());
+  auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
+
+  BlobData result;
+  result.content.resize(byteSize);
+  std::memcpy(result.content.data(), ranges.data(), byteSize);
+  result.commitId = segment->commitId;
+  return result;
 }
 
-bool Server::TryHandleSegmentListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC) {
-  FIXME("This method must be split into mulitple parts if we ever want to support ReadBlobs requests with multiple blob ids");
-  assert(message.nBlobsRequested == 1);
-  auto& location = *message.begin();
-
-  auto database = client.GetDatabase(message.databaseId);
-  assert(database); // should have been checked by the caller
-
-  // Now acquire locks for the segment id list (unless we perform a dirty read or an MVCC read)
-  if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
-    if (location.cacheCommitId == database->GetCommitId() || message.lockMode == network::message::BlobsRead::LockMode::Delete) {
-      // - The client has the current version of the list
-      // - Or the client requested the write locks only for synchronization of segment deletion/creation
-      SendMessageToClient(client.id, network::message::BlobsReadResponse::Create(0, 0));
-      return true;
-    }
-
-    // Now construct the segment ranges and create a blobs response message for it
-    auto ranges = intoIdRanges(database->begin(isMVCC), database->end(isMVCC));
-    auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
-    
-    auto response = network::message::BlobsReadResponse::Create(byteSize);
-    response->begin().SetBlob(location, database->GetCommitId(), ranges.data(), byteSize);
-    SendMessageToClient(message.clientId, std::move(response));
-    return true;
+std::optional<Server::BlobData> Server::HandleSegmentListId(blobs::server::Database& database, blobs::commit_id cacheCommitId, bool isMVCC) {
+  if (cacheCommitId == database.GetCommitId(isMVCC)) {
+    // The client has the current version of the list
+    return std::nullopt;
   }
 
-  return false;
+  // Now construct the segment ranges and convert it into binary blob format
+  auto ranges = intoIdRanges(database.begin(isMVCC), database.end(isMVCC));
+  auto byteSize = ranges.size() * sizeof(decltype(ranges)::value_type);
+  
+  BlobData result;
+  result.content.resize(byteSize);
+  std::memcpy(result.content.data(), ranges.data(), byteSize);
+  result.commitId = database.GetCommitId(isMVCC);
+
+  return result;
+}
+
+
+std::optional<Server::BlobData> Server::HandleRegularBlobRead(blobs::server::Database& database, const blobs::network::message::BlobsRead::BlobAddress& requestedBlob, bool isMVCC) {
+  auto blob = database.GetLoadedBlob(requestedBlob, isMVCC);
+  assert(blob); // the caller must ensure the blob exists
+
+  if (requestedBlob.cacheCommitId == blob->commitId) {
+    // The client has the current version of the blob
+    return std::nullopt;
+  }
+
+  auto blobContent = blob->ReadContent();
+  BlobData result;
+  result.content.resize(blobContent.size());
+  std::copy(blobContent.begin(), blobContent.end(), result.content.begin());
+  result.commitId = blob->commitId;
+  return result;
 }
 
 

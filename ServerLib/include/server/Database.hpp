@@ -97,7 +97,7 @@ public:
 
   /** Returns the current snapshot's commit id
    */
-  commit_id GetCommitId() const;
+  commit_id GetCommitId(bool mvcc = false) const;
 
   // Iteration over all segment objects of the current snapshot/mvcc snapshot.
   using iterator = typename sorted_flat_map<segment_id, std::shared_ptr<Segment>>::iterator;
