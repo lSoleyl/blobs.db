@@ -97,6 +97,23 @@ private:
   void AbortTransactionCommit(blobs::server::Client& client);
   
 
+
+  /** This method will for each requested blob in the blobs read message ensure that it actually exists in the database 
+   *  and if any of the requested blobs does not exist, the method will respond with a matching error message and return false.
+   * 
+   * @pre the caller should already have validated that:
+   *         - the requested locks match the mvcc mode of the database
+   *         - the client is inside a transaction
+   * 
+   * @param database the database this message reads from
+   * @param message the message to check all requested blobs for existence
+   * @param isMVCC set to true if the read is performed on the client's current MVCC snapshot
+   * 
+   * @return true if all blobs exist, false if at least one does not. In that case an error response has already been sent to the client.
+   */
+  bool EnsureRequestedBlobsExist(blobs::server::Database& database, const network::message::BlobsRead& message, bool isMVCC);
+
+
   /** This method will attempt to acquire the locks for the requested pages and directly reply to the client upon success.
    *
    * @return true if the message has been fully handled (includes sending an error to the client)
@@ -106,7 +123,8 @@ private:
 
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a write lock on SegmentDeleteId.
-   *  This method will ensure that the requested segment exists and that the client can acquire write locks on the whole segment.
+   *  The caller must ensure that the requested segment exists.
+   *  This method will ensure that the client can acquire write locks on the whole segment.
    * 
    * @return true if the request has been handled and a response sent to the client (including an error)
    *         false if the request cannot be handled due to conflicting locks.
@@ -115,7 +133,8 @@ private:
 
 
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for a write lock on ClusterDeleteId.
-   *  This method will ensure that the requested cluster exists and that the client can acquire write locks on the whole cluster.
+   *  The caller must ensure that the reuqested cluster exists.
+   *  This method will ensure that the client can acquire write locks on the whole cluster.
    * 
    * @return true if the request has been handled and a response sent to the client (including an error)
    *         false if the request cannot be handled due to conflicting locks.
@@ -123,8 +142,9 @@ private:
   bool TryHandleDeleteClusterId(blobs::server::Client& client, const network::message::BlobsRead& message);
 
 
-  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the blob id list
-   *  This method will ensure that the referenced cluster exists and that the client acquires the necessary lock
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the blob id list.
+   *  The caller must ensure that the refernced cluster exists.
+   *  This method will ensure that the client acquires the necessary lock.
    * 
    * @param client the client requesting the blob id list
    * @param message the BlobsRead message of the request
@@ -135,8 +155,9 @@ private:
    */
   bool TryHandleBlobListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
 
-  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the cluster id list
-   *  This method will ensure that the referenced segment exists and that the client acquires the necessary lock
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the cluster id list.
+   *  The caller must ensure that the referenced segment exists. 
+   *  This method will ensure that the client acquires the necessary lock.
    * 
    * @param client the client requesting the cluster id list
    * @param message the BlobsRead message of the request
@@ -148,8 +169,8 @@ private:
   bool TryHandleClusterListId(blobs::server::Client& client, const network::message::BlobsRead& message, bool isMVCC);
 
 
-  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the segment id list
-   *  This method will ensure that the client acquires the necessary lock
+  /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the segment id list.
+   *  This method will ensure that the client acquires the necessary lock.
    * 
    * @param client the client requesting the segment id list
    * @param message the BlobsRead message of the request

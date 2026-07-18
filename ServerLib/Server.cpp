@@ -685,6 +685,76 @@ void Server::ReadTimedOut(const network::message::BlobsRead& message) {
 }
 
 
+
+
+bool Server::EnsureRequestedBlobsExist(blobs::server::Database& database, const network::message::BlobsRead& message, bool isMVCC) {
+  for (auto& requestedBlob : message) {
+    // Attempt to delete segment -> the segment must exist
+    // LockMode::Delete is mandatory for this request
+    if (requestedBlob.cluster == constants::SegmentDeleteId && requestedBlob.blob == constants::ClusterDeleteId && message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      if (!database.GetLoadedSegment(requestedBlob.segment)) {
+        // Segment does not exist
+        SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
+        return false;
+      } else {
+        // segment exists, check next requested location
+        continue;
+      }
+    }
+
+    // Attempt to delete cluster -> cluster must exist
+    // LockMode::Delete is mandatory for this request
+    if (requestedBlob.blob == constants::ClusterDeleteId && message.lockMode == network::message::BlobsRead::LockMode::Delete) {
+      if (!database.GetLoadedCluster(requestedBlob.segment, requestedBlob.cluster)) {
+        // Cluster or segment do not exist
+        SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::CLUSTER_DOES_NOT_EXIST));
+        return false;
+      } else {
+        // cluster exists, check next requested location
+        continue;
+      }
+    }
+
+    // Handle requests for querying the list of all blobs, clusters, segments
+    if (requestedBlob.blob == constants::BlobListId) {
+      if (requestedBlob.cluster == constants::ClusterListId) {
+        if (requestedBlob.segment == constants::SegmentListId) {
+          // Segment list -> no need to check anything, because only the database must exist
+          continue;
+        }
+        // Cluster list -> the segment must exist
+        if (!database.GetLoadedSegment(requestedBlob.segment, isMVCC)) {
+          SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
+          return false;
+        } else {
+          // segment exists, check next requested location
+          continue;
+        }
+      }
+      // Blob list -> cluster must exist
+      if (!database.GetLoadedCluster(requestedBlob.segment, requestedBlob.cluster, isMVCC)) {
+        SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::CLUSTER_DOES_NOT_EXIST));
+        return false;
+      } else {
+        // cluster exists, check next requested location
+        continue; 
+      }
+    }
+
+    if (!database.GetLoadedBlob(requestedBlob, isMVCC)) {
+      SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::BLOB_DOES_NOT_EXIST));
+      return false;
+    }
+  }
+
+
+  // Everything ok
+  return true;
+}
+
+
+
+
 bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   auto& client = server::Client::Get(message.clientId);
   auto database = client.GetDatabase(message.databaseId);
@@ -712,6 +782,14 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
     SendMessageToClient(message.clientId, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::CANNOT_WRITE_LOCK_IN_MVCC));
     return true;
   }
+
+
+  if (!EnsureRequestedBlobsExist(*database, message, isMVCC)) {
+    // At least one of the requested blobs does not exist. The error response has already been sent to the client
+    // so we can mark this message as processed.
+    return true;
+  }
+
 
   if (message.nBlobsRequested == 1) {
     // Fast path: at most 1 blob needs to be sent to the client
@@ -786,13 +864,8 @@ bool Server::TryHandleDeleteSegmentId(blobs::server::Client& client, const netwo
 
   auto database = client.GetDatabase(message.databaseId);
   assert(database); // should have been checked by the caller
-
-  if (!database->GetLoadedSegment(location.segment)) {
-    // Segment do not exist
-    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
-    return true;
-  }
-
+  assert(database->GetLoadedSegment(location.segment)); // Should have been checked by the caller
+    
 
   // Now acquire locks for all blobs inside the cluster including the artificial ones (NextFreeBlobId and DeleteClusterId)
   if (client.AcquireLocks(message)) {
@@ -815,12 +888,7 @@ bool Server::TryHandleDeleteClusterId(blobs::server::Client& client, const netwo
 
   auto database = client.GetDatabase(message.databaseId);
   assert(database); // should have been checked by the caller
-
-  if (!database->GetLoadedCluster(location.segment, location.cluster)) {
-    // Cluster or segment do not exist
-    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::CLUSTER_DOES_NOT_EXIST));
-    return true;
-  }
+  assert(database->GetLoadedCluster(location.segment, location.cluster)); // should have been checked by the caller
   
 
   // Now acquire locks for all blobs inside the cluster including the artificial ones (NextFreeBlobId and DeleteClusterId)
@@ -875,11 +943,8 @@ bool Server::TryHandleBlobListId(blobs::server::Client& client, const network::m
   assert(database); // should have been checked by the caller
 
   auto cluster = database->GetLoadedCluster(location.segment, location.cluster, isMVCC);
-  if (!cluster) {
-    // Segment do not exist
-    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
-    return true;
-  }
+  assert(cluster); // should have been checked by the caller
+  
 
   // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
   if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
@@ -912,11 +977,8 @@ bool Server::TryHandleClusterListId(blobs::server::Client& client, const network
   assert(database); // should have been checked by the caller
 
   auto segment = database->GetLoadedSegment(location.segment, isMVCC);
-  if (!segment) {
-    // Segment do not exist
-    SendMessageToClient(client.id, network::message::BlobsReadResponse::CreateError(network::message::BlobsReadResponse::Result::SEGMENT_DOES_NOT_EXIST));
-    return true;
-  }
+  assert(segment); // should have been checked by the caller
+  
 
   // Now acquire locks for the cluster id list (unless we are performing a dirty read or an MVCC read)
   if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
