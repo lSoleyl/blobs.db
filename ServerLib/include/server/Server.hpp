@@ -139,6 +139,12 @@ private:
   };
 
 
+  /** Small helper function to return the blob size of the returned data, which is 0 for std::nullopt
+   *  and otherwise the blob data's content size.
+   */
+  static size_t BlobSize(const std::optional<BlobData>& blobData);
+
+
   /** This method is called by TryHandleBlobsRead when receiving a blobs read request for the blob id list.
    *  The caller must ensure that the referenced cluster exists and client already holds the required locks.
    *

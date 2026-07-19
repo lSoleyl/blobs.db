@@ -26,6 +26,7 @@ struct BlobsReadResponse : public Message {
 
   Result result;
   uint8_t nBlobs; // number of blobs replied
+  bool hasFollowMessage; // true if the response is split across multiple messages to fit all returned blobs
 
   FIXME("The blob data should not be stored right after the header as this can result in non-aligned reads for following blob headers!");
 
@@ -39,6 +40,11 @@ struct BlobsReadResponse : public Message {
      */
     const void* Data() const;
   };
+
+
+  /** Returns true if the specified amount of blobs and blob data to transfer fits into a single BlobsReadResponse message.
+   */
+  static bool FitsIntoMessage(size_t totalBlobsSize, uint8_t nBlobs);
 
   /** Creates a new BlobsReadResponse message allocating enough memory to transmit the specified number of 
    *  blobs with the specified total blob size

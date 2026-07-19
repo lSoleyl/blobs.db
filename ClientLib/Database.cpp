@@ -380,7 +380,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
   // Wait for the response and handle it
   auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
-    if (response->nBlobs == 1) {
+    if (response->nBlobs == 1 && !response->hasFollowMessage) {
       auto& blobData = *response->begin();
       if (blobData.commitId != cacheCommitId) {
         // Server has responded with a newer version of the blob, or we don't have it in our cache yet
@@ -393,6 +393,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
       return cachedBlob->Data();
     } else {
       assert(false); // server repsonsed with an illegal number of blobs!
+      throw Exception("Server responded with invalid number of blobs in BlobsReadResponse");
     }
   } else {
     // Handle error response
@@ -423,7 +424,7 @@ std::pair<const void*, blob_size> Database::DirtyReadBlobInternal(segment_id seg
   // Wait for the response and handle it
   auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
-    if (response->nBlobs == 1) {
+    if (response->nBlobs == 1 && !response->hasFollowMessage) {
       // Server has sent the requested blob -> copy it into the session's dirty read buffer and return a pointer into it
       auto& blobData = *response->begin();
       auto blobDataBegin = static_cast<const uint8_t*>(blobData.Data());
@@ -438,6 +439,7 @@ std::pair<const void*, blob_size> Database::DirtyReadBlobInternal(segment_id seg
       return std::pair<const void*, blob_size>(cache.data(), blobData.blobSize);
     } else {
       assert(false); // Server repsonsed with an illegal number of blobs!
+      throw Exception("Server responded with invalid number of blobs in BlobsReadResponse");
     }
   } else {
     // Handle error response

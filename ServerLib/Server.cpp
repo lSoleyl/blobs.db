@@ -12,7 +12,6 @@
 
 #include <iostream>
 #include <sstream>
-#include <numeric>
 
 namespace blobs {
 namespace server {
@@ -833,31 +832,58 @@ void Server::BuildAndSendBlobsReadResponse(blobs::server::Database& database, co
 
   assert(message.nBlobsRequested == responseData.size());
 
-  size_t totalBlobSize = std::accumulate(responseData.begin(), responseData.end(), size_t(0), [](size_t size, const std::optional<BlobData>& blobData) { return size + (blobData ? blobData->content.size() : 0); });
 
-  FIXME("We may need to split the response into multiple if the total data doesn't fit into message size");
-  auto response = network::message::BlobsReadResponse::Create(totalBlobSize, responseData.size());
-  auto writePos = response->begin();
-  auto responsePos = responseData.begin();
-  
-  for (auto& requestedLocation : message) {
-    auto& blobData = *responsePos;
-    if (!blobData) {
-      // Empty blob response for delete locks and already up to date blobs.
-      // The client will distinguish this from an actually empty blob by receiving the same commit id as requested
-      writePos.SetBlob(requestedLocation, requestedLocation.cacheCommitId, nullptr, 0);
-    } else {
-      // Blob with actual data
-      writePos.SetBlob(requestedLocation, blobData->commitId, blobData->content.data(), blobData->content.size());
+  using network::message::BlobsReadResponse;
+  auto locationPos = message.begin();
+
+
+  // Now chunk the response blobs into message_size portions and split the response into multiple messages if necessary
+  auto responseDataEnd = responseData.end();
+  for (auto chunkBegin = responseData.begin(), chunkEnd = responseData.begin(); chunkEnd != responseDataEnd; ) {
+    size_t chunkSize = 0;
+
+    // Try to fit as much response data as possible into one chunk
+    while (chunkEnd != responseDataEnd && BlobsReadResponse::FitsIntoMessage(chunkSize + BlobSize(*chunkEnd), std::distance(chunkBegin, chunkEnd+1))) {
+      chunkSize += BlobSize(*chunkEnd);
+      ++chunkEnd;
     }
 
-    ++writePos;
-    ++responsePos;
-  }
+    // Send the accumulated chunk (if not empty)
+    if (chunkBegin != chunkEnd) {
+      auto response = network::message::BlobsReadResponse::Create(chunkSize, std::distance(chunkBegin, chunkEnd));
+      auto writePos = response->begin();
 
-  SendMessageToClient(message.clientId, std::move(response));
+      // Transfer the chunked data into the message
+      for (auto chunkPos = chunkBegin; chunkPos != chunkEnd; ++chunkPos, ++writePos, ++locationPos) {
+        auto& blobData = *chunkPos;
+        auto& requestedLocation = *locationPos;
+        if (!blobData) {
+          // Empty blob response for delete locks and already up to date blobs.
+          // The client will distinguish this from an actually empty blob by receiving the same commit id as requested
+          writePos.SetBlob(requestedLocation, requestedLocation.cacheCommitId, nullptr, 0);
+        } else {
+          // Blob with actual data
+          writePos.SetBlob(requestedLocation, blobData->commitId, blobData->content.data(), static_cast<blob_size>(blobData->content.size()));
+        }
+      }
+
+      // Mark follow message if we will send another chunk
+      response->hasFollowMessage = (chunkEnd != responseDataEnd);
+
+      // Send the response
+      SendMessageToClient(message.clientId, std::move(response));
+
+      // Continue right after the end of this chunk
+      chunkBegin = chunkEnd;
+    }
+  }
 }
 
+
+
+size_t Server::BlobSize(const std::optional<BlobData>& blobData) {
+  return blobData ? blobData->content.size() : 0;
+}
 
 
 namespace{

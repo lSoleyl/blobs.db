@@ -9,13 +9,19 @@ namespace message {
 static_assert(sizeof(BlobsReadResponse) + sizeof(BlobsReadResponse::BlobData) <= constants::_BlobMessageSize, "constants::_BlobMessageSize is too small!");
 
 BlobsReadResponse::BlobsReadResponse(message_size messageSize, uint8_t nBlobs) : 
-   Message(messageSize, BlobsReadResponse::type), result(Result::SUCCESS), nBlobs(nBlobs) {}
+   Message(messageSize, BlobsReadResponse::type), result(Result::SUCCESS), nBlobs(nBlobs), hasFollowMessage(false) {}
 
 BlobsReadResponse::BlobsReadResponse(message_size messageSize, Result result, std::string_view errorDetails) : 
-  Message(messageSize, BlobsReadResponse::type), result(result), nBlobs(0) 
+  Message(messageSize, BlobsReadResponse::type), result(result), nBlobs(0), hasFollowMessage(false)
 {
   // Copy the error details into the memory PAST the message (the caller of the constructor must make sure to allocate the sufficient memory for this operation
   std::copy(errorDetails.begin(), errorDetails.end(), reinterpret_cast<char*>(this + 1));
+}
+
+
+bool BlobsReadResponse::FitsIntoMessage(size_t totalBlobsSize, uint8_t nBlobs) {
+  auto messageSize = sizeof(BlobsReadResponse) + sizeof(BlobData) * nBlobs + totalBlobsSize;
+  return messageSize <= std::numeric_limits<message_size>::max();
 }
 
 MessagePointer_T<BlobsReadResponse> BlobsReadResponse::Create(size_t totalBlobsSize, uint8_t nBlobs) {
