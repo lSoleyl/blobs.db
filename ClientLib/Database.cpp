@@ -358,7 +358,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
     // We already read this blob. Now if we also aready hold a compatible lock to the requested one, then we can simply return the cached blob
     auto currentLock = transaction.GetLockType(this, location);
     if (static_cast<int>(currentLock) >= static_cast<int>(lock)) {
-      // Our current lock is already sufficient to fullfill the request -> return the cached blob content
+      // Our current lock is already sufficient to fulfill the request -> return the cached blob content
       return cachedBlob->Data();
     } else if (currentLock == Transaction::LockMode::Read) {
       // We want to upgrade our read lock to a write lock -> upgrade the lock and return the cached blob content
@@ -451,6 +451,151 @@ std::pair<const void*, blob_size> Database::DirtyReadBlobInternal(segment_id seg
 
 
 
+void Database::ReadBlobs(MultiBlobRequest& blobs, Lock lock) {
+  using network::message::BlobsRead;
+  if (blobs.Size() > std::numeric_limits<decltype(BlobsRead::nBlobsRequested)>::max()) {
+    // We can request up to 255 blobs in one atomic read operation for now
+    // We could internally create multiple requests if the number is larger but for now we keep the limit here.
+    throw Exception("Too many blobs requested at once");
+  }
+
+  // First validate that all specified blobs are valid
+  for (auto& entry : blobs) {
+    if (entry.segment > constants::MaxSegmentId) {
+      throw Exception("Invalid segment id");
+    }
+
+    if (entry.cluster > constants::MaxClusterId) {
+      throw Exception("Invalid cluster id");
+    }
+
+    if (entry.blob > constants::MaxBlobId) {
+      throw Exception("Invalid blob id");
+    }
+  }
+
+  auto sessionLock = session->Lock();
+  auto transaction = (lock != Lock::None) ? &GetTransaction() : nullptr; // We don't need a transaction when performing a dirty read
+
+  if (lock == Lock::Write && IsMVCC()) {
+    // Cannot set write locks in MVCC - we can catch this logic error in the client to avoid the 
+    // bothering the server with this faulty request.
+    throw exception::CannotWriteLockInMVCC();
+  }
+
+  // Clear the blob cache before starting to not accumulate more and more data there when performing multiple reads with the same object.
+  blobs.ClearCache();
+
+  // Now check, which blobs we can load from transaction state/database cache and which must be requested from the server
+  
+  struct RequestedBlob {
+    BlobsRead::BlobAddress address; // location + cachedCommitId
+    BlobCache::CachedBlob* cachedBlob = nullptr; // if we already have the blob cached it will be stored here in case the server has the same version
+    MultiBlobRequest::BlobEntry* requestEntry = nullptr; // reference to the corresponding entry from the MultiBlobRequest
+  };
+  std::vector<RequestedBlob> blobsToLoad;
+
+  for (auto& entry : blobs) {
+    BlobLocation location(entry.segment, entry.cluster, entry.blob);
+    entry.data = nullptr;
+    entry.size = 0;
+    if (lock == Lock::None) {
+      // Dirty read: We must load every blob ignoring any transaction/cache
+      blobsToLoad.push_back({});
+      auto& blobToLoad = blobsToLoad.back();
+      blobToLoad.address = location;
+      blobToLoad.address.cacheCommitId = 0; // 0 = the version in our cache is always older than any blob on the server
+      blobToLoad.requestEntry = &entry;
+      continue; // process next location
+    } 
+    
+    if (auto blobContent = transaction->ReadBlob(this, location)) {
+      // This blob can be read from the transaction's commit cache.
+      // Since this blob is already in the commit cache, we already hold a write lock, so no lock upgrade is needed either.
+      entry.data = blobContent->first;
+      entry.size = blobContent->second;
+      continue; // process next location
+    } 
+    
+    auto cachedBlob = cache->Get(location);
+    if (cachedBlob && cachedBlob->transactionId == transaction->id) {
+      // We already read this blob in this transaction. Now if we also aready hold a compatible lock to the requested one, then we can simply return the cached blob
+      auto currentLock = transaction->GetLockType(this, location);
+      if (static_cast<int>(currentLock) >= static_cast<int>(lock)) {
+        // Our current lock is already sufficient to fulfill the request -> return the cached blob content
+        auto cachedData = cachedBlob->Data();
+        entry.data = cachedData.first;
+        entry.size = cachedData.second;
+        continue;
+      }
+    }
+      
+    // Otherwise we must request the blob
+    blobsToLoad.push_back({});
+    auto& blobToLoad = blobsToLoad.back();
+    blobToLoad.address = location;
+    blobToLoad.address.cacheCommitId = cachedBlob ? cachedBlob->lastUpdated : 0;
+    blobToLoad.cachedBlob = cachedBlob;
+    blobToLoad.requestEntry = &entry;
+  }
+
+  // Now we know how many and which blobs to request, so construct the request and send it to the server
+  auto& network = session->Network();
+  auto& client = network.Get(connectionId);
+  auto request = network::message::BlobsRead::Create(id, blobsToLoad.size(), static_cast<network::message::BlobsRead::LockMode>(lock), lockTimeoutMs);
+  auto writePos = request->begin();
+  for (auto& blobToLoad: blobsToLoad) {
+    *writePos = blobToLoad.address;
+    ++writePos;
+  }
+  client.SendMessageToServer(std::move(request));
+
+
+  auto loadRequestPos = blobsToLoad.begin();
+
+  // Wait for the response(s) and handle them
+  for (bool checkNextMessage = true; checkNextMessage; ) {
+    auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
+    if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
+
+      // The server responds in the same order as we requested
+      for (auto& blobData : *response) {
+        assert(loadRequestPos != blobsToLoad.end()); // Server returned more than we requested!?
+        auto& requestedBlob = *loadRequestPos++;
+        auto& requestedBlobEntry = *requestedBlob.requestEntry;
+        assert(blobData == requestedBlob.address); // The locations should match up
+
+        if (lock == Lock::None) {
+          // Dirty read: We must copy the blob's contents into the blob cache of the MultiBlobRequest to get a pointer
+          //             that will outlive this method call.
+          requestedBlobEntry.data = blobs.CopyIntoCache(blobData.Data(), blobData.blobSize);
+          requestedBlobEntry.size = blobData.blobSize;
+        } else {
+          // Non dirty read -> update cache and set result from cached blob
+          if (blobData.commitId != requestedBlob.address.cacheCommitId) {
+            // Server has responded with a newer version of the blob, or we don't have it in our cache yet
+            requestedBlob.cachedBlob = &cache->Set(requestedBlob.address, blobData.Data(), blobData.blobSize, blobData.commitId, transaction->id);
+          }
+          
+          // In any case we have acquired the requested lock now and we can return the blob contents from the cached blob
+          assert(transaction);
+          assert(requestedBlob.cachedBlob);
+          transaction->AcquiredLock(this, requestedBlob.address, static_cast<Transaction::LockMode>(lock));
+          auto data = requestedBlob.cachedBlob->Data();
+          requestedBlobEntry.data = data.first;
+          requestedBlobEntry.size = data.second;
+        }
+      }
+      
+      checkNextMessage = response->hasFollowMessage;
+    } else {
+      // Handle error response
+      HandleReadBlobErrorResponse(*response);
+    }
+  }
+}
+
+
 void Database::WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize) {
   if (segment > constants::MaxSegmentId) {
     throw Exception("Invalid segment id");
@@ -491,6 +636,14 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
   // Store the new blob data for the transaction commit in the transaction state.
   // The following call will throw an exception if we attempt to write a blob, which has been deleted in this transaction.
   transaction.WriteBlob(this, location, blobData, static_cast<blob_size>(blobSize));
+}
+
+
+void Database::WriteBlobs(MultiBlobRequest& blobs) {
+  static_assert(!"validate locations and data size <= max_blob_size");
+  static_assert(!"build request for acquring missing write locks");
+  static_assert(!"transfer all data into the commit cache");
+  blobs.ClearCache();
 }
 
 

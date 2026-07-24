@@ -45,6 +45,9 @@
     <ClCompile Include="DatabasesState.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="MultiBlobRequest.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="ClientLib.md" />
@@ -87,6 +90,9 @@
       <Filter>Headerdateien\internal</Filter>
     </ClInclude>
     <ClInclude Include="include\blobs\Range.hpp">
+      <Filter>Headerdateien\blobs</Filter>
+    </ClInclude>
+    <ClInclude Include="include\blobs\MultiBlobRequest.hpp">
       <Filter>Headerdateien\blobs</Filter>
     </ClInclude>
   </ItemGroup>

@@ -3,6 +3,7 @@
 #include "Config.hpp"
 #include "Session.hpp"
 #include "Range.hpp"
+#include "MultiBlobRequest.hpp"
 
 #include <string_view>
 #include <string>
@@ -325,6 +326,18 @@ public:
   BLOBS_EXPORT std::pair<const void*, blob_size> ReadBlob(segment_id segment, cluster_id cluster, blob_id blob, Lock lock = Lock::Read);
 
 
+  /** Performs a batch blob read request. All blobs that are not yet in the client's cache will be read in a single server request and 
+   *  locks for all these blobs will be acquired in an atomic fashion.
+   * 
+   *  The MultiBlobRequest object is created by calling MultiBlobRequest::Create(n) and then the requested blob locations have to be set for
+   *  all n requested blobs. After the call succeeds the entries will hold the blob data for all requested blobs.
+   * 
+   * @param blobs the list of requested blobs. This structure will contain the blob's contents for each blob afterwards
+   * @param lock the lock to acquire for all requested blobs.
+   */
+  BLOBS_EXPORT void ReadBlobs(MultiBlobRequest& blobs, Lock lock = Lock::Read);
+
+
   /** A utility method, which performs a ReadBlob operation with a lock timeout of 0 and returns true if the read succeeded and false 
    *  if the read timed out (instead of throwing exception::LockTimeout). After this method returns true, the client holds the 
    *  lock and holds the contents of the blob in its cache, so a followup ReadBlob() will immediately return the blob's contents from
@@ -371,6 +384,14 @@ public:
    * @throws exception::BlobDeleted if the blob has already been deleted in this transaction
    */
   BLOBS_EXPORT void WriteBlob(segment_id segment, cluster_id cluster, blob_id blob, const void* blobData, size_t blobSize);
+
+  /** Performs a batch blob write. This will write multiple blobs in a single request. Since blobs are only actually written to the database
+   *  when committing, this method's main advantage is that acquring the necessary write locks is performed atomically in a single request for all blobs.
+   * 
+   * @param blobs the list of blob locations with the corresponding blob content (in data/size). The memory pointed to by the data member 
+   *              must stay valid at least until the end of WriteBlobs(), which can be ensured by using MultiBlobRequest::CopyIntoCache()
+   */
+  BLOBS_EXPORT void WriteBlobs(MultiBlobRequest& blobs);
 
 
   /** Convenience method to create a blob from the given string content

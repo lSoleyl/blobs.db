@@ -28,7 +28,7 @@ struct BlobsReadResponse : public Message {
   uint8_t nBlobs; // number of blobs replied
   bool hasFollowMessage; // true if the response is split across multiple messages to fit all returned blobs
 
-  FIXME("The blob data should not be stored right after the header as this can result in non-aligned reads for following blob headers!");
+  static_assert(!"The blob data should not be stored right after the header as this can result in non-aligned reads for following blob headers!");
 
   struct BlobData : public BlobLocation {
     using BlobLocation::operator=; // allow assignment from BlobLocation

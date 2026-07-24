@@ -103,6 +103,7 @@
     <ClCompile Include="Database.cpp" />
     <ClCompile Include="DatabasesState.cpp" />
     <ClCompile Include="HeldLocks.cpp" />
+    <ClCompile Include="MultiBlobRequest.cpp" />
     <ClCompile Include="Network.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -126,6 +127,7 @@
     <ClInclude Include="include\blobs\Exception.hpp" />
     <ClInclude Include="include\blobs\Blobs.hpp" />
     <ClInclude Include="include\blobs\Initialization.hpp" />
+    <ClInclude Include="include\blobs\MultiBlobRequest.hpp" />
     <ClInclude Include="include\blobs\Range.hpp" />
     <ClInclude Include="include\blobs\Session.hpp" />
     <ClInclude Include="include\blobs\Transaction.hpp" />
