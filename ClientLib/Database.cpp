@@ -459,6 +459,11 @@ void Database::ReadBlobs(MultiBlobRequest& blobs, Lock lock) {
     throw Exception("Too many blobs requested at once");
   }
 
+  FIXME(
+    "We should probably check for duplicate locations here as requesting the same blob twice would lead to us"
+    " writing the blob into cache twice and invalidating the first returned memory reference."
+  )
+
   // First validate that all specified blobs are valid
   for (auto& entry : blobs) {
     if (entry.segment > constants::MaxSegmentId) {
@@ -538,6 +543,14 @@ void Database::ReadBlobs(MultiBlobRequest& blobs, Lock lock) {
     blobToLoad.cachedBlob = cachedBlob;
     blobToLoad.requestEntry = &entry;
   }
+
+  if (blobsToLoad.empty()) {
+    // We already have the correct lock for all requested blobs, and we alrady the
+    // blobs current content into the MultiBlobRequest, so we can just return... no request necessary.
+    return;
+  }
+
+
 
   // Now we know how many and which blobs to request, so construct the request and send it to the server
   auto& network = session->Network();
@@ -627,6 +640,8 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
   auto& transaction = GetTransaction();
   BlobLocation location(segment, cluster, blob);
 
+  // Make sure, the blob hasn't already been marked for deletion in this transaction
+  transaction.EnsureBlobNotDeleted(this, location);
 
   if (transaction.GetLockType(this, location) != Transaction::LockMode::Write) {
     // We don't have the write lock yet -> acquire it
@@ -635,15 +650,110 @@ void Database::WriteBlobInternal(segment_id segment, cluster_id cluster, blob_id
   }
 
   // Store the new blob data for the transaction commit in the transaction state.
-  // The following call will throw an exception if we attempt to write a blob, which has been deleted in this transaction.
   transaction.WriteBlob(this, location, blobData, static_cast<blob_size>(blobSize));
 }
 
 
 void Database::WriteBlobs(MultiBlobRequest& blobs) {
-  static_assert(!"validate locations and data size <= max_blob_size");
-  static_assert(!"build request for acquring missing write locks");
-  static_assert(!"transfer all data into the commit cache");
+  using network::message::BlobsRead;
+  if (blobs.Size() > std::numeric_limits<decltype(BlobsRead::nBlobsRequested)>::max()) {
+    // We can request up to 255 blobs in one atomic read operation for now
+    // We could internally create multiple requests if the number is larger but for now we keep the limit here.
+    throw Exception("Too many blobs requested at once");
+  }
+
+  // First validate the blob locations and blob data size limit before performing any expensive operations
+  for (auto& entry : blobs) {
+    if (entry.segment > constants::MaxSegmentId) {
+      throw Exception("Invalid segment id");
+    }
+
+    if (entry.cluster > constants::MaxClusterId) {
+      throw Exception("Invalid cluster id");
+    }
+
+    if (entry.blob > constants::MaxBlobId) {
+      throw Exception("Invalid blob id");
+    }
+
+    if (entry.size > constants::MaxBlobSize) {
+      throw exception::BlobTooLarge(entry.size);
+    }
+  }
+
+  auto sessionLock = session->Lock();
+  auto& transaction = GetTransaction();
+
+  if (IsMVCC()) {
+    // All attempts to set a write lock on a database opened in MVCC mode will fail on the server.
+    // We can avoid the unnecessary round trip, by catching this attempt already on the client.
+    throw exception::CannotWriteLockInMVCC();
+  }
+
+  // Check which locks we are missing and only request the missing locks
+  std::vector<BlobLocation> locksToAcquire;
+  for (auto& entry : blobs) {
+    BlobLocation location(entry.segment, entry.cluster, entry.blob);
+
+    // Make sure, the blob hasn't already been marked for deletion in this transaction
+    transaction.EnsureBlobNotDeleted(this, location);
+
+    if (transaction.GetLockType(this, location) != Transaction::LockMode::Write) {
+      // We don't have the write lock yet -> add it to the list of locks we need to acquire
+      locksToAcquire.push_back(location);
+    }
+  }
+
+  if (!locksToAcquire.empty()) {
+    // Create the request for acquiring the missing write locks
+    // We will acquire them with LockMode::Delete, because we are not interested in the contents of the blobs
+    auto& network = session->Network();
+    auto& client = network.Get(connectionId);
+    auto request = network::message::BlobsRead::Create(id, locksToAcquire.size(), network::message::BlobsRead::LockMode::Delete, lockTimeoutMs);
+
+    // Set the requested locations
+    auto writePos = request->begin();
+    for (auto& location : locksToAcquire) {
+      *writePos = location;
+      writePos->cacheCommitId = 0;
+      ++writePos;
+    }
+
+    // Send message to server and handle the response
+    client.SendMessageToServer(std::move(request));
+    auto response = network.ExpectMessage<network::message::BlobsReadResponse>(client);
+    if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
+      // The server responds with a single message of n empty blobs
+      if (response->nBlobs != locksToAcquire.size() || response->hasFollowMessage) {
+        // This should never happen
+        throw Exception("internal error: Database server responded with wrong number of acquired locks!");
+      }
+
+      // Set the locks for all returned blobs
+      auto responsePos = response->begin();
+      for (auto locationPos = locksToAcquire.begin(), locationEnd = locksToAcquire.end(); locationPos != locationEnd; ++locationPos, ++responsePos) {
+        // If this assertion fails then the server either responded in the wrong order or return a non empty blob
+        assert(*responsePos == *locationPos && responsePos->blobSize == 0 && responsePos->commitId == 0);
+        
+        // Nothing to enter into the cache, but update the held lock type in the transaction
+        transaction.AcquiredLock(this, *locationPos, Transaction::LockMode::Write);
+      }
+    } else {
+      // Handle error response
+      HandleReadBlobErrorResponse(*response);
+    }
+  }
+
+
+  // Now we have all required write locks, so we can just transfer the blob content into the transaction cache
+  for (auto& entry : blobs) {
+    BlobLocation location(entry.segment, entry.cluster, entry.blob);
+    // Store the new blob data for the transaction commit in the transaction state.
+    transaction.WriteBlob(this, location, entry.data, static_cast<blob_size>(entry.size));
+  }
+
+
+  // Clear the request's blob cache, it shouldn't be needed anymore
   blobs.ClearCache();
 }
 
@@ -1189,7 +1299,7 @@ void Database::WriteLockNoContent(const BlobLocation& location) {
   // Handle response
   if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
     // The server responds with a single, empty blob with the same commit id as the requested commit id.
-    assert(response->nBlobs == 1 && response->begin()->blobSize == 0 && response->begin()->commitId == 0);
+    assert(response->nBlobs == 1 && response->begin()->blobSize == 0 && response->begin()->commitId == 0 && !response->hasFollowMessage);
     // Nothing to enter into the cache, but update the held lock type in the transaction
     transaction.AcquiredLock(this, location, Transaction::LockMode::Write);
   } else {

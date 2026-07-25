@@ -602,13 +602,16 @@ void Transaction::AcquiredLock(Database* database, const BlobLocation& location,
 }
 
 
+void Transaction::EnsureBlobNotDeleted(Database* database, const BlobLocation& location) {
+  assert(session->OwnsLock());
+  auto& dbState = state->AccessDatabaseState(database);
+  dbState.EnsureBlobNotDeleted(location);
+}
+
 
 void Transaction::WriteBlob(Database* database, const BlobLocation& location, const void* blobData, blob_size blobSize) {
   assert(session->OwnsLock());
   auto& dbState = state->AccessDatabaseState(database);
-  
-  // Make sure, the blob hasn't already been marked for deletion
-  dbState.EnsureBlobNotDeleted(location);
   
   // Store the new blob data in our transaction state
   auto& blobVector = dbState.writtenBlobs[location];

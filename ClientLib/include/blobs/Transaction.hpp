@@ -158,6 +158,13 @@ public:
   void AcquiredLock(Database* database, const BlobLocation& location, LockMode lock);
 
 
+  /** This method is used to manually check whether a blob, its cluster, or segment has already been marked for deletion in the current transaction
+   *  and if so will throw a corresponding exception
+   * 
+   * @throws exception::BlobDeleted when attempting to write blob data for a blob, which has already been deleted in this transaction
+   */
+  void EnsureBlobNotDeleted(Database* database, const BlobLocation& location);
+
   /** Stores the specified blob data in the transaction's commit cache to transfer to the server upon transaction commit.
    *  The transaction copies the specified data into an internal buffer, so the blobData pointer doesn't have to stay valid 
    *  until the end of the transaction.
