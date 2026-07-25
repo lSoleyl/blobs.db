@@ -44,6 +44,16 @@ public:
     const void* data = nullptr;
     size_t size = 0; // of data
 
+    /** Utility method to set the requested location in a single call
+     */
+    BlobEntry& Set(segment_id segment, cluster_id cluster, blob_id blob) {
+      this->segment = segment;
+      this->cluster = cluster;
+      this->blob = blob;
+      return *this;
+    }
+
+
     /** Utility method to copy the content of the blob into a std::string (or std::wstring) and return it
      */
     template<typename CharT = char>

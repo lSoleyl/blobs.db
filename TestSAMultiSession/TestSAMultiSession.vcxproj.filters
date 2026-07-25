@@ -78,6 +78,9 @@
     <ClCompile Include="testLockTimeout.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="testMultiBlobRead.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.hpp">
