@@ -175,62 +175,63 @@ TEST_CASE("Querying all segments should block segment creation/deletion, but not
 }
 
 // Tests for operations that should block querying the segment id list
-TEST_CASE("Querying segment list") {
-  std::atomic<std::chrono::high_resolution_clock::time_point> readListCompleted, blockingTransactionCompleted;
+TEST_CASE("Querying segment list should be blocked by another client creating a segment") {
+  std::chrono::high_resolution_clock::time_point readListCompleted, blockingTransactionCompleted;
   parallel::sync_point syncPoint(2);
 
-  SUBCASE("should be blocked by another client creating a segment") {
-    const auto dbName = "mem:GetAllSegmentsLockingSemantics2";
+  const auto dbName = "mem:GetAllSegmentsLockingSemantics2";
 
-    parallel::run({
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        CHECK(db->CreateSegment() == 1);
-        syncPoint.wait();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
-        blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
-        Transaction::Commit(session);
-      },
+  parallel::run({
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      CHECK(db->CreateSegment() == 1);
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
+      blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
 
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        syncPoint.wait();
-        auto segments = intoVector(db->GetAllSegments());
-        readListCompleted = std::chrono::high_resolution_clock::now();
-        CHECK(segments == std::vector<cluster_id>{0, 1});
-      }
-      });
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      syncPoint.wait();
+      auto segments = intoVector(db->GetAllSegments());
+      readListCompleted = std::chrono::high_resolution_clock::now();
+      CHECK(segments == std::vector<cluster_id>{0, 1});
+    }
+  });
 
-    REQUIRE_MESSAGE(blockingTransactionCompleted.load() < readListCompleted.load(), "GetAllSegments() should be blocked by segment creation");
-  }
+  REQUIRE_MESSAGE(blockingTransactionCompleted < readListCompleted, "GetAllSegments() should be blocked by segment creation");
+}
 
 
-  SUBCASE("should be blocked by another client deleting a segment") {
-    const auto dbName = "mem:GetAllSegmentsLockingSemantics2";
+TEST_CASE("Querying segment list should be blocked by another client deleting a segment") {
+  std::chrono::high_resolution_clock::time_point readListCompleted, blockingTransactionCompleted;
+  parallel::sync_point syncPoint(2);
 
-    parallel::run({
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        db->DeleteSegment(0);
-        syncPoint.wait();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
-        blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
-        Transaction::Commit(session);
-      },
+  const auto dbName = "mem:GetAllSegmentsLockingSemantics3";
 
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        syncPoint.wait();
-        auto segments = intoVector(db->GetAllSegments());
-        readListCompleted = std::chrono::high_resolution_clock::now();
-        CHECK(segments == std::vector<cluster_id>{});
-      }
-      });
+  parallel::run({
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      db->DeleteSegment(0);
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
+      blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
 
-    REQUIRE_MESSAGE(blockingTransactionCompleted.load() < readListCompleted.load(), "GetAllSegments() should be blocked by segment deletion");
-  }
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      syncPoint.wait();
+      auto segments = intoVector(db->GetAllSegments());
+      readListCompleted = std::chrono::high_resolution_clock::now();
+      CHECK(segments == std::vector<cluster_id>{});
+    }
+  });
+
+  REQUIRE_MESSAGE(blockingTransactionCompleted < readListCompleted, "GetAllSegments() should be blocked by segment deletion");
 }

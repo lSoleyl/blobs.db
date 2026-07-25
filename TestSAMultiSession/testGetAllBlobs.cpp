@@ -164,64 +164,64 @@ TEST_CASE("Querying all blobs should block blob creation/deletion and cluster de
 }
 
 // Tests for operations that should block querying the blob id list
-TEST_CASE("Querying blob list") {
-  std::atomic<std::chrono::high_resolution_clock::time_point> readListCompleted, blockingTransactionCompleted;
+TEST_CASE("Querying blob list should be blocked by another client creating a blob in the same cluster") {
+  std::chrono::high_resolution_clock::time_point readListCompleted, blockingTransactionCompleted;
   parallel::sync_point syncPoint(2);
 
-  SUBCASE("should be blocked by another client creating a blob in the same cluster") {
-    const auto dbName = "mem:GetAllBlobsLockingSemantics2";
+  const auto dbName = "mem:GetAllBlobsLockingSemantics2";
 
-    parallel::run({
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        CHECK(db->CreateString(0, 0, "1") == 1);
-        syncPoint.wait();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
-        blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
-        Transaction::Commit(session);
-      },
+  parallel::run({
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      CHECK(db->CreateString(0, 0, "1") == 1);
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
+      blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
 
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        syncPoint.wait();
-        auto blobs = intoVector(db->GetAllBlobs(0, 0));
-        readListCompleted = std::chrono::high_resolution_clock::now();
-        CHECK(blobs == std::vector<blob_id>{0, 1});
-      }
-    });
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      syncPoint.wait();
+      auto blobs = intoVector(db->GetAllBlobs(0, 0));
+      readListCompleted = std::chrono::high_resolution_clock::now();
+      CHECK(blobs == std::vector<blob_id>{0, 1});
+    }
+  });
 
-    REQUIRE_MESSAGE(blockingTransactionCompleted.load() < readListCompleted.load(), "GetAllBlobs() should be blocked by blob creation in the same cluster");
-  }
+  REQUIRE_MESSAGE(blockingTransactionCompleted < readListCompleted, "GetAllBlobs() should be blocked by blob creation in the same cluster");
+}
 
+TEST_CASE("Querying blob list should be blocked by another client deleting a blob in the same cluster") {
+  std::chrono::high_resolution_clock::time_point readListCompleted, blockingTransactionCompleted;
+  parallel::sync_point syncPoint(2);
 
-  SUBCASE("should be blocked by another client deleting a blob in the same cluster") {
-    const auto dbName = "mem:GetAllBlobsLockingSemantics2";
+  const auto dbName = "mem:GetAllBlobsLockingSemantics3";
 
-    parallel::run({
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        db->DeleteBlob(0, 0, 0);
-        syncPoint.wait();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
-        blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
-        Transaction::Commit(session);
-      },
+  parallel::run({
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      db->DeleteBlob(0, 0, 0);
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
+      blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
 
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        syncPoint.wait();
-        auto blobs = intoVector(db->GetAllBlobs(0, 0));
-        readListCompleted = std::chrono::high_resolution_clock::now();
-        CHECK(blobs == std::vector<blob_id>{});
-      }
-      });
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      syncPoint.wait();
+      auto blobs = intoVector(db->GetAllBlobs(0, 0));
+      readListCompleted = std::chrono::high_resolution_clock::now();
+      CHECK(blobs == std::vector<blob_id>{});
+    }
+  });
 
-    REQUIRE_MESSAGE(blockingTransactionCompleted.load() < readListCompleted.load(), "GetAllBlobs() should be blocked by blob deletion in the same cluster");
-  }
+  REQUIRE_MESSAGE(blockingTransactionCompleted < readListCompleted, "GetAllBlobs() should be blocked by blob deletion in the same cluster");
 }
 
 

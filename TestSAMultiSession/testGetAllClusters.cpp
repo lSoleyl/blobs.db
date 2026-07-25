@@ -174,64 +174,64 @@ TEST_CASE("Querying all clusters should block cluster creation/deletion and segm
 }
 
 // Tests for operations that should block querying the cluster id list
-TEST_CASE("Querying cluster list") {
-  std::atomic<std::chrono::high_resolution_clock::time_point> readListCompleted, blockingTransactionCompleted;
+TEST_CASE("Querying cluster list should be blocked by another client creating a cluster in the same segment") {
+  std::chrono::high_resolution_clock::time_point readListCompleted, blockingTransactionCompleted;
   parallel::sync_point syncPoint(2);
 
-  SUBCASE("should be blocked by another client creating a cluster in the same segment") {
-    const auto dbName = "mem:GetAllClustersLockingSemantics2";
+  const auto dbName = "mem:GetAllClustersLockingSemantics2";
 
-    parallel::run({
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        CHECK(db->CreateCluster(0) == 1);
-        syncPoint.wait();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
-        blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
-        Transaction::Commit(session);
-      },
+  parallel::run({
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      CHECK(db->CreateCluster(0) == 1);
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
+      blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
 
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        syncPoint.wait();
-        auto clusters = intoVector(db->GetAllClusters(0));
-        readListCompleted = std::chrono::high_resolution_clock::now();
-        CHECK(clusters == std::vector<cluster_id>{0, 1});
-      }
-    });
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      syncPoint.wait();
+      auto clusters = intoVector(db->GetAllClusters(0));
+      readListCompleted = std::chrono::high_resolution_clock::now();
+      CHECK(clusters == std::vector<cluster_id>{0, 1});
+    }
+  });
 
-    REQUIRE_MESSAGE(blockingTransactionCompleted.load() < readListCompleted.load(), "GetAllClusters() should be blocked by cluster creation in the same segment");
-  }
+  REQUIRE_MESSAGE(blockingTransactionCompleted < readListCompleted, "GetAllClusters() should be blocked by cluster creation in the same segment");
+}
 
 
-  SUBCASE("should be blocked by another client deleting a cluster in the same segment") {
-    const auto dbName = "mem:GetAllClustersLockingSemantics2";
+TEST_CASE("Querying cluster list should be blocked by another client deleting a cluster in the same segment") {
+  std::chrono::high_resolution_clock::time_point readListCompleted, blockingTransactionCompleted;
+  parallel::sync_point syncPoint(2);
+  const auto dbName = "mem:GetAllClustersLockingSemantics3";
 
-    parallel::run({
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        db->DeleteCluster(0, 0);
-        syncPoint.wait();
-        std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
-        blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
-        Transaction::Commit(session);
-      },
+  parallel::run({
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      db->DeleteCluster(0, 0);
+      syncPoint.wait();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50)); // just long enough to detect the blocking
+      blockingTransactionCompleted = std::chrono::high_resolution_clock::now();
+      Transaction::Commit(session);
+    },
 
-      [&]() {
-        auto session = Session::Create();
-        database_ptr db(Database::Open(session, "localhost", dbName));
-        syncPoint.wait();
-        auto clusters = intoVector(db->GetAllClusters(0));
-        readListCompleted = std::chrono::high_resolution_clock::now();
-        CHECK(clusters == std::vector<cluster_id>{});
-      }
-      });
+    [&]() {
+      auto session = Session::Create();
+      database_ptr db(Database::Open(session, "localhost", dbName));
+      syncPoint.wait();
+      auto clusters = intoVector(db->GetAllClusters(0));
+      readListCompleted = std::chrono::high_resolution_clock::now();
+      CHECK(clusters == std::vector<cluster_id>{});
+    }
+  });
 
-    REQUIRE_MESSAGE(blockingTransactionCompleted.load() < readListCompleted.load(), "GetAllClusters() should be blocked by cluster deletion in the same segment");
-  }
+  REQUIRE_MESSAGE(blockingTransactionCompleted < readListCompleted, "GetAllClusters() should be blocked by cluster deletion in the same segment");
 }
 
 
