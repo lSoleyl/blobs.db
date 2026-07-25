@@ -384,7 +384,7 @@ std::pair<const void*, blob_size> Database::ReadBlobInternal(segment_id segment,
       auto& blobData = *response->begin();
       if (blobData.commitId != cacheCommitId) {
         // Server has responded with a newer version of the blob, or we don't have it in our cache yet
-        cachedBlob = &cache->Set(location, blobData.Data(), blobData.blobSize, blobData.commitId, transaction.id);
+        cachedBlob = &cache->Set(location, response->begin().GetData(), blobData.blobSize, blobData.commitId, transaction.id);
       }
 
       // In any case we have acquired the requested lock now and we can return the blob contents from the cached blob
@@ -427,7 +427,7 @@ std::pair<const void*, blob_size> Database::DirtyReadBlobInternal(segment_id seg
     if (response->nBlobs == 1 && !response->hasFollowMessage) {
       // Server has sent the requested blob -> copy it into the session's dirty read buffer and return a pointer into it
       auto& blobData = *response->begin();
-      auto blobDataBegin = static_cast<const uint8_t*>(blobData.Data());
+      auto blobDataBegin = static_cast<const uint8_t*>(response->begin().GetData());
       auto blobDataEnd = blobDataBegin + blobData.blobSize;
 
       // Copy the blob's data into the dirty read buffer
@@ -559,7 +559,8 @@ void Database::ReadBlobs(MultiBlobRequest& blobs, Lock lock) {
     if (response->result == network::message::BlobsReadResponse::Result::SUCCESS) {
 
       // The server responds in the same order as we requested
-      for (auto& blobData : *response) {
+      for (auto responsePos = response->begin(), responseEnd = response->end(); responsePos != responseEnd; ++responsePos) {
+        auto& blobData = *responsePos;
         assert(loadRequestPos != blobsToLoad.end()); // Server returned more than we requested!?
         auto& requestedBlob = *loadRequestPos++;
         auto& requestedBlobEntry = *requestedBlob.requestEntry;
@@ -568,13 +569,13 @@ void Database::ReadBlobs(MultiBlobRequest& blobs, Lock lock) {
         if (lock == Lock::None) {
           // Dirty read: We must copy the blob's contents into the blob cache of the MultiBlobRequest to get a pointer
           //             that will outlive this method call.
-          requestedBlobEntry.data = blobs.CopyIntoCache(blobData.Data(), blobData.blobSize);
+          requestedBlobEntry.data = blobs.CopyIntoCache(responsePos.GetData(), blobData.blobSize);
           requestedBlobEntry.size = blobData.blobSize;
         } else {
           // Non dirty read -> update cache and set result from cached blob
           if (blobData.commitId != requestedBlob.address.cacheCommitId) {
             // Server has responded with a newer version of the blob, or we don't have it in our cache yet
-            requestedBlob.cachedBlob = &cache->Set(requestedBlob.address, blobData.Data(), blobData.blobSize, blobData.commitId, transaction->id);
+            requestedBlob.cachedBlob = &cache->Set(requestedBlob.address, responsePos.GetData(), blobData.blobSize, blobData.commitId, transaction->id);
           }
           
           // In any case we have acquired the requested lock now and we can return the blob contents from the cached blob

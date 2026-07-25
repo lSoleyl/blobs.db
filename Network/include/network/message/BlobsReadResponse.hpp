@@ -28,17 +28,11 @@ struct BlobsReadResponse : public Message {
   uint8_t nBlobs; // number of blobs replied
   bool hasFollowMessage; // true if the response is split across multiple messages to fit all returned blobs
 
-  static_assert(!"The blob data should not be stored right after the header as this can result in non-aligned reads for following blob headers!");
-
   struct BlobData : public BlobLocation {
     using BlobLocation::operator=; // allow assignment from BlobLocation
 
     blob_size blobSize;
     commit_id commitId;
-
-    /** Used to read the blob's data when processing the message on the client
-     */
-    const void* Data() const;
   };
 
 
@@ -64,9 +58,10 @@ struct BlobsReadResponse : public Message {
    */
   class Iterator {
   public:
-    Iterator(void* payloadPos);
+    Iterator(BlobData* pos, void* dataPos);
     void SetBlob(const BlobLocation& location, commit_id commitId, const void* data, blob_size size);
-    void operator++(); // only increment AFTER setting the blob so the iterator knows how far to increment
+    const void* GetData() const;
+    void operator++(); // only increment AFTER setting the blob so the iterator knows how far to increment the dataPos
 
     // Read acccess to the blob data header
     BlobData& operator*() const;
@@ -74,7 +69,8 @@ struct BlobsReadResponse : public Message {
     bool operator==(const Iterator& other) const;
     bool operator!=(const Iterator& other) const;
   private:
-    void* pos;
+    BlobData* pos;
+    void* dataPos;
   };
 
   Iterator begin();

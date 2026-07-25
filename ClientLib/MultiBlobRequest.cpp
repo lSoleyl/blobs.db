@@ -1,5 +1,7 @@
 #include "pch.hpp"
 #include <blobs/MultiBlobRequest.hpp>
+#include <blobs/Exception.hpp>
+#include <network/message/BlobsRead.hpp>
 
 namespace blobs {
 
@@ -8,6 +10,9 @@ MultiBlobRequest::MultiBlobRequest(size_t nBlobs) : entries(nBlobs) {}
 MultiBlobRequest::~MultiBlobRequest() {}
 
 MultiBlobRequest* MultiBlobRequest::CreateInternal(size_t nBlobs) {
+  if (nBlobs > std::numeric_limits<decltype(network::message::BlobsRead::nBlobsRequested)>::max()) {
+    throw Exception("Too many blobs per request!");
+  }
   return new MultiBlobRequest(nBlobs);
 }
 

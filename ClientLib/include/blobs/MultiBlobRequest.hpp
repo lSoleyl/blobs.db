@@ -26,6 +26,8 @@ public:
   struct Deleter { void operator()(MultiBlobRequest* request) { request->Release(); } };
 
   /** Creates a new MultiBlobRequest object preallocating it for the specified number of blobs to request.
+   * 
+   * @param nBlobs the number of blobs to read/write in a single request. This number is currently limited to 255.
    */
   static std::unique_ptr<MultiBlobRequest, Deleter> Create(size_t nBlobs) {
     return std::unique_ptr<MultiBlobRequest, Deleter>(CreateInternal(nBlobs));

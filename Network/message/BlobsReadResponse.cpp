@@ -44,23 +44,24 @@ std::string_view BlobsReadResponse::GetErrorDetails() const {
   return std::string_view(reinterpret_cast<const char*>(this+1), size - sizeof(BlobsReadResponse));
 }
 
-
-const void* BlobsReadResponse::BlobData::Data() const {
-  return reinterpret_cast<const char*>(this) + sizeof(BlobData);
-}
-
-BlobsReadResponse::Iterator::Iterator(void* payloadPos) : pos(payloadPos) {}
+BlobsReadResponse::Iterator::Iterator(BlobData* pos, void* dataPos) : pos(pos), dataPos(dataPos) {}
 
 void BlobsReadResponse::Iterator::SetBlob(const BlobLocation& location, commit_id commitId, const void* data, blob_size size) {
   auto& header = **this;
   header = location;
   header.blobSize = size;
   header.commitId = commitId;
-  std::copy_n(static_cast<const char*>(data), size, static_cast<char*>(pos) + sizeof(BlobData));
+  std::memcpy(dataPos, data, size);
+}
+
+const void* BlobsReadResponse::Iterator::GetData() const {
+  return dataPos;
 }
 
 void BlobsReadResponse::Iterator::operator++() {
-  pos = static_cast<char*>(pos) + sizeof(BlobData) + (**this).blobSize;
+  // First move dataPos to the next free spot and only then update the blob data pointer
+  dataPos = static_cast<char*>(dataPos) + pos->blobSize;
+  ++pos;
 }
 
 BlobsReadResponse::BlobData& BlobsReadResponse::Iterator::operator*() const {
@@ -80,11 +81,17 @@ bool BlobsReadResponse::Iterator::operator!=(const Iterator & other) const {
 
 
 BlobsReadResponse::Iterator BlobsReadResponse::begin() {
-  return Iterator(reinterpret_cast<char*>(this) + sizeof(BlobsReadResponse));
+  // BlobData entries start right after the BlobsReadResponse and the actual blob data starts after the last blob data entry
+  auto blobDataBegin = reinterpret_cast<BlobData*>(this + 1);
+  auto blobDataEnd = blobDataBegin + nBlobs;
+  return Iterator(blobDataBegin, blobDataEnd);
 }
 
 BlobsReadResponse::Iterator BlobsReadResponse::end() {
-  return Iterator(reinterpret_cast<char*>(this) + size);
+  // BlobData entries start right after the BlobsReadResponse and the actual blob data starts after the last blob data entry
+  auto blobDataBegin = reinterpret_cast<BlobData*>(this + 1);
+  auto blobDataEnd = blobDataBegin + nBlobs;
+  return Iterator(blobDataEnd, blobDataEnd);
 }
 
 }}}
