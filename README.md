@@ -91,12 +91,10 @@ blobs.db is still in a very early stage of development and before considering to
  * Blobs are limited to ~4GB in size (see `blobs/Config.hpp`)
  * Server logic is single threaded and blocks on database file IO
  * Server cache and client cache are only cleared when closing a database. No LRU mechanism to evict rarely used blobs from memory is implemented.
- * No support for reading multiple blobs in a single request
 
 ## Planned features
   * Client-Cache memory management (remove rarely accessed blobs)
   * Server database memory management (unload rarely accessed blobs,clusters,segemnts if memory is restricted)
-  * Multi blob read
   * Add `CreateClusterAt()`/`CreateSegmentAt()` with a given cluster/segment id
   * Tool to perform a live copy of the database based on MVCC
   * Add cmake support

@@ -48,16 +48,20 @@ Upon calling any write operation, the client will automatically acquire a write 
 
 Blobs are currently limited to slightly less than 4GB (see `blobs::constants::MaxBlobSize`). This limit can be easily increased when compiling blobs.db from source by simply using 64 bit values for `message_size` and `blob_size`. blobs.db has not yet been optimized for huge blobs and the server has to wait for the blobs to be fully transmitted before being able to process them. Huge blobs can also result in swapping if the commit data does not fit into the server's memory.
 
+See also: [Writing multiple blobs per request](multi_blob_rw.md)
+
 ### Reading blobs
 Similar to writing, `Database` provides some helpful overloads for reading blobs like `ReadString(segment, cluster, blob, lock)` which reads the whole blob into a `std::string`. `ReadVector<T>(segment, cluster, blob, lock)` supports interpreting the content of the blob as a vector type `T`. ReadVector cannot check whether the blob actually contains anything of that type and if the blob does not contain a clean multiple of `T` objects, then the last (incomplete) object will be ignored.
 
 The `lock`-Parameter in all read functions can be used to specify the lock to acquire for the read operation (default is a read lock). For a more detailed explanation see: [locks](locks.md) and [dirty reads](dirty_reads.md).
 
-The basic read function is `Database::ReadBlob(segment, cluster, blob, lock)`, which returns a pair of `void*` and `blob_size`. One important point to note is that the blob data should be copied right after calling `ReadBlob()` and the caller should not hold on to the returned `void*` as it points into the client's database or transaction cache and may be overwritten or deleted when calling `Database::WriteBlob` or committing/aborting the transaction. In case of a [dirty read](dirty_reads.md), the returned `void*` points into a special temporary memory buffer and will be overwritten by the next dirty read operation. 
+The basic read function is `Database::ReadBlob(segment, cluster, blob, lock)`, which returns a pair of `void*` and `blob_size`. One important point to note is that the blob data should be copied right after calling `ReadBlob()` and the caller should not hold on to the returned `void*` as it points into the client's database or transaction cache and may be overwritten or deleted when calling `Database::WriteBlob` or committing/aborting the transaction. In case of a [dirty read](dirty_reads.md), the returned `void*` points into a special temporary memory buffer and will be overwritten by the next dirty read operation.
 
 The client requests a blob at most once per transaction (exception: [dirty reads](dirty_reads.md)). Calling `ReadBlob()` on the same blob again will NOT request the blob from the database server again, but will instead return the blob content from the client cache. When using sticky [locks](locks.md) the client can even avoid re-requesting a previously read blob in the following transaction as long as the sticky lock is not revoked.
 
 Write operations are stored in the client's local transaction cache. After writing a blob (`WriteBlob()`) the client will first consult the local transaction cache before reading the local database cache. So after a `WriteBlob()` you are guaranteed to see the just written data in a followup `ReadBlob()` even before committing the transaction. The client uses these caches to present a consistent database view to the application.
+
+See also: [Reading multiple blobs per request](multi_blob_rw.md)
 
 Example:
 ```cpp
