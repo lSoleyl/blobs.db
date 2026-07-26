@@ -51,6 +51,18 @@ size_t MultiBlobRequest::Size() const {
 }
 
 
+void MultiBlobRequest::SetBlobRange(segment_id segment, cluster_id cluster, blob_id startBlob) {
+  if (startBlob + entries.size() >= constants::MaxBlobId) {
+    throw Exception("Specified blob range exceeds MaxBlobId");
+  }
+
+  auto writePos = entries.begin();
+  for (auto blob = startBlob, endBlob = static_cast<blob_id>(startBlob + entries.size()); blob != endBlob; ++blob, ++writePos) {
+    writePos->Set(segment, cluster, blob);
+  }
+}
+
+
 const void* MultiBlobRequest::CopyIntoCache(const void* data, size_t size) {
   std::vector<uint8_t> copy(size);
   std::memcpy(copy.data(), data, size);

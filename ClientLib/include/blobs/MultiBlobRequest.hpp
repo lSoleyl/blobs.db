@@ -27,6 +27,8 @@ public:
 
   /** Creates a new MultiBlobRequest object preallocating it for the specified number of blobs to request.
    * 
+   * @throws blobs::Exception if the nBlobs is larger than the maximum supported number of blobs per request
+   * 
    * @param nBlobs the number of blobs to read/write in a single request. This number is currently limited to 255.
    */
   static std::unique_ptr<MultiBlobRequest, Deleter> Create(size_t nBlobs) {
@@ -100,6 +102,14 @@ public:
    */
   BLOBS_EXPORT BlobEntry& operator[](size_t i);
   BLOBS_EXPORT const BlobEntry& operator[](size_t i) const;
+
+  /** Initializes the blob entries to a contiguous blob id range in the specified segment, cluster starting at the 
+   *  specified blob. This will initialize all entries of the multi blob request.
+   * 
+   * @throws blobs::Exception if the blob range would exceed MaxBlobId
+   */
+  BLOBS_EXPORT void SetBlobRange(segment_id segment, cluster_id cluster, blob_id startBlob = 0);
+
 
   /** Returns number of requested blobs in this request
    */
