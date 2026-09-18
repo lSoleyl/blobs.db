@@ -99,6 +99,7 @@
     <ClInclude Include="include\server\LockUtil.hpp" />
     <ClInclude Include="include\server\Logging.hpp" />
     <ClInclude Include="include\server\MemoryBlockDelta.hpp" />
+    <ClInclude Include="include\server\LRUCache.hpp" />
     <ClInclude Include="include\server\Scheduler.hpp" />
     <ClInclude Include="include\server\sorted_flat_map.hpp" />
     <ClInclude Include="include\server\Lock.hpp" />
@@ -121,6 +122,7 @@
     <ClCompile Include="Logging.cpp" />
     <ClCompile Include="MemoryBlock.cpp" />
     <ClCompile Include="MemoryBlockDelta.cpp" />
+    <ClCompile Include="LRUCache.cpp" />
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="Scheduler.cpp" />
     <ClCompile Include="Segment.cpp" />

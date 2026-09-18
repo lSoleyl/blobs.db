@@ -2,6 +2,7 @@
 #include <server/Cluster.hpp>
 #include <server/MemoryBlockDelta.hpp>
 #include <server/FileBackend.hpp>
+#include <server/LRUCache.hpp>
 
 namespace blobs {
 namespace server {
@@ -38,6 +39,7 @@ Blob* Cluster::GetLoadedBlob(blob_id blob, const FileBackend& file) {
       blobObj->LoadFrom(file);
       assert(blobObj->status == Status::LOADED);
     }
+    LRUCache::Touch(*blobObj);
   }
 
   return blobObj;

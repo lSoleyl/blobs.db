@@ -1,6 +1,8 @@
 #include "pch.hpp"
 #include <server/Blob.hpp>
 #include <server/FileBackend.hpp>
+#include <server/LRUCache.hpp>
+
 
 namespace blobs {
 namespace server {
@@ -8,8 +10,26 @@ namespace server {
 Blob::Blob(blob_id id, commit_id commitId) : id(id), commitId(commitId) {}
 
 
+Blob::~Blob() {
+  if (lru.inCache) {
+    // Remove from LRU cache and update used/evictable memory accordingly
+    LRUCache::Remove(*this);
+  } 
+
+  // Remove does not touch the used memory
+  LRUCache::usedMemory -= EvictSize();
+}
+
 void Blob::SetContent(std::string_view blobContent) {
+  auto memoryDelta = 0 - EvictSize(); // unsigned underflow is well defined
   data.assign(reinterpret_cast<const uint8_t*>(blobContent.data()), reinterpret_cast<const uint8_t*>(blobContent.data())+blobContent.size());
+  memoryDelta += EvictSize(); // unsigned overflow is just as well defined
+  // assumption: vector will never shrink its capacity because of an assign operation
+
+  LRUCache::usedMemory += memoryDelta;
+  if (lru.inCache) {
+    LRUCache::evictableMemory += memoryDelta;
+  }
 }
 
 
@@ -46,8 +66,21 @@ void Blob::LoadFrom(const FileBackend& file) {
 
   commitId = fileBlob->commitId;
   SetContent(fileBlob->Data(fileLocation.size));
-  
+  LRUCache::Enter(*this); // Enter into the LRU cache now that we loaded the blob from disk into memory
+
   status = Status::LOADED;
+}
+
+size_t Blob::EvictSize() const {
+  return data.capacity(); // <- not size, because vector may have allocated more than just the content
+}
+
+void Blob::Evict() {
+  assert(lru.evictable && lru.inCache);
+  
+  // move assign a new vector, because clear() does not change the capacity
+  data = std::vector<uint8_t>{};
+  status = Status::NOT_LOADED;
 }
 
 

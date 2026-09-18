@@ -2,6 +2,7 @@
 #include <server/Segment.hpp>
 #include <server/MemoryBlockDelta.hpp>
 #include <server/FileBackend.hpp>
+#include <server/LRUCache.hpp>
 
 
 namespace blobs {
@@ -125,6 +126,8 @@ Blob* Segment::GetLoadedBlob(cluster_id cluster, blob_id blob, const FileBackend
   }
 
   if (auto clusterObj = GetLoadedCluster(cluster, file)) {
+    // Make sure to touch the cluster after the blob to never attempt to evict a cluster before evicting its blobs
+    LRUCache::TouchOnExit touch(*clusterObj);
     // Use GetLoadedBlob to also handle the nextFreeBlobId and load the blob from file if necessary
     return clusterObj->GetLoadedBlob(blob, file);
   }

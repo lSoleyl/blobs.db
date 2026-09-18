@@ -6,10 +6,12 @@ namespace blobs::server {
 
 class FileBackend;
 
-class Blob : public MemoryBlock {
+class Blob final : public MemoryBlock {
+  friend class LRUCache;
 public:
   // Initialize an empty blob
   Blob(blob_id id, commit_id commitId = 1);
+  ~Blob();
 
   /** Sets the blobs content the specified (primitive value) by simply writing the value in memory representation into the data vector.
    */
@@ -48,6 +50,14 @@ public:
    *  This will load the blob's commit id and data and mark it as loaded
    */
   void LoadFrom(const FileBackend& file);
+
+  /** Returns the memory that can be released by evicting this blob from memory and reloading the contents from file.
+   */
+  virtual size_t EvictSize() const override;
+
+  /** Evicts the blob's content from memory resetting it into the NOT_LOADED state
+   */
+  virtual void Evict() override;
 
   const blob_id id;
   commit_id commitId; // id of commit/transaction when this blob was created/written

@@ -66,6 +66,11 @@ public:
   void EndMVCC();
 
 
+  /** Returns true if this database has a file backing the content and false if this is a purely in memory held database
+   */
+  bool IsFileDatabase() const;
+
+
   /** Close this database as soon as possible
    */
   void Close();
@@ -521,6 +526,7 @@ private:
   /** If a client uses this database in MVCC mode, then the current snapshot is copied into the mvccSnapshot for all clients using this database in MVCC.
    */
   std::shared_ptr<Snapshot> mvccSnapshot;
+
 
   bool fileDatabase; // true if the database is a file database (in contrast to a pure in-memory database)
   FileBackend file;

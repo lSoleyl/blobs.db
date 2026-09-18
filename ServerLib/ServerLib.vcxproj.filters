@@ -78,6 +78,9 @@
     <ClInclude Include="include\server\Configuration.hpp">
       <Filter>Headerdateien\server</Filter>
     </ClInclude>
+    <ClInclude Include="include\server\LRUCache.hpp">
+      <Filter>Headerdateien\server</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Blob.cpp">
@@ -129,6 +132,9 @@
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="Configuration.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="LRUCache.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>

@@ -6,6 +6,7 @@
 #include <server/LockUtil.hpp>
 #include <server/Scheduler.hpp>
 #include <server/Logging.hpp>
+#include <server/LRUCache.hpp>
 #include <common/Paths.hpp>
 #include <common/Encoding.hpp>
 
@@ -143,17 +144,24 @@ void Database::BeginMVCC() {
     // The first client to use MVCC for this database at the moment
     // Simply copy the current database snapshot as the active mvcc snapshot
     mvccSnapshot = snapshot;
+    LRUCache::MVCCSnapshotCreated(*this);
   }
 }
 
 void Database::EndMVCC() {
   if (--mvccUseCount == 0) {
+    static_assert(!"Now we must notify the cache before we actually drop it");
+    LRUCache::MVCCSnapshotDropped(*this);
+
     // The last MVCC client for this database ended its transaction
     // Release the current snapshot so the next client will get an updated snapshot.
     mvccSnapshot.reset();
   }
 }
 
+bool Database::IsFileDatabase() const {
+  return fileDatabase;
+}
 
 
 void Database::Close() {
@@ -801,6 +809,8 @@ Blob* Database::Snapshot::GetLoadedBlob(const BlobLocation& location, const File
   
   // Otherwise perform regular lookup
   if (auto segment = GetLoadedSegment(location.segment, file)) {
+    // Make sure to touch the segment after the cluster to never attempt to evict a segment before evicting its clusters
+    LRUCache::TouchOnExit touch(*segment);
     // Use GetLoadedBlob() to support `NextFreeClusterId`
     return segment->GetLoadedBlob(location.cluster, location.blob, file);
   }
