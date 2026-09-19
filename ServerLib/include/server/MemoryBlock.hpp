@@ -30,7 +30,18 @@ struct MemoryBlock {
    */
   virtual void Evict() = 0;
 
+protected:
 
+  /** Call this method in the destructor of any class deriving from the MemoryBlock that is managed by the LRU cache.
+   *  This will correctly deregister this element from the LRU cache. Call this method before releasing any memory in the derived class.
+   *  We sadly cannot call this automatically in ~MemoryBlock(), because it relies on EvictSize() being known, but that virtual function
+   *  would not be callable anymore in ~MemoryBlock()
+   */
+  void OnDestroy();
+
+
+
+public:
   /** Where in the file this object is allcoated
    */
   file::BlockReference fileLocation;

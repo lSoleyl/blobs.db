@@ -11,13 +11,7 @@ Blob::Blob(blob_id id, commit_id commitId) : id(id), commitId(commitId) {}
 
 
 Blob::~Blob() {
-  if (lru.inCache) {
-    // Remove from LRU cache and update used/evictable memory accordingly
-    LRUCache::Remove(*this);
-  } 
-
-  // Remove does not touch the used memory
-  LRUCache::usedMemory -= EvictSize();
+  OnDestroy();
 }
 
 void Blob::SetContent(std::string_view blobContent) {

@@ -17,6 +17,11 @@ Cluster::Cluster(const Cluster& other, commit_id commitId) : id(other.id), commi
 }
 
 
+Cluster::~Cluster() {
+  OnDestroy();
+}
+
+
 Blob* Cluster::GetBlob(blob_id blob) {
   auto pos = blobs.find(blob);
   return (pos != blobs.end()) ? pos->second.get() : nullptr;
@@ -54,6 +59,9 @@ void Cluster::LoadAllBlobs(const FileBackend& file) {
       assert(blob->status == Status::LOADED);
     }
   }
+
+  // Touch the cluster itself afterwards to ensure it won't be evicted before all its blobs have been evicted
+  LRUCache::Touch(*this);
 }
 
 
@@ -71,6 +79,7 @@ Blob* Cluster::UpdateBlob(blob_id blob, MemoryBlockDelta* delta) {
       delta->Allocated(blobPtr.get());
     }
   }
+  static_assert(!"What about LRU cache here... We must update the memory usage somehow");
 
   return blobPtr.get();
 }
@@ -83,6 +92,8 @@ void Cluster::DeleteBlob(blob_id blob, MemoryBlockDelta* delta) {
     }
     blobs.erase(pos);
   }
+  static_assert(!"What about LRU cache here? We must update the total used memory for sure");
+  static_assert(!"Since this is such a common pattern... maybe provide a strucutre that we can just allocate on stack for that task");
 }
 
 
@@ -90,6 +101,7 @@ void Cluster::ReleaseAllBlobs(MemoryBlockDelta* delta) {
   for (auto& [blobId, blob] : blobs) {
     delta->Released(blob.get());
   }
+  static_assert(!"What about LRU cache here? We must update the total used memory for sure");
 }
 
 
@@ -192,7 +204,21 @@ void Cluster::LoadFrom(const FileBackend& file) {
     }
   }
 
+  static_assert(!"Enter into LRU cache and update the total memory size");
+
   status = Status::LOADED;
+}
+
+size_t Cluster::EvictSize() const {
+  // The total evitctable memory consists of the allocated blob map entries and the actually contained Blob objects.
+  // We don't consider the std::shared_ptr control block here.
+  return blobs.capacity() * sizeof(decltype(blobs)::entry) + blobs.size() * sizeof(Blob);
+}
+
+void Cluster::Evict() {
+  // Move an empty map into our map to assure that the memory allocated allocated by std::vector is acutally deallocated
+  blobs = decltype(blobs){};
+  status = MemoryBlock::Status::NOT_LOADED;
 }
 
 
@@ -216,6 +242,7 @@ void Cluster::DelayLoadBlob(blob_id blob, const file::BlockReference& fileLocati
   blobPtr = std::make_shared<Blob>(blob, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the blob's memory block, so we cannot know it yet */);
   blobPtr->status = MemoryBlock::Status::NOT_LOADED;
   blobPtr->fileLocation = fileLocation;
+  blobPtr->lru.evictable = lru.evictable; // If the cluster is not evictable (part of MVCC snapshot), then the loaded blob also is not evictable!
 }
 
 }}

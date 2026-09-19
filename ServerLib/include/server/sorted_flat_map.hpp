@@ -62,6 +62,10 @@ public:
     return map.size(); 
   }
 
+  size_type capacity() const {
+    return map.capacity();
+  }
+
   value_type& operator[](const key_type& key) {
     // Find entry or insert position
     iterator pos = std::lower_bound(map.begin(), map.end(), key, [](const entry& entry, const key_type& key) { return entry.first < key; });

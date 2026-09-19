@@ -19,6 +19,9 @@ public:
    */
   Cluster(const Cluster& other, commit_id commitId);
 
+
+  ~Cluster();
+
   /** Returns the blob or nullptr if it doesn't exist.
    *  The blob is returned in the state it is in without loading it.
    *
@@ -90,6 +93,14 @@ public:
    *  This will load the map of blobs and initialize each blob to a not yet loaded one
    */
   void LoadFrom(const FileBackend& file);
+
+  /** Returns the memory that can be released by evicting this cluster from memory and reloading the contents from file.
+   */
+  virtual size_t EvictSize() const override;
+
+  /** Evicts the cluster's blob list from memory resetting it into the NOT_LOADED state
+   */
+  virtual void Evict() override;
 
   // iteration over all blobs (cluster must be loaded)
   using iterator = typename sorted_flat_map<blob_id, std::shared_ptr<Blob>>::iterator;
