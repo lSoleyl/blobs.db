@@ -22,13 +22,13 @@ struct MemoryBlock {
   /** Should be overwritten by blob,cluster,segment to return the memory that would be returned when evicting
    *  that element. This should only include memory released by resetting it to the NOT_LOADED state, not deleting it.
    */
-  virtual size_t EvictSize() const = 0;
+  virtual size_t EvictSize() const;
 
   /** This method is called on the least recently used element of the LRU cache if the element is in an evictable state.
    *  The called method must only reset the element into the NOT_LOADED state and relase EvictSize() bytes.
    *  The caller (LRUCache) will handle removing the element from the cache and updating the memory size values.
    */
-  virtual void Evict() = 0;
+  virtual void Evict();
 
 protected:
 
@@ -76,7 +76,7 @@ public:
 
   enum class Status : uint8_t {
     NOT_LOADED,
-    LOADING, // currently unused, because we load synchronously
+    //LOADING, // currently unused, because we load synchronously
     LOADED
   };
 

@@ -13,6 +13,7 @@ Cluster::Cluster(cluster_id id, commit_id commitId) : id(id), commitId(commitId)
 
 Cluster::Cluster(const Cluster& other, commit_id commitId) : id(other.id), commitId(commitId), blobs(other.blobs),
                                                              nextFreeBlobId(other.nextFreeBlobId), nextFreeBlobIdBlob(constants::NextFreeBlobId, commitId) {
+  assert(other.status == Status::LOADED); // Otherwise the blobs copy will be incomplete
   nextFreeBlobIdBlob.SetIdContent(nextFreeBlobId);
 }
 
@@ -23,11 +24,15 @@ Cluster::~Cluster() {
 
 
 Blob* Cluster::GetBlob(blob_id blob) {
+  assert(status == Status::LOADED);
+
   auto pos = blobs.find(blob);
   return (pos != blobs.end()) ? pos->second.get() : nullptr;
 }
 
 Blob* Cluster::GetLoadedBlob(blob_id blob, const FileBackend& file) {
+  assert(status == Status::LOADED);
+
   if (blob == constants::NextFreeBlobId) {
     // special blob holding the next free blob id
     TODO("Ensure the blob is always up to date with the actual `nextFreeBlobId`");
@@ -51,6 +56,8 @@ Blob* Cluster::GetLoadedBlob(blob_id blob, const FileBackend& file) {
 }
 
 void Cluster::LoadAllBlobs(const FileBackend& file) {
+  assert(status == Status::LOADED);
+
   for (auto& [blobId, blob] : *this) {
     // Load the blob from file if it isn't loaded yet
     TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
@@ -61,11 +68,17 @@ void Cluster::LoadAllBlobs(const FileBackend& file) {
   }
 
   // Touch the cluster itself afterwards to ensure it won't be evicted before all its blobs have been evicted
+  // This operation doesn't modify the memory used by this cluster, so no LRU memory update is needed.
   LRUCache::Touch(*this);
 }
 
 
 Blob* Cluster::UpdateBlob(blob_id blob, MemoryBlockDelta* delta) {
+  assert(status == Status::LOADED);
+
+  // Update memory usage in case we change the size of the blobs map or allocate a new blob
+  LRUCache::UpdateMemoryOnExit<Cluster> updateMemory(*this);
+
   auto& blobPtr = blobs[blob];
   if (!blobPtr || blobPtr->commitId != commitId) {
     if (delta && blobPtr) {
@@ -79,43 +92,56 @@ Blob* Cluster::UpdateBlob(blob_id blob, MemoryBlockDelta* delta) {
       delta->Allocated(blobPtr.get());
     }
   }
-  static_assert(!"What about LRU cache here... We must update the memory usage somehow");
 
+  static_assert(!"Touch this cluster?");
+  
   return blobPtr.get();
 }
 
 void Cluster::DeleteBlob(blob_id blob, MemoryBlockDelta* delta) {
+  assert(status == Status::LOADED);
+
   auto pos = blobs.find(blob);
   if (pos != blobs.end()) {
+    // Update memory if we actually delete a blob
+    LRUCache::UpdateMemoryOnExit<Cluster> updateMemory(*this);
+
     if (delta) {
       delta->Released(pos->second.get());
     }
     blobs.erase(pos);
   }
-  static_assert(!"What about LRU cache here? We must update the total used memory for sure");
-  static_assert(!"Since this is such a common pattern... maybe provide a strucutre that we can just allocate on stack for that task");
+
+  static_assert(!"Touch cluster here?");
 }
 
 
 void Cluster::ReleaseAllBlobs(MemoryBlockDelta* delta) {
+  assert(status == Status::LOADED); // Otherwise we will not be able to release the memory allocated in the database file for all blobs
+
   for (auto& [blobId, blob] : blobs) {
     delta->Released(blob.get());
   }
-  static_assert(!"What about LRU cache here? We must update the total used memory for sure");
 }
 
 
 blob_id Cluster::GetNextFreeBlobId() const {
+  assert(status == Status::LOADED);
+
   return nextFreeBlobId;
 }
 
 void Cluster::SetNextFreeBlobId(blob_id nextFreeId) {
+  assert(status == Status::LOADED);
+
   nextFreeBlobId = nextFreeId;
   nextFreeBlobIdBlob.SetIdContent(nextFreeBlobId);
 }
 
 
 uint64_t Cluster::CalculateRequiredSize() const {
+  assert(status == Status::LOADED);
+
   uint64_t size = sizeof(file::Cluster);
 
   // To calculate the required file size, we need to determine the number of contiguous blob ids
@@ -195,6 +221,12 @@ void Cluster::LoadFrom(const FileBackend& file) {
   commitId = fileCluster->commitId;
   SetNextFreeBlobId(fileCluster->nextFreeBlobId);
 
+  // Enter the cluster with the current size of 0 into the LRU cache
+  LRUCache::Enter(*this);
+
+  // Then when exiting LoadFrom() we will update total memory and evictable memory accordingly
+  LRUCache::UpdateMemoryOnExit<Cluster> updateMemory(*this);
+
   for (auto it = fileCluster->begin(), end = fileCluster->end(fileLocation.size); it != end; ++it) {
     auto& range = *it;
     auto blobId = range.startId;
@@ -203,8 +235,6 @@ void Cluster::LoadFrom(const FileBackend& file) {
       ++blobId;
     }
   }
-
-  static_assert(!"Enter into LRU cache and update the total memory size");
 
   status = Status::LOADED;
 }
@@ -216,9 +246,13 @@ size_t Cluster::EvictSize() const {
 }
 
 void Cluster::Evict() {
-  // Move an empty map into our map to assure that the memory allocated allocated by std::vector is acutally deallocated
+  assert(lru.evictable && lru.inCache);
+  // Move an empty map into our map to assure that the memory allocated allocated by std::vector is actually deallocated
+
+  static_assert(!"We cannot evict a cluster that has no file location");
+
   blobs = decltype(blobs){};
-  status = MemoryBlock::Status::NOT_LOADED;
+  status = Status::NOT_LOADED;
 }
 
 
@@ -240,7 +274,7 @@ void Cluster::DelayLoadBlob(blob_id blob, const file::BlockReference& fileLocati
   assert(!blobPtr);
 
   blobPtr = std::make_shared<Blob>(blob, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the blob's memory block, so we cannot know it yet */);
-  blobPtr->status = MemoryBlock::Status::NOT_LOADED;
+  blobPtr->status = Status::NOT_LOADED;
   blobPtr->fileLocation = fileLocation;
   blobPtr->lru.evictable = lru.evictable; // If the cluster is not evictable (part of MVCC snapshot), then the loaded blob also is not evictable!
 }

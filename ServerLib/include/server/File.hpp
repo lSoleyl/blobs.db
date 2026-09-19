@@ -30,6 +30,14 @@ struct BlockReference {
   uint64_t size;   // Size of the referenced memory block
 
   uint64_t EndOffset() const; // returns the past end block offset (positioned right after the block in the file)
+
+  /** Returns true if size == 0
+   */
+  bool IsEmpty() const;
+
+  /** Same as !IsEmpty()
+   */
+  explicit operator bool() const;
 };
 
 

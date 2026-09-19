@@ -22,12 +22,12 @@ public:
    */
   static void Touch(Element& element);
 
-  /** Enters the element into the LRU cache. This will increment only the `evictableSize` by the element's EvictSize().
+  /** Enters the element into the LRU cache. This will increment only the `evictableMemory` by the element's EvictSize().
    *  usedMemory is not touched by this.
    */
   static void Enter(Element& element);
 
-  /** Removes the element from the LRU cache (usually upon deletion or eviction). This will decrement only the `evictableSize` by
+  /** Removes the element from the LRU cache (usually upon deletion or eviction). This will decrement only the `evictableMemory` by
    *  the element's EvictSize(). usedMemory is not touched by this.
    */
   static void Remove(Element& element);
@@ -53,7 +53,35 @@ public:
   struct TouchOnExit {
     TouchOnExit(Element& element) : element(element) {}
     ~TouchOnExit() { Touch(element); }
+  private:
     Element& element;
+  };
+
+
+  /** A utility structure to use when the used memory of a structure managed by the LRU cache changes to update the total usedMemory
+   *  and evictable memory accordingly. Construct this structure before the update and drop it after the update has been performed.
+   *  Evictable memory is only updated if the element is part of the LRU cache. Otherwise only usedMemory is updated.
+   * 
+   *  The structure is defined as template to allow static dispatch of EvictSize() method.
+   */
+  template<typename ElementType>
+  struct UpdateMemoryOnExit {
+    UpdateMemoryOnExit(ElementType& element) : element(element), delta(0 - element.EvictSize()) {} // unsigned underflow/overflow is well defined
+    ~UpdateMemoryOnExit() {
+      delta += element.EvictSize();
+      
+      // Total used memory is always updated
+      usedMemory += delta;
+
+      if (element.lru.inCache) {
+        // Only elements in cache contribute to the evictable memory
+        evictableMemory += delta;
+      }
+    }
+
+  private:
+    ElementType& element;
+    size_t delta;
   };
 
 
@@ -90,16 +118,16 @@ private:
     class iterator {
     public:
       using value_type = Element*;
-      iterator() : element(nullptr) {}
-      iterator(Element* element) : element(element) {}
+      iterator();
+      iterator(Element* element);
       iterator(const iterator& other) = default;
       iterator& operator=(const iterator& other) = default;
 
-      bool operator==(const iterator& other) const { return element == other.element; }
-      bool operator!=(const iterator& other) const { return element != other.element; }
+      bool operator==(const iterator& other) const;
+      bool operator!=(const iterator& other) const;
 
-      iterator& operator++() { element = element->lru.prev; };
-      value_type operator*() const { return element; }
+      iterator& operator++();
+      value_type operator*() const;
 
     private:
       Element* element;

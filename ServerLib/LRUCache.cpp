@@ -163,19 +163,15 @@ void LRUCache::EvictMemory() {
     return;
   }
 
-  for (auto pos = lru.begin(), end = lru.end(); pos != end;) {
-    auto& element = **pos;
-    if (usedMemory <= maximumMemory) {
-      // We evicted enough elements
-      return;
-    }
-
+  // Start eviction at the tail and stop once we released enough memory
+  // or traversed the whole list once
+  for (auto element = lru.tail; element && usedMemory > maximumMemory;) {
     // Increment position BEFORE evicting the element, because
     // evicting will remove it from the LRU's linked list.
-    ++pos; 
+    element = element->lru.prev;
 
     // Try to evict the element
-    TryEvict(element);
+    TryEvict(*element);
   }
 }
 
@@ -191,6 +187,26 @@ void LRUCache::TryEvict(Element& element) {
     evictableMemory -= evictSize;
     usedMemory -= evictSize;
   }
+}
+
+LRUCache::LRU::iterator::iterator() : element(nullptr) {}
+LRUCache::LRU::iterator::iterator(Element* element) : element(element) {}
+
+bool LRUCache::LRU::iterator::operator==(const iterator& other) const { 
+  return element == other.element; 
+}
+
+bool LRUCache::LRU::iterator::operator!=(const iterator& other) const { 
+  return element != other.element; 
+}
+
+auto LRUCache::LRU::iterator::operator++() -> iterator& { 
+  element = element->lru.prev; 
+  return *this;
+};
+
+auto LRUCache::LRU::iterator::operator*() const -> value_type { 
+  return element; 
 }
 
 

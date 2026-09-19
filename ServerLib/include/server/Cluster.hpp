@@ -8,7 +8,7 @@ namespace server {
 
 class MemoryBlockDelta;
 
-class Cluster : public MemoryBlock {
+class Cluster final : public MemoryBlock {
 public:
   Cluster(cluster_id id, commit_id commitId = 1);
 
@@ -94,7 +94,7 @@ public:
    */
   void LoadFrom(const FileBackend& file);
 
-  /** Returns the memory that can be released by evicting this cluster from memory and reloading the contents from file.
+  /** Returns the memory that can be released by evicting this cluster from memory.
    */
   virtual size_t EvictSize() const override;
 

@@ -8,6 +8,15 @@ namespace blobs::server {
 MemoryBlock::MemoryBlock() : status(Status::LOADED) {}
 
 
+size_t MemoryBlock::EvictSize() const {
+  assert(!"EvictSize() must be implemented for LRU cache elements!");
+  return 0;
+}
+
+void MemoryBlock::Evict() {
+  assert(!"Evict() must be implemented for LRU cache elements!");
+}
+
 
 void MemoryBlock::OnDestroy() {
   if (lru.inCache) {
@@ -18,13 +27,6 @@ void MemoryBlock::OnDestroy() {
   // Remove does not touch the used memory
   LRUCache::usedMemory -= EvictSize();
 }
-
-
-FIXME(
-  "We cannot Remove() the block from LRU cache in the MemoryBlock destructor, because Remove relies on the removed size being known, "
-  "which it isn't once we enter the base class' destructor."
-)
-
 
 
 }

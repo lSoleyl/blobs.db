@@ -15,11 +15,17 @@ Segment::Segment(segment_id id, commit_id commitId) : id(id), commitId(commitId)
 
 Segment::Segment(const Segment& other, commit_id commitId) : id(other.id), commitId(commitId), clusters(other.clusters),
                                                              nextFreeClusterId(other.nextFreeClusterId), nextFreeClusterIdBlob(constants::NextFreeBlobId, commitId) {
+  assert(other.status == Status::LOADED); // Otherwise the clusters copy won't be complete
   nextFreeClusterIdBlob.SetIdContent(nextFreeClusterId);
 }
 
+Segment::~Segment() {
+  OnDestroy();
+}
 
 Cluster* Segment::GetCluster(cluster_id cluster) {
+  assert(status == Status::LOADED);
+
   // We cannot handle `NextFreeClusterId` here, because we have to return a whole cluster here.
   auto pos = clusters.find(cluster);
   return (pos != clusters.end()) ? pos->second.get() : nullptr;
@@ -27,6 +33,8 @@ Cluster* Segment::GetCluster(cluster_id cluster) {
 
 
 Cluster* Segment::GetLoadedCluster(cluster_id clusterId, const FileBackend& file) {
+  assert(status == Status::LOADED);
+
   if (auto cluster = GetCluster(clusterId)) {
     // Load the cluster from file if it isn't loaded yet
     TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
@@ -35,6 +43,7 @@ Cluster* Segment::GetLoadedCluster(cluster_id clusterId, const FileBackend& file
       assert(cluster->status == Status::LOADED);
     }
 
+    LRUCache::Touch(*cluster);
     return cluster;
   }
 
@@ -58,6 +67,8 @@ void Segment::LoadAllClusters(const FileBackend& file) {
 void Segment::LoadAllBlobs(const FileBackend& file) {
   assert(status == Status::LOADED); // the segment itself should already be loaded
   
+  // Loading will not modify the evictable memory used by the segment, so no update necessary here
+
   for (auto& [clusterId, cluster] : *this) {
     TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
     if (cluster->status != Status::LOADED) {
@@ -68,11 +79,16 @@ void Segment::LoadAllBlobs(const FileBackend& file) {
     // Now ensure all blobs of that cluster are loaded
     cluster->LoadAllBlobs(file);
   }
+
+  static_assert(!"Touch this segment?");
 }
 
 
 Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta) {
-  TODO("What if the segment isn't loaded yet? Can this happen?");
+  assert(status == Status::LOADED);
+
+  // Update memory usage in case we change the size of the clusters map or allocate a new cluster
+  LRUCache::UpdateMemoryOnExit<Segment> updateMemory(*this);
 
   auto& clusterPtr = clusters[cluster];
   if (!clusterPtr) {
@@ -96,22 +112,34 @@ Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta) {
     }
   }
 
+  static_assert(!"Touch this segment?");
+
   return clusterPtr.get();
 }
 
 void Segment::DeleteCluster(cluster_id cluster, MemoryBlockDelta* delta) {
+  assert(status == Status::LOADED);
+
   auto pos = clusters.find(cluster);
   if (pos != clusters.end()) {
     if (delta) {
+      // Update memory if we actually delete a cluster
+      LRUCache::UpdateMemoryOnExit<Segment> updateMemory(*this);
+
       delta->Released(pos->second.get());
       // Important: Explicitly mark all blobs of the cluster as released to not leak their memory
       pos->second->ReleaseAllBlobs(delta);
     }
     clusters.erase(pos);
   }
+
+  static_assert(!"Touch this segment?");
 }
 
 void Segment::ReleaseAllClusters(MemoryBlockDelta* delta) {
+  assert(status == Status::LOADED); // Otherwise we won't release the memory allocated in the database file
+
+  static_assert(!"For this to work correctly, every cluster must be fully loaded... is this guaranteed?");
   for (auto& [clusterId, cluster] : clusters) {
     delta->Released(cluster.get());
     cluster->ReleaseAllBlobs(delta);
@@ -120,6 +148,8 @@ void Segment::ReleaseAllClusters(MemoryBlockDelta* delta) {
 
 
 Blob* Segment::GetLoadedBlob(cluster_id cluster, blob_id blob, const FileBackend& file) {
+  assert(status == Status::LOADED);
+
   if (cluster == constants::NextFreeClusterId && blob == constants::NextFreeBlobId) {
     // Special blob holding the next free cluster id for cluster creation
     return &nextFreeClusterIdBlob;
@@ -136,16 +166,22 @@ Blob* Segment::GetLoadedBlob(cluster_id cluster, blob_id blob, const FileBackend
 }
 
 cluster_id Segment::GetNextFreeClusterId() const {
+  assert(status == Status::LOADED);
+
   return nextFreeClusterId;
 }
 
 void Segment::SetNextFreeClusterId(cluster_id nextFreeId) {
+  assert(status == Status::LOADED);
+
   nextFreeClusterId = nextFreeId;
   nextFreeClusterIdBlob.SetIdContent(nextFreeClusterId);
 }
 
 
 uint64_t Segment::CalculateRequiredSize() const {
+  assert(status == Status::LOADED);
+
   uint64_t size = sizeof(file::Segment);
 
   // To calculate the required file size, we need to determine the number of contiguous cluster ids
@@ -172,6 +208,8 @@ uint64_t Segment::CalculateRequiredSize() const {
 
 
 void Segment::SerializeIntoBuffer(std::vector<char>& targetBuffer) const {
+  assert(status == Status::LOADED);
+
   // Assume the memory block has been correctly sized before calling this method
   assert(CalculateRequiredSize() == fileLocation.size);
   targetBuffer.resize(fileLocation.size);
@@ -225,6 +263,12 @@ void Segment::LoadFrom(const FileBackend& file) {
   commitId = fileSegment->commitId;
   SetNextFreeClusterId(fileSegment->nextFreeClusterId);
 
+  // Enter the segment with the current size of 0 into the LRU cache
+  LRUCache::Enter(*this);
+
+  // Then when exiting LoadFrom() we will update total memory and evictable memory accordingly
+  LRUCache::UpdateMemoryOnExit<Segment> updateMemory(*this);
+
   for (auto it = fileSegment->begin(), end = fileSegment->end(fileLocation.size); it != end; ++it) {
     auto& range = *it;
     auto clusterId = range.startId;
@@ -235,6 +279,25 @@ void Segment::LoadFrom(const FileBackend& file) {
   }
 
   status = Status::LOADED;
+}
+
+
+size_t Segment::EvictSize() const {
+  // The evictable memory from clearing the clusters map consists of all the allocated entries
+  // plus all the Clusters that are actuall stored inside this map. We ignore the shard_ptr control block here.
+  return clusters.capacity() * sizeof(decltype(clusters)::entry) + clusters.size() * sizeof(Cluster);
+}
+
+
+void Segment::Evict() {
+  assert(lru.evictable && lru.inCache);
+
+  static_assert(!"We cannot evict a segment that has no fileLocation!");
+  static_assert(!"When assigning a file location, we then must add the segment,cluster,blob itnot the LRU chain");
+
+  // Move an empty map into our map to assure that the memory allocated allocated by std::vector is actually deallocated
+  clusters = decltype(clusters){};
+  status = Status::NOT_LOADED;
 }
 
 
@@ -257,8 +320,9 @@ void Segment::DelayLoadCluster(cluster_id cluster, const file::BlockReference& f
   assert(!clusterPtr);
 
   clusterPtr = std::make_shared<Cluster>(cluster, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the cluster's memory block, so we cannot know it yet */);
-  clusterPtr->status = MemoryBlock::Status::NOT_LOADED;
+  clusterPtr->status = Status::NOT_LOADED;
   clusterPtr->fileLocation = fileLocation;
+  clusterPtr->lru.evictable = lru.evictable; // If this segment is not evictable (part of MVCC snapshot), then the loaded cluster also is not evictable
 }
 
 

@@ -51,7 +51,7 @@ public:
    */
   void LoadFrom(const FileBackend& file);
 
-  /** Returns the memory that can be released by evicting this blob from memory and reloading the contents from file.
+  /** Returns the memory that can be released by evicting this blob from memory.
    */
   virtual size_t EvictSize() const override;
 

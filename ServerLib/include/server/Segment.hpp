@@ -13,6 +13,8 @@ public:
    */
   Segment(const Segment& other, commit_id commitId);
 
+  ~Segment();
+
   /** Returns the cluster with the specified id or nullptr if it doesn't exist.
    *  This method CANNOT handle the nextFreeClusterId id, use GetBlob() instead
    *  This may return a cluster, which has not yet been loaded from the database file into memory
@@ -89,6 +91,14 @@ public:
    *  This will load the map of clusters and initialize each cluster to a not yet loaded one
    */
   void LoadFrom(const FileBackend& file);
+
+  /** Returns the memory that can be released by evicting this segment from memory.
+   */
+  virtual size_t EvictSize() const override;
+
+  /** Evicts the segment's cluster list from memory resetting it into the NOT_LOADED state
+   */
+  virtual void Evict() override;
 
   // Iteration over all cluster objects of this segment. The segment must be already loaded for this to work.
   using iterator = typename sorted_flat_map<cluster_id, std::shared_ptr<Cluster>>::iterator;

@@ -15,15 +15,8 @@ Blob::~Blob() {
 }
 
 void Blob::SetContent(std::string_view blobContent) {
-  auto memoryDelta = 0 - EvictSize(); // unsigned underflow is well defined
+  LRUCache::UpdateMemoryOnExit<Blob> updateMemory(*this);
   data.assign(reinterpret_cast<const uint8_t*>(blobContent.data()), reinterpret_cast<const uint8_t*>(blobContent.data())+blobContent.size());
-  memoryDelta += EvictSize(); // unsigned overflow is just as well defined
-  // assumption: vector will never shrink its capacity because of an assign operation
-
-  LRUCache::usedMemory += memoryDelta;
-  if (lru.inCache) {
-    LRUCache::evictableMemory += memoryDelta;
-  }
 }
 
 
@@ -72,6 +65,8 @@ size_t Blob::EvictSize() const {
 void Blob::Evict() {
   assert(lru.evictable && lru.inCache);
   
+  static_assert(!"We cannot evict if we have no file location... ");
+
   // move assign a new vector, because clear() does not change the capacity
   data = std::vector<uint8_t>{};
   status = Status::NOT_LOADED;

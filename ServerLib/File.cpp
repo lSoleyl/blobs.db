@@ -12,6 +12,13 @@ uint64_t BlockReference::EndOffset() const {
   return offset + size;
 }
 
+bool BlockReference::IsEmpty() const {
+  return size == 0;
+}
+
+BlockReference::operator bool() const {
+  return size != 0;
+}
 
 void Database::Header::Initialize() {
   std::memcpy(&typeId, "blobs.db", sizeof(typeId));
