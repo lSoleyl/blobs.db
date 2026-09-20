@@ -86,7 +86,7 @@ public:
 
 
 
-  /** The maxmium allowed size of all blobs held in cache. Past this point blobs will be evicted from cache.
+  /** The maxmium allowed size of all blobs held in cache. Past this point blobs, clusters, segments will be evicted from cache.
    */
   static size_t maximumMemory; 
 

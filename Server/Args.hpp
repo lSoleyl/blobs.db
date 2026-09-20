@@ -37,6 +37,11 @@ public:
   blobs::Configuration& config;
 
 private:
+  /** Used for the --maxmemory argument to support values like 100M, 50k, 2G, ...
+   */
+  static std::optional<size_t> ParseMemoryLimit(const wchar_t* arg);
+
+
   bool valid = false;
   Args();
 };

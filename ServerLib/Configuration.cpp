@@ -59,4 +59,9 @@ Configuration& Configuration::DatabaseCloseDelay(std::chrono::milliseconds close
   return *this;
 }
 
+Configuration& Configuration::ServerMemoryLimit(size_t maxMemory) {
+  server->memoryLimit = maxMemory;
+  return *this;
+}
+
 }

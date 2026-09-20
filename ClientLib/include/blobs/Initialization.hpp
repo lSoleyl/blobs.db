@@ -138,7 +138,20 @@ public:
    * @default 0 = no delay
    */
   BLOBS_EXPORT Configuration& DatabaseCloseDelay(std::chrono::milliseconds closeDelayMs);
-  //@}
+  
+
+
+  /** Sets the maximum memory to keep allocated in the server for blobs, clusters, segements. Beyond this point already loaded 
+   *  blobs, clusters and segments will be unloaded and will have to be reloaded from disk upon next access. Setting a too small value here
+   *  will negatively impact the server's performance.
+   * 
+   *  The server may temporarily use more memory than this specified limit for allocation of commit messages and temporary data structures.
+   * 
+   * @param maxMemory the memory limit in bytes
+   */
+  BLOBS_EXPORT Configuration& ServerMemoryLimit(size_t maxMemory);
+
+
 
   Configuration();
   ~Configuration();

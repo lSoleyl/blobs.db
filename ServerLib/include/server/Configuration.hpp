@@ -32,6 +32,13 @@ public:
    *  default 0 = no delay
    */
   std::chrono::milliseconds databaseCloseDelay;
+
+
+  /** Configures the memory limit at which blobs, clusters, segments will be evicted from memory 
+   *  following an LRU eviction scheme.
+   *  Only blobs, clusters, segments of databases with a file backend can be evicted from memory.
+   */
+  size_t memoryLimit = std::numeric_limits<size_t>::max();
 };
 
 }

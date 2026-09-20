@@ -5,6 +5,7 @@
 #include <server/LockUtil.hpp>
 #include <server/Scheduler.hpp>
 #include <server/Configuration.hpp>
+#include <server/LRUCache.hpp>
 
 #include <network/Factory.hpp>
 #include <common/Encoding.hpp>
@@ -31,6 +32,9 @@ Server::Server(const blobs::Configuration& config) : messageReceived(*this), rec
   if (config.server->dbRootDir) {
     dbRootDir = Paths::ResolvePath(*config.server->dbRootDir);
   }
+
+  // Set the server's memory limit
+  LRUCache::maximumMemory = config.server->memoryLimit;
 }
 
 Server::~Server() {

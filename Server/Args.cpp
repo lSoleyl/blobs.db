@@ -5,6 +5,20 @@
 #include <algorithm>
 #include <iostream>
 #include <chrono>
+#include <regex>
+#include <sstream>
+
+namespace {
+constexpr size_t operator""_kB(size_t value) { return value * 1024; }
+constexpr size_t operator""_MB(size_t value) { return value * 1024_kB; }
+constexpr size_t operator""_GB(size_t value) { return value * 1024_MB; }
+constexpr size_t operator""_TB(size_t value) { return value * 1024_GB; }
+constexpr size_t operator""_PB(size_t value) { return value * 1024_TB; }
+}
+
+
+
+
 
 Args::Args() : config(blobs::Configuration::Get()) {
   // The server always starts with INFO as default log level
@@ -74,11 +88,19 @@ Args Args::Parse(int argc, const wchar_t* const* argv) {
       // Specify the port to listen on 
       auto port = _wtoi(*argPos++);
       if (port < 0 || port > std::numeric_limits<uint16_t>::max()) {
-        std::wcerr << "Invalid port number specified\n";
+        std::wcerr << L"Invalid port number specified\n";
         return args;
       }
       args.config.Port(port);
 
+    } else if (argName == L"--maxmemory" || argName == L"-mm") {
+      if (auto memoryLimit = ParseMemoryLimit(*argPos++)) {
+        args.config.ServerMemoryLimit(*memoryLimit);
+      } else {
+        std::wcerr << L"Invalid server memory limit specified\n";
+        return args;
+      }
+    
     } else if (argName == L"--help" || argName == L"-h") {
       // --help specified
       args.help = true;
@@ -110,7 +132,12 @@ void Args::PrintHelp() const {
     << "  --closedelay,-cd <delay>   Sets the delay (in ms) to close unused databases after and release used memory.\n"
     << "                             Default: 0 = no delay\n"
     << "  --port,-p <port>           Sets the port to listen on.\n"
-    << "                             Default: 8108"
+    << "                             Default: 8108\n"
+    << "  --maxmemory,-mm <limit>    Sets the maximum memory the server should allocate for keeping blobs, clusters,\n"
+    << "                             segments loaded in memory. Beyond this point memory will be unloaded and has to\n"
+    << "                             be re-read from the database file.\n"
+    << "                             The size may be specified as number of bytes followed by an optional suffix\n"
+    << "                             (k, M, G, T, P, E) eg. '2G'\n"
   ;
 }
 
@@ -137,4 +164,31 @@ const char** Args::ToAsciiArgv(int argc, const wchar_t* const* argv) {
   }
 
   return asciiArgv.data();
+}
+
+
+std::optional<size_t> Args::ParseMemoryLimit(const wchar_t* arg) {
+  std::wregex regex(L"^([0-9]+)([kMGTP])?$");
+  std::wsmatch matchResult;
+  std::wstring argStr = arg;
+
+  if (std::regex_match(argStr, matchResult, regex)) {
+    size_t memory = 0;
+    std::wistringstream stream(matchResult[1].str());
+    stream >> memory;
+    
+    if (matchResult[2].matched) {
+      switch (*matchResult[2].first) {
+        case L'k': memory *= 1_kB; break;
+        case L'M': memory *= 1_MB; break;
+        case L'G': memory *= 1_GB; break;
+        case L'T': memory *= 1_TB; break;
+        case L'P': memory *= 1_PB; break;
+      }
+    }
+
+    return memory;
+  }
+
+  return std::nullopt;
 }
