@@ -280,6 +280,9 @@ void Segment::LoadFrom(const FileBackend& file) {
   status = Status::LOADED;
 }
 
+void Segment::AllocatedInFile() {
+  LRUCache::Enter(*this);
+}
 
 size_t Segment::EvictSize() const {
   // The evictable memory from clearing the clusters map consists of all the allocated entries

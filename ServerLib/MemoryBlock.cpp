@@ -26,6 +26,8 @@ void MemoryBlock::Released() {
   fileLocation.Clear();
 }
 
+void MemoryBlock::AllocatedInFile() {}
+
 
 void MemoryBlock::OnDestroy() {
   if (lru.inCache) {

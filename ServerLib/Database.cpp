@@ -631,10 +631,16 @@ commit_id Database::CommitResult::ApplyToDatabase() {
     database.file.FlushFileBuffers();
 
 
-    // Now all memory blocks that have been deleted from the current snapshot must be marked as non-evictable and removed
+    // Now all memory blocks which have been deleted from the current snapshot must be marked as non-evictable and removed
     // from the LRU cache (if they are inside) because we cannot reload them from file after this commit if we were to evict them.
     for (auto memoryBlock : delta->GetReleased()) {
       memoryBlock->Released();
+    }
+
+    // Then mark all allocated blobs as such to enter newly allocated Blobs,Clusters,Segments into the LRU cache as they are now 
+    // evictable and reloadable from disk.
+    for (auto memoryBlock : delta->GetAllocated()) {
+      memoryBlock->AllocatedInFile();
     }
   }
 

@@ -37,6 +37,12 @@ struct MemoryBlock {
    */
   void Released();
 
+  /** Called by the server during commit on all memory blocks that have been newly allocated to a file backend.
+   *  Blobs,Clusters,Segments should register themselves to the LRU cache as they can now be evicted.
+   *  The default implementation of this method does nothing.
+   */
+  virtual void AllocatedInFile();
+
 protected:
 
   /** Call this method in the destructor of any class deriving from the MemoryBlock that is managed by the LRU cache.

@@ -58,6 +58,11 @@ void Blob::LoadFrom(const FileBackend& file) {
   status = Status::LOADED;
 }
 
+
+void Blob::AllocatedInFile() {
+  LRUCache::Enter(*this);
+}
+
 size_t Blob::EvictSize() const {
   return data.capacity(); // <- not size, because vector may have allocated more than just the content
 }

@@ -239,6 +239,10 @@ void Cluster::LoadFrom(const FileBackend& file) {
   status = Status::LOADED;
 }
 
+void Cluster::AllocatedInFile() {
+  LRUCache::Enter(*this);
+}
+
 size_t Cluster::EvictSize() const {
   // The total evitctable memory consists of the allocated blob map entries and the actually contained Blob objects.
   // We don't consider the std::shared_ptr control block here.

@@ -94,6 +94,11 @@ public:
    */
   void LoadFrom(const FileBackend& file);
 
+  /** Called by the server during commit on all memory blocks that have been newly allocated to a file backend.
+   *  The cluster will be entered into the LRU cache as it can now be evicted and reloaded from disk.
+   */
+  virtual void AllocatedInFile() override;
+
   /** Returns the memory that can be released by evicting this cluster from memory.
    */
   virtual size_t EvictSize() const override;
