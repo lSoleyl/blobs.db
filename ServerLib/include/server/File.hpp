@@ -35,6 +35,10 @@ struct BlockReference {
    */
   bool IsEmpty() const;
 
+  /** Resets this file location to a default initialized (empty) location
+   */
+  void Clear();
+
   /** Same as !IsEmpty()
    */
   explicit operator bool() const;

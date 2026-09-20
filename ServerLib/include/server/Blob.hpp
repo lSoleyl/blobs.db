@@ -7,7 +7,6 @@ namespace blobs::server {
 class FileBackend;
 
 class Blob final : public MemoryBlock {
-  friend class LRUCache;
 public:
   // Initialize an empty blob
   Blob(blob_id id, commit_id commitId = 1);

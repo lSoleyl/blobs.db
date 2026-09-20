@@ -144,15 +144,11 @@ void Database::BeginMVCC() {
     // The first client to use MVCC for this database at the moment
     // Simply copy the current database snapshot as the active mvcc snapshot
     mvccSnapshot = snapshot;
-    LRUCache::MVCCSnapshotCreated(*this);
   }
 }
 
 void Database::EndMVCC() {
   if (--mvccUseCount == 0) {
-    static_assert(!"Now we must notify the cache before we actually drop it");
-    LRUCache::MVCCSnapshotDropped(*this);
-
     // The last MVCC client for this database ended its transaction
     // Release the current snapshot so the next client will get an updated snapshot.
     mvccSnapshot.reset();
@@ -633,6 +629,13 @@ commit_id Database::CommitResult::ApplyToDatabase() {
 
     // And flush the file buffers BEFORE updating the transient state of the database
     database.file.FlushFileBuffers();
+
+
+    // Now all memory blocks that have been deleted from the current snapshot must be marked as non-evictable and removed
+    // from the LRU cache (if they are inside) because we cannot reload them from file after this commit if we were to evict them.
+    for (auto memoryBlock : delta->GetReleased()) {
+      memoryBlock->Released();
+    }
   }
 
   // As inner class we can directly access the database snapshot

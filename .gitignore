@@ -1,5 +1,6 @@
 .vs/
 Int/
 Out/
+*.dia~
 *.vcxproj.user
 Server/doctest/repo/

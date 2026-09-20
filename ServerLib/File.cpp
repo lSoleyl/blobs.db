@@ -16,6 +16,11 @@ bool BlockReference::IsEmpty() const {
   return size == 0;
 }
 
+void BlockReference::Clear() {
+  offset = 0;
+  size = 0;
+}
+
 BlockReference::operator bool() const {
   return size != 0;
 }

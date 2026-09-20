@@ -2,7 +2,7 @@
 #include <server/LRUCache.hpp>
 #include <server/Database.hpp>
 #include <server/Segment.hpp>
-#include <server/Cluster.hpp>;
+#include <server/Cluster.hpp>
 #include <server/Blob.hpp>
 
 namespace blobs::server {
@@ -114,50 +114,6 @@ void LRUCache::Remove(Element& element) {
 }
 
 
-void LRUCache::MVCCSnapshotCreated(Database& db) {
-  if (!IsEnabled()) {
-    return;
-  }
-
-  if (!db.IsFileDatabase()) {
-    // elements from memory databases are not evictable by default
-    return;
-  }
-
-  for (auto it = db.begin(true), end = db.end(true); it != end; ++it) {
-    auto& segment = *it->second;
-    segment.lru.evictable = false;
-    for (auto& [clusterId, cluster]: segment) {
-      cluster->lru.evictable = false;
-      for (auto& blobEntry : *cluster) {
-        auto& blob = *blobEntry.second;
-        blob.lru.evictable = false;
-      }
-    }
-  }
-}
-
-void LRUCache::MVCCSnapshotDropped(Database& db) {
-  if (!IsEnabled()) {
-    return;
-  }
-
-  for (auto it = db.begin(true), end = db.end(true); it != end; ++it) {
-    auto& segment = *it->second;
-    segment.lru.evictable = true;
-    for (auto& [clusterId, cluster] : segment) {
-      cluster->lru.evictable = true;
-      for (auto& blobEntry : *cluster) {
-        auto& blob = *blobEntry.second;
-        blob.lru.evictable = true;
-      }
-    }
-  }
-
-  FIXME("We could try to evict memory now?");
-}
-
-
 void LRUCache::EvictMemory() {
   if (!IsEnabled()) {
     return;
@@ -170,23 +126,24 @@ void LRUCache::EvictMemory() {
     // evicting will remove it from the LRU's linked list.
     element = element->lru.prev;
 
-    // Try to evict the element
-    TryEvict(*element);
+    // Evict the least recently used element
+    Evict(*element);
   }
 }
 
-void LRUCache::TryEvict(Element& element) {
-  if (element.lru.evictable) {
-    auto evictSize = element.EvictSize();
+void LRUCache::Evict(Element& element) {
+  // All elements that are inside the LRU chain must be marked as such, have a file location to reload them from and be actually loaded
+  assert(element.fileLocation && element.lru.inCache && element.status == MemoryBlock::Status::LOADED);
+  
+  auto evictSize = element.EvictSize();
 
-    // Evict element and remove it from the LRU cache
-    element.Evict();
-    Remove(element);
+  // Evict element and remove it from the LRU cache
+  element.Evict();
+  Remove(element);
 
-    // Update memory
-    evictableMemory -= evictSize;
-    usedMemory -= evictSize;
-  }
+  // Update memory
+  evictableMemory -= evictSize;
+  usedMemory -= evictSize;
 }
 
 LRUCache::LRU::iterator::iterator() : element(nullptr) {}

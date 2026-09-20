@@ -2,7 +2,7 @@
 
 namespace blobs::server {
 
-class MemoryBlock;
+struct MemoryBlock;
 class Database;
 
 static_assert(!"Remove the static functions, turn this into an object");
@@ -103,10 +103,9 @@ public:
 
 
 private:
-  /** Internal helper method, which will check whether the element is evictable and if so 
-   *  update the evictable/used memory and remove the element from the LRU cache
+  /** Internal helper method, update the evictable/used memory and remove the element from the LRU cache
    */
-  static void TryEvict(Element& element);
+  static void Evict(Element& element);
 
 
   static struct LRU {

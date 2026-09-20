@@ -246,11 +246,7 @@ size_t Cluster::EvictSize() const {
 }
 
 void Cluster::Evict() {
-  assert(lru.evictable && lru.inCache);
   // Move an empty map into our map to assure that the memory allocated allocated by std::vector is actually deallocated
-
-  static_assert(!"We cannot evict a cluster that has no file location");
-
   blobs = decltype(blobs){};
   status = Status::NOT_LOADED;
 }
@@ -276,7 +272,6 @@ void Cluster::DelayLoadBlob(blob_id blob, const file::BlockReference& fileLocati
   blobPtr = std::make_shared<Blob>(blob, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the blob's memory block, so we cannot know it yet */);
   blobPtr->status = Status::NOT_LOADED;
   blobPtr->fileLocation = fileLocation;
-  blobPtr->lru.evictable = lru.evictable; // If the cluster is not evictable (part of MVCC snapshot), then the loaded blob also is not evictable!
 }
 
 }}

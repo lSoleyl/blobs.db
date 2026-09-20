@@ -63,10 +63,6 @@ size_t Blob::EvictSize() const {
 }
 
 void Blob::Evict() {
-  assert(lru.evictable && lru.inCache);
-  
-  static_assert(!"We cannot evict if we have no file location... ");
-
   // move assign a new vector, because clear() does not change the capacity
   data = std::vector<uint8_t>{};
   status = Status::NOT_LOADED;

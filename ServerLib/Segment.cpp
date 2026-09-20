@@ -139,7 +139,6 @@ void Segment::DeleteCluster(cluster_id cluster, MemoryBlockDelta* delta) {
 void Segment::ReleaseAllClusters(MemoryBlockDelta* delta) {
   assert(status == Status::LOADED); // Otherwise we won't release the memory allocated in the database file
 
-  static_assert(!"For this to work correctly, every cluster must be fully loaded... is this guaranteed?");
   for (auto& [clusterId, cluster] : clusters) {
     delta->Released(cluster.get());
     cluster->ReleaseAllBlobs(delta);
@@ -290,11 +289,6 @@ size_t Segment::EvictSize() const {
 
 
 void Segment::Evict() {
-  assert(lru.evictable && lru.inCache);
-
-  static_assert(!"We cannot evict a segment that has no fileLocation!");
-  static_assert(!"When assigning a file location, we then must add the segment,cluster,blob itnot the LRU chain");
-
   // Move an empty map into our map to assure that the memory allocated allocated by std::vector is actually deallocated
   clusters = decltype(clusters){};
   status = Status::NOT_LOADED;
@@ -322,7 +316,6 @@ void Segment::DelayLoadCluster(cluster_id cluster, const file::BlockReference& f
   clusterPtr = std::make_shared<Cluster>(cluster, std::numeric_limits<commit_id>::max() /* the commit id is stored inside the cluster's memory block, so we cannot know it yet */);
   clusterPtr->status = Status::NOT_LOADED;
   clusterPtr->fileLocation = fileLocation;
-  clusterPtr->lru.evictable = lru.evictable; // If this segment is not evictable (part of MVCC snapshot), then the loaded cluster also is not evictable
 }
 
 

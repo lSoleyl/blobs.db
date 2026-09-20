@@ -18,6 +18,15 @@ void MemoryBlock::Evict() {
 }
 
 
+void MemoryBlock::Released() {
+  if (lru.inCache) {
+    LRUCache::Remove(*this);
+  }
+
+  fileLocation.Clear();
+}
+
+
 void MemoryBlock::OnDestroy() {
   if (lru.inCache) {
     // Remove from LRU cache and update used/evictable memory accordingly
