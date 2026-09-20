@@ -40,6 +40,19 @@ Cluster* Segment::GetLoadedCluster(cluster_id clusterId, const FileBackend& file
   return nullptr;
 }
 
+void Segment::LoadAllClusters(const FileBackend& file) {
+  assert(status == Status::LOADED); // the segment itself should already be loaded
+
+  // Loading will not modify the evictable memory used by the segment, so no update necessary here
+  for (auto& [clusterId, cluster] : *this) {
+    TODO("Once we use async IO to load stuff, we must handle LOADED and LOADING separately");
+    if (cluster->status != Status::LOADED) {
+      cluster->LoadFrom(file);
+      assert(cluster->status == Status::LOADED);
+    }
+  }
+}
+
 
 void Segment::LoadAllBlobs(const FileBackend& file) {
   assert(status == Status::LOADED); // the segment itself should already be loaded

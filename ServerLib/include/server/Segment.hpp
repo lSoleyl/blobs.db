@@ -25,6 +25,12 @@ public:
    */
   Cluster* GetLoadedCluster(cluster_id cluster, const FileBackend& file);
 
+
+  /** Loads all not yet loaded clusters (but not their blobs) from the given file backend into memory
+   */
+  void LoadAllClusters(const FileBackend& file);
+
+
   /** Loads all not yet loaded clusters and all their blobs from the given file backend into memory.
    */
   void LoadAllBlobs(const FileBackend& file);
