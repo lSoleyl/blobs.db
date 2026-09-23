@@ -913,14 +913,15 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
 
       // Even though we want to delete the segment, we must load it and at least all of its clusters. 
       // Otherwise the memory block delta will not include all the blob memory blocks and we will leak database memory.
-      auto segment = GetLoadedSegment(update.segment, file);
-
-      if constexpr (hasMVCCSnapshot) {
-        // We want to delete the segment, but we have an active MVCC snapshot, so we must first load that segment fullly from the database
-        segment->LoadAllBlobs(file);
-      } else {
-        // Without an active MVCC snapshot we can get away with just loading the clusters, not their blobs
-        segment->LoadAllClusters(file);
+      // We have to check for the segment's existence because the client may delete a segment that was created inside the same transaction.
+      if (auto segment = GetLoadedSegment(update.segment, file)) {
+        if constexpr (hasMVCCSnapshot) {
+          // We want to delete the segment, but we have an active MVCC snapshot, so we must first load that segment fullly from the database
+          segment->LoadAllBlobs(file);
+        } else {
+          // Without an active MVCC snapshot we can get away with just loading the clusters, not their blobs
+          segment->LoadAllClusters(file);
+        }
       }
       
       DeleteSegment(update.segment, delta);
@@ -939,11 +940,12 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
         // Even though we want to delete the cluster, we must first load it from file to know which blob memory blocks
         // will be released. If we don't do that, then the memory block delta will be incomplete and we will leak the memory
         // blocks of this cluster's blobs
-        auto cluster = segment->GetLoadedCluster(update.cluster, file);
-
-        if constexpr (hasMVCCSnapshot) {
-          // We want to delete the cluster, but we have an active MVCC snapshot, so we must first load that cluster fully from the database
-          cluster->LoadAllBlobs(file);
+        // We have to check for the segment's existence because the client may delete a segment that was created inside the same transaction.
+        if (auto cluster = segment->GetLoadedCluster(update.cluster, file)) {
+          if constexpr (hasMVCCSnapshot) {
+            // We want to delete the cluster, but we have an active MVCC snapshot, so we must first load that cluster fully from the database
+            cluster->LoadAllBlobs(file);
+          }
         }
 
         segment->DeleteCluster(update.cluster, delta);
