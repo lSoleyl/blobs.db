@@ -80,7 +80,9 @@ void Segment::LoadAllBlobs(const FileBackend& file) {
     cluster->LoadAllBlobs(file);
   }
 
-  static_assert(!"Touch this segment?");
+  // This is being called only when the segment is deleted during transaction commit and
+  // the mvcc snapshot still references it. No need to touch the segment here, because
+  // it will be removed from the LRU cache anyway upon commit.
 }
 
 
@@ -112,8 +114,8 @@ Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta) {
     }
   }
 
-  static_assert(!"Touch this segment?");
-
+  // We only call UpdateCluster() on a Segment copied through UpdateSegment() during transaction commit, 
+  // which is thus not a part of the LRU cache, so no need to touch it here.
   return clusterPtr.get();
 }
 
@@ -133,7 +135,8 @@ void Segment::DeleteCluster(cluster_id cluster, MemoryBlockDelta* delta) {
     clusters.erase(pos);
   }
 
-  static_assert(!"Touch this segment?");
+  // We only call DeleteCluster() on a Segment copied through UpdateSegment() during transaction commit, 
+  // which is thus not a part of the LRU cache, so no need to touch it here.
 }
 
 void Segment::ReleaseAllClusters(MemoryBlockDelta* delta) {
@@ -259,6 +262,7 @@ void Segment::LoadFrom(const FileBackend& file) {
     throw std::exception("Failed to load segment!");
   }
 
+  status = Status::LOADED; // set status up here to not trigger the assertion in SetNextFreeClusterId
   commitId = fileSegment->commitId;
   SetNextFreeClusterId(fileSegment->nextFreeClusterId);
 
@@ -276,8 +280,6 @@ void Segment::LoadFrom(const FileBackend& file) {
       ++clusterId;
     }
   }
-
-  status = Status::LOADED;
 }
 
 void Segment::AllocatedInFile() {

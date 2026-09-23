@@ -5,7 +5,7 @@ namespace blobs::server {
 struct MemoryBlock;
 class Database;
 
-static_assert(!"Remove the static functions, turn this into an object");
+TODO("Should I turn this into an object? It would add overhead to every call... is it worth it?");
 
 /** Just a collection of static data members and static functions to manage the LRU caching
  */
@@ -31,16 +31,6 @@ public:
    *  the element's EvictSize(). usedMemory is not touched by this.
    */
   static void Remove(Element& element);
-  
-  
-  /** Called by the database whenever an MVCC snapshot is created to mark the blobs, clusters & segments as protected from
-   *  cache eviction. These blobs, clusters & segments may have already been changed on disk and evicting them would destroy the MVCC snapshot.
-   */
-  static void MVCCSnapshotCreated(Database& db);
-
-  /** Called by the database whenever the current MVCC snapshot is dropped.
-   */
-  static void MVCCSnapshotDropped(Database& db);
 
 
   /** Should be called whenever usedMemory > maximumMemory to try and release some memory
@@ -137,13 +127,6 @@ private:
     iterator begin() const;
     iterator end() const;
   } lru;
-
-  /** This structure is used to keep track of all currently not evictable elements, due to an active MVCC snapshot
-   */
-  struct Unevictable {
-    Database* database;
-    std::unordered_set<Element*> elements;
-  };
 };
 
 

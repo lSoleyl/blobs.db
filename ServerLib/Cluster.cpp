@@ -67,9 +67,9 @@ void Cluster::LoadAllBlobs(const FileBackend& file) {
     }
   }
 
-  // Touch the cluster itself afterwards to ensure it won't be evicted before all its blobs have been evicted
-  // This operation doesn't modify the memory used by this cluster, so no LRU memory update is needed.
-  LRUCache::Touch(*this);
+  // At the moment this is being called only when the cluster or its segment is deleted during transaction commit and
+  // the mvcc snapshot still references it. No need to touch the cluster here, because
+  // it will be removed from the LRU cache anyway upon commit.
 }
 
 
@@ -93,8 +93,8 @@ Blob* Cluster::UpdateBlob(blob_id blob, MemoryBlockDelta* delta) {
     }
   }
 
-  static_assert(!"Touch this cluster?");
-  
+  // We only call UpdateBlob() on a Cluster copied through UpdateCluster() during transaction commit, 
+  // which is thus not a part of the LRU cache, so no need to touch it here.
   return blobPtr.get();
 }
 
@@ -112,7 +112,8 @@ void Cluster::DeleteBlob(blob_id blob, MemoryBlockDelta* delta) {
     blobs.erase(pos);
   }
 
-  static_assert(!"Touch cluster here?");
+  // We only call DeleteBlob() on a newly copied Cluster during transaction commit, 
+  // which is thus not a part of the LRU cache, so no need to touch it here.
 }
 
 
@@ -218,6 +219,7 @@ void Cluster::LoadFrom(const FileBackend& file) {
     throw std::exception("Failed to load cluster!");
   }
 
+  status = Status::LOADED; // set status up here to not trigger the assertion in SetNextFreeBlobId
   commitId = fileCluster->commitId;
   SetNextFreeBlobId(fileCluster->nextFreeBlobId);
 
@@ -235,8 +237,6 @@ void Cluster::LoadFrom(const FileBackend& file) {
       ++blobId;
     }
   }
-
-  status = Status::LOADED;
 }
 
 void Cluster::AllocatedInFile() {

@@ -410,6 +410,9 @@ void Server::HandleTransactionCommit(network::MessagePointer_T<network::message:
       AbortTransactionCommit(client);
     }
   }
+
+  // Release memory if we hit the memory limit
+  LRUCache::EvictMemory();
 }
 
 
@@ -791,6 +794,8 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   if (!EnsureRequestedBlobsExist(*database, message, isMVCC)) {
     // At least one of the requested blobs does not exist. The error response has already been sent to the client
     // so we can mark this message as processed.
+    // But first check whether we hit the memory limit and have to evict memory
+    LRUCache::EvictMemory();
     return true;
   }
 
@@ -798,6 +803,9 @@ bool Server::TryHandleBlobsRead(const network::message::BlobsRead& message) {
   if (message.IsDirtyRead() || isMVCC || client.AcquireLocks(message)) {
     // All locks for the message could be acquired (or are not necessary) -> construct the response(s) and send it to the client
     BuildAndSendBlobsReadResponse(*database, message, isMVCC);
+
+    // Then check whether we now have hit the memory limit and have to evict memory
+    LRUCache::EvictMemory();
     return true;
   }
 
