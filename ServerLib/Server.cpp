@@ -578,7 +578,9 @@ network::message::TransactionCommitResponse::Result Server::ValidateCommitMessag
             // We can assume the nextFreeBlobId to have been 1 as the 0'th blob is always implicitly created
             nextFreeBlobId = 1;
           } else if (auto segment = database->GetLoadedSegment(location.segment)) {
-            if (auto cluster = segment->GetCluster(location.cluster)) {
+            // We must ensure the cluster is LOADED before trying to access its next free blob id
+            FIXME("This lookup is slightly inefficient, because we lookup the segment twice...");
+            if (auto cluster = database->GetLoadedCluster(location.segment, location.cluster)) { 
               nextFreeBlobId = cluster->GetNextFreeBlobId();
             } else {
               // This should actually not happen, because the client cannot acquire a lock in a not existing cluster, right?
