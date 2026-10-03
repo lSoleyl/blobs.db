@@ -121,13 +121,9 @@ void LRUCache::EvictMemory() {
 
   // Start eviction at the tail and stop once we released enough memory
   // or traversed the whole list once
-  for (auto element = lru.tail; element && usedMemory > maximumMemory;) {
-    // Increment position BEFORE evicting the element, because
-    // evicting will remove it from the LRU's linked list.
-    element = element->lru.prev;
-
-    // Evict the least recently used element
-    Evict(*element);
+  while (lru.tail && usedMemory > maximumMemory) {
+    // Evict the least recently used element (this will update lru.tail to point to the previous element of the LRU chain)
+    Evict(*lru.tail);
   }
 }
 
