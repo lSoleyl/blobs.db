@@ -3,7 +3,7 @@
 When the client application is linked against `blobs.sa.db.lib` it will use the `blobs.sa.db.dll` at runtime, which bundles the server and client into a single library.
 A client application linking against this standalone version will start an internal server thread when calling `blobs::Initialize()`. In standalone mode no network communication is happening and no server port is opened. This also means that regular clients cannot connect to the internally running server of a standalone client instance. The internal server thread and each client [session](sessions.md) thread communicate over a simple synchronized queue. 
 
-The idea is that the client application is able to open [databases](databses.md) without having to start a dedicated [blobs_server](server.md) process similar to how SQLite clients operate. 
+The idea is that the client application is able to open [databases](databses.md) without having to start a dedicated [blobs_server](server.md) process similar to how SQLite clients operate (though only one standalone client can open a database at a time).
 
 The integrated server supports the same features as the full `blobs_server.exe` with the only exception being that only one process can connect to that server. This client process can however use multiple [sessions](sessions.md) to connect to the internal server thus having multiple clients accessing the same internal server (which can of course also lead to locking conflicts between them).
 

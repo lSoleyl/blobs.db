@@ -7,8 +7,6 @@
 
 namespace blobs::server {
 
-FIXME("Maybe avoid all this LRU overhead if no memory limit is set");
-
 size_t LRUCache::maximumMemory = std::numeric_limits<size_t>::max();
 size_t LRUCache::evictableMemory = 0;
 size_t LRUCache::usedMemory = 0;

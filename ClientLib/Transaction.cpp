@@ -459,6 +459,7 @@ bool Transaction::Commit(const Session::Handle& session) {
       }
     } else {
       assert(false);
+      FIXME("If response == ConnectionClosed -> close databases, abort transaction, throw exception.");
       TODO("It could also be a connection close message... handle it accordingly");
       TODO("All other replies should return an unexpected server message exception");
     }

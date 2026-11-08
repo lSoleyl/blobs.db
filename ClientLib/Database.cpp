@@ -198,7 +198,6 @@ Database* Database::Open(const Session::Handle& session, const char* hostNameDat
   auto connectionId = network.Get(hostName, port);
 
   auto& client = network.Get(connectionId);
-  TODO("Instead of always using the session default, we could provide an overload to Open, which can explicitly specify to open a new database in MVCC mode.")
   client.SendMessageToServer(network::message::DatabaseOpen::Create(databaseName, static_cast<network::message::DatabaseOpen::OpenMode>(openMode), mvcc));
 
   // Await the DatabaseOpenResponse

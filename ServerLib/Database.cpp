@@ -235,6 +235,7 @@ Database::OpenResult Database::LoadFromFile(OpenMode openMode) {
 
   } catch (std::exception& ex) {
     // Opening the database failed for some reason. The caller is responsible for calling Close()!
+    BLOBS_LOG_ERROR("Database open failed with: " << ex.what());
     return OpenResult::DATABASE_OPEN_FAILED;
   }
 }
