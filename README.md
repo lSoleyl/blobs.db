@@ -90,7 +90,7 @@ blobs.db is still in a very early stage of development and before considering to
  * No transport encryption between client and server
  * Blobs are limited to ~4GB in size (see `blobs/Config.hpp`)
  * Server logic is single threaded and blocks on database file IO
- * Server cache and client cache are only cleared when closing a database. No LRU mechanism to evict rarely used blobs from memory is implemented.
+ * Client cache are only cleared when closing a database. No LRU mechanism to evict rarely used blobs from memory is implemented.
 
 ## Planned features
   * Client-Cache memory management (remove rarely accessed blobs)
