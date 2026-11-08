@@ -284,11 +284,15 @@ private:
      *  return either a copy of the segment (if it already exists, but hasn't been copied in this transaction yet) or
      *  a new segment if it doesn't exist yet. Or the already copied segment.
      * 
+     *  Calling this with a segment that is not currently in memory, will load the segment into memory from the file backend
+     *  otherwise the cluster map wouldn't be copied correctly.
+     * 
      * @param segment the segment id to retrieve the segment for
      * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
      *              This may be nullptr for pure in memory databases
+     * @param file the file backend to load not yet loaded segments from before copying them for the update.
      */
-    Segment* UpdateSegment(segment_id segment, MemoryBlockDelta* delta);
+    Segment* UpdateSegment(segment_id segment, MemoryBlockDelta* delta, const FileBackend& file);
 
     /** Used when loading a snapshot to mark the segment as exisitng, but not yet loaded from file
      */

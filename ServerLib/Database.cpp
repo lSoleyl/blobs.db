@@ -173,7 +173,7 @@ void Database::Close() {
 Database::OpenResult Database::InitializeInMemory() {
   // Create the snapshot with segment cluster and blob
   auto snapshot = std::make_shared<Snapshot>();
-  auto segment = snapshot->UpdateSegment(0, nullptr);
+  auto segment = snapshot->UpdateSegment(0, nullptr, file);
   snapshot->SetNextFreeSegmentId(1);
 
   // Cluster 0 and Blob 0 are created implicitly
@@ -860,16 +860,14 @@ Segment* Database::Snapshot::GetSegment(segment_id segment) {
 }
 
 
-Segment* Database::Snapshot::UpdateSegment(segment_id segment, MemoryBlockDelta* delta) {
-  TODO("What if the segment hasn't been loaded from the database yet?");
-
+Segment* Database::Snapshot::UpdateSegment(segment_id segment, MemoryBlockDelta* delta, const FileBackend& file) {
   auto& segmentPtr = segments[segment];
   if (!segmentPtr) {
     // Create if not yet exist
     segmentPtr = std::make_shared<Segment>(segment, commitId);
 
     // And implicitly create cluster 0
-    segmentPtr->UpdateCluster(0, delta);
+    segmentPtr->UpdateCluster(0, delta, file);
     segmentPtr->SetNextFreeClusterId(1);
 
     if (delta) {
@@ -880,6 +878,14 @@ Segment* Database::Snapshot::UpdateSegment(segment_id segment, MemoryBlockDelta*
     if (delta) {
       delta->Released(segmentPtr.get());
     }
+
+    // Load the segment from file if it has been evicted before the commit, otherwise
+    // we cannot copy the cluster map correctly
+    if (segmentPtr->status == Status::NOT_LOADED) {
+      segmentPtr->LoadFrom(file);
+      assert(segmentPtr->status == Status::LOADED);
+    }
+
     segmentPtr = std::make_shared<Segment>(*segmentPtr, commitId);
     if (delta) {
       delta->Allocated(segmentPtr.get());
@@ -947,8 +953,8 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
       DeleteSegment(update.segment, delta);
       deleted.segments.push_back(update.segment);
     } else {
-      // Fetch a copy of the segment this update refers to and create it if necessary
-      auto segment = UpdateSegment(update.segment, delta);
+      // Fetch a copy of the segment this update refers to and create it if necessary or load it from disk if it has been evicted from memory
+      auto segment = UpdateSegment(update.segment, delta, file);
 
       if (update.cluster == constants::NextFreeClusterId) {
         // One or more clusters are being created in this segment -> update the next free cluster id of the segment
@@ -973,7 +979,7 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
 
       } else {
         // Fetch a copy of the cluster this update refers to and create it if necessary
-        auto cluster = segment->UpdateCluster(update.cluster, delta);
+        auto cluster = segment->UpdateCluster(update.cluster, delta, file);
 
         if (update.blob == constants::NextFreeBlobId) {
           // One or more blobs are being created in this cluster -> update the next free blob id of the cluster
@@ -996,6 +1002,8 @@ void Database::Snapshot::ApplyCommitMessage(network::message::TransactionCommit&
             cluster->GetLoadedBlob(update.blob, file);
           }
           
+          // Here we don't need to worry about loading the blob if it has been evicted by the LRU cache, because
+          // we will overwrite it with an empty blob anyway.
           cluster->UpdateBlob(update.blob, delta)->SetContent(pos.ReadData());
         }
       }

@@ -39,12 +39,16 @@ public:
 
   /** This method is used by the snapshot's ApplyCommitMessage method to fetch the cluster with the specified id
    *  and copy it if it hasn't been modified in the same transaction as the segment yet or create the cluster if id doesn't exist yet.
+   * 
+   *  If the cluster exists, but is currently not in memory (evicted from memory into file by LRU), it will be loaded from the file backend first
+   *  to make sure the blob map can be copied fully.
    *
    * @param cluster the cluster id to retrieve the cluster for
    * @param delta the data structure used to keep track of created/deleted memory blocks during copy-on-write commit processing
    *              This may be nullptr for pure in memory databases
+   * @param file the file to load the cluster from before copying it if the cluster is currently not loaded
    */
-  Cluster* UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta);
+  Cluster* UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta, const FileBackend& file);
 
   /** Deletes the specified cluster from this segment by removing it from the cluster map. If this was the last reference to that cluster
    *  then it will be 'delete'd

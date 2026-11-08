@@ -86,7 +86,7 @@ void Segment::LoadAllBlobs(const FileBackend& file) {
 }
 
 
-Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta) {
+Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta, const FileBackend& file) {
   assert(status == Status::LOADED);
 
   // Update memory usage in case we change the size of the clusters map or allocate a new cluster
@@ -108,6 +108,13 @@ Cluster* Segment::UpdateCluster(cluster_id cluster, MemoryBlockDelta* delta) {
     if (delta) {
       delta->Released(clusterPtr.get());
     }
+
+    // Load the cluster from file if necessary to make sure we can fully copy the blob map
+    if (clusterPtr->status == Status::NOT_LOADED) {
+      clusterPtr->LoadFrom(file);
+      assert(clusterPtr->status == Status::LOADED);
+    }
+
     clusterPtr = std::make_shared<Cluster>(*clusterPtr, commitId);
     if (delta) {
       delta->Allocated(clusterPtr.get());
