@@ -31,3 +31,10 @@ Logging can be written into a file by specifying the `--logfile` parameter.
 Usually the server closes a [database](databases.md) immediately once the last client (or more precisely [session](sessions.md)) stops using that database. This results in the file being closed and any associated data and cahched information being deleted immediately. This also means that an in-memory database is deleted at this point in time.
 
 The `--closedelay` option can be used to specify a delay (in milliseconds) to wait before actually closing the database and deleting all the associated data in case clients often close and open databses with short delays in between to avoid the overhead of reopening a database file or avoid losing the data in an in-memory database.
+
+
+## Memory limit (`--maxmemory` option)
+By default the server keeps all touched database blobs in memory once loaded for fast access. This approach can however result in bad performance when working with large databases and server main memory is limited. In that case the OS would start swapping memory pages to disk (pagefile), which introduces an unnecesary overhead because the database file itself is basically a pagefile for the blobs stored there.
+
+By setting the `--maxmemory` option (eg. `--maxmemory 2G`) the server will try to enforce a global memory limit (across all databases) for all data structures, that can be unloaded into a file database by unloading the least recently used blobs, clusters, segments whenever that limit is reached.
+The limit should be set to a smaller value than the available main memory, because not all memory falls under this limitation. Some data structures cannot simply be unloaded into the database file (eg. memory for queued client messages or for calculating the effects of a commit). In-memory [databases](databases.md) also cannot be unloaded to file, because they (by definition) have no file backend.
